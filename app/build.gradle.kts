@@ -265,8 +265,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.54")
-    ksp("com.google.dagger:hilt-android-compiler:2.54")
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    ksp("com.google.dagger:hilt-android-compiler:2.60.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     
     // Room with SQLCipher encryption
@@ -352,8 +352,8 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 
     // Hilt Testing
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.54")
-    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.54")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     
     // Debug implementations
     debugImplementation("androidx.compose.ui:ui-tooling")
