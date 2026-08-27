@@ -298,7 +298,7 @@ dependencies {
     ksp("androidx.hilt:hilt-compiler:1.1.0")
 
     // Guava for ListenableFuture (needed by WorkManager awaits)
-    implementation("com.google.guava:guava:32.1.3-android")
+    implementation("com.google.guava:guava:33.7.1-android")
 
     // OkHttp for HTTP downloads with TLS support
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
