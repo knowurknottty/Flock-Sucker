@@ -1,0 +1,854 @@
+package com.flockyou.data.repository
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyInfo
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import android.util.Log
+import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.flockyou.data.model.*
+import com.flockyou.data.model.OuiEntry
+import kotlinx.coroutines.flow.Flow
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import java.security.KeyStore
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+
+/**
+ * Type converters for Room database.
+ * Uses defensive enum parsing to handle invalid values gracefully
+ * instead of crashing with IllegalArgumentException.
+ * Logs warnings when using fallback values to aid debugging.
+ */
+class Converters {
+    companion object {
+        private const val TAG = "DbConverters"
+    }
+
+    @TypeConverter
+    fun fromDetectionProtocol(value: DetectionProtocol): String = value.name
+
+    @TypeConverter
+    fun toDetectionProtocol(value: String): DetectionProtocol =
+        try {
+            DetectionProtocol.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Invalid DetectionProtocol '$value', using default BLUETOOTH_LE")
+            DetectionProtocol.BLUETOOTH_LE
+        }
+
+    @TypeConverter
+    fun fromDetectionMethod(value: DetectionMethod): String = value.name
+
+    @TypeConverter
+    fun toDetectionMethod(value: String): DetectionMethod =
+        try {
+            DetectionMethod.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Invalid DetectionMethod '$value', using default BLE_DEVICE_NAME")
+            DetectionMethod.BLE_DEVICE_NAME
+        }
+
+    @TypeConverter
+    fun fromDeviceType(value: DeviceType): String = value.name
+
+    @TypeConverter
+    fun toDeviceType(value: String): DeviceType =
+        try {
+            DeviceType.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Invalid DeviceType '$value', using default UNKNOWN_SURVEILLANCE")
+            DeviceType.UNKNOWN_SURVEILLANCE
+        }
+
+    @TypeConverter
+    fun fromSignalStrength(value: SignalStrength): String = value.name
+
+    @TypeConverter
+    fun toSignalStrength(value: String): SignalStrength =
+        try {
+            SignalStrength.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Invalid SignalStrength '$value', using default MEDIUM")
+            SignalStrength.MEDIUM
+        }
+
+    @TypeConverter
+    fun fromThreatLevel(value: ThreatLevel): String = value.name
+
+    @TypeConverter
+    fun toThreatLevel(value: String): ThreatLevel =
+        try {
+            ThreatLevel.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Invalid ThreatLevel '$value', using default LOW")
+            ThreatLevel.LOW
+        }
+
+    @TypeConverter
+    fun fromDetectionSource(value: DetectionSource): String = value.name
+
+    @TypeConverter
+    fun toDetectionSource(value: String): DetectionSource =
+        try {
+            DetectionSource.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Invalid DetectionSource '$value', using default UNKNOWN")
+            DetectionSource.UNKNOWN
+        }
+}
+
+/**
+ * Data Access Object for detections
+ */
+@Dao
+interface DetectionDao {
+    @Query("SELECT * FROM detections ORDER BY lastSeenTimestamp DESC")
+    fun getAllDetections(): Flow<List<Detection>>
+    
+    @Query("SELECT * FROM detections WHERE isActive = 1 ORDER BY lastSeenTimestamp DESC")
+    fun getActiveDetections(): Flow<List<Detection>>
+    
+    @Query("SELECT * FROM detections WHERE timestamp > :since ORDER BY lastSeenTimestamp DESC")
+    fun getRecentDetections(since: Long): Flow<List<Detection>>
+    
+    @Query("SELECT * FROM detections WHERE threatLevel = :threatLevel ORDER BY lastSeenTimestamp DESC")
+    fun getDetectionsByThreatLevel(threatLevel: ThreatLevel): Flow<List<Detection>>
+    
+    @Query("SELECT * FROM detections WHERE deviceType = :deviceType ORDER BY lastSeenTimestamp DESC")
+    fun getDetectionsByDeviceType(deviceType: DeviceType): Flow<List<Detection>>
+    
+    @Query("SELECT * FROM detections WHERE macAddress = :macAddress ORDER BY lastSeenTimestamp DESC LIMIT 1")
+    suspend fun getDetectionByMacAddress(macAddress: String): Detection?
+    
+    @Query("SELECT * FROM detections WHERE ssid = :ssid ORDER BY lastSeenTimestamp DESC LIMIT 1")
+    suspend fun getDetectionBySsid(ssid: String): Detection?
+    
+    @Query("SELECT * FROM detections WHERE id = :id")
+    suspend fun getDetectionById(id: String): Detection?
+
+    @Query("SELECT * FROM detections WHERE serviceUuids LIKE '%' || :serviceUuid || '%' ORDER BY lastSeenTimestamp DESC LIMIT 1")
+    suspend fun getDetectionByServiceUuid(serviceUuid: String): Detection?
+    
+    @Query("SELECT COUNT(*) FROM detections")
+    suspend fun getTotalDetectionCountSync(): Int
+
+    @Query("SELECT * FROM detections ORDER BY lastSeenTimestamp DESC")
+    suspend fun getAllDetectionsSnapshot(): List<Detection>
+
+    @Query("SELECT * FROM detections WHERE timestamp BETWEEN :start AND :end ORDER BY lastSeenTimestamp DESC")
+    suspend fun getDetectionsBetween(start: Long, end: Long): List<Detection>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDetection(detection: Detection)
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDetections(detections: List<Detection>)
+    
+    @Update
+    suspend fun updateDetection(detection: Detection)
+    
+    @Delete
+    suspend fun deleteDetection(detection: Detection)
+    
+    @Query("DELETE FROM detections")
+    suspend fun deleteAllDetections()
+    
+    @Query("DELETE FROM detections WHERE timestamp < :before")
+    suspend fun deleteOldDetections(before: Long)
+    
+    @Query("UPDATE detections SET isActive = 0 WHERE macAddress = :macAddress")
+    suspend fun markInactive(macAddress: String)
+    
+    @Query("UPDATE detections SET isActive = 0 WHERE lastSeenTimestamp < :before")
+    suspend fun markOldInactive(before: Long)
+    
+    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE macAddress = :macAddress")
+    suspend fun updateSeenByMac(macAddress: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
+    
+    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE ssid = :ssid")
+    suspend fun updateSeenBySsid(ssid: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
+    
+    @Query("SELECT COUNT(*) FROM detections")
+    fun getTotalDetectionCount(): Flow<Int>
+    
+    @Query("SELECT COUNT(*) FROM detections WHERE threatLevel = 'CRITICAL' OR threatLevel = 'HIGH'")
+    fun getHighThreatCount(): Flow<Int>
+    
+    @Query("SELECT * FROM detections WHERE latitude IS NOT NULL AND longitude IS NOT NULL ORDER BY lastSeenTimestamp DESC")
+    fun getDetectionsWithLocation(): Flow<List<Detection>>
+
+    @Query("UPDATE detections SET fpScore = :fpScore, fpReason = :fpReason, fpCategory = :fpCategory, analyzedAt = :analyzedAt, llmAnalyzed = :llmAnalyzed WHERE id = :id")
+    suspend fun updateFpAnalysis(id: String, fpScore: Float?, fpReason: String?, fpCategory: String?, analyzedAt: Long, llmAnalyzed: Boolean)
+
+    @Query("SELECT * FROM detections WHERE analyzedAt IS NULL ORDER BY timestamp DESC")
+    suspend fun getDetectionsPendingFpAnalysis(): List<Detection>
+
+    @Query("SELECT * FROM detections WHERE analyzedAt IS NULL ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getDetectionsPendingFpAnalysis(limit: Int): List<Detection>
+
+    @Query("SELECT * FROM detections WHERE deviceType = :deviceType AND lastSeenTimestamp > :since ORDER BY lastSeenTimestamp DESC LIMIT 50")
+    suspend fun getRecentDetectionsByType(deviceType: String, since: Long): List<Detection>
+
+    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE serviceUuids LIKE '%' || :serviceUuid || '%'")
+    suspend fun updateSeenByServiceUuid(serviceUuid: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
+
+    // Related detections queries
+
+    /**
+     * Find detections with the same MAC address (excluding the given detection ID).
+     * Useful for tracking the same device seen at different times/locations.
+     */
+    @Query("SELECT * FROM detections WHERE macAddress = :macAddress AND id != :excludeId ORDER BY lastSeenTimestamp DESC LIMIT :limit")
+    suspend fun getDetectionsByMacAddressExcluding(macAddress: String, excludeId: String, limit: Int): List<Detection>
+
+    /**
+     * Find detections near a given location within a radius (in degrees).
+     * Uses simple bounding box for performance; roughly 111km per degree at equator.
+     * Excludes the given detection ID.
+     */
+    @Query("""
+        SELECT * FROM detections
+        WHERE id != :excludeId
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+        AND latitude BETWEEN :minLat AND :maxLat
+        AND longitude BETWEEN :minLon AND :maxLon
+        ORDER BY lastSeenTimestamp DESC
+        LIMIT :limit
+    """)
+    suspend fun getDetectionsNearLocation(
+        excludeId: String,
+        minLat: Double,
+        maxLat: Double,
+        minLon: Double,
+        maxLon: Double,
+        limit: Int
+    ): List<Detection>
+
+    /**
+     * Find detections of the same device type (excluding the given detection ID).
+     */
+    @Query("SELECT * FROM detections WHERE deviceType = :deviceType AND id != :excludeId ORDER BY lastSeenTimestamp DESC LIMIT :limit")
+    suspend fun getDetectionsByDeviceTypeExcluding(deviceType: DeviceType, excludeId: String, limit: Int): List<Detection>
+
+    /**
+     * Find detections with the same manufacturer (excluding the given detection ID).
+     */
+    @Query("SELECT * FROM detections WHERE manufacturer = :manufacturer AND id != :excludeId ORDER BY lastSeenTimestamp DESC LIMIT :limit")
+    suspend fun getDetectionsByManufacturerExcluding(manufacturer: String, excludeId: String, limit: Int): List<Detection>
+}
+
+/**
+ * Security level for database encryption key.
+ */
+enum class DatabaseSecurityLevel {
+    /** Hardware TPM - highest security, isolated secure processor */
+    STRONGBOX,
+    /** Trusted Execution Environment - hardware-backed but shared processor */
+    TEE,
+    /** Software-only - no hardware backing available */
+    SOFTWARE_ONLY
+}
+
+/**
+ * Secure key manager for database encryption passphrase.
+ * Uses Android Keystore with StrongBox/TEE hardware backing to protect the SQLCipher passphrase.
+ *
+ * Security features:
+ * - StrongBox (TPM) backing when available (API 28+)
+ * - TEE fallback when StrongBox unavailable
+ * - Device unlock requirement (API 28+)
+ * - Migration from legacy non-hardware-backed keys
+ */
+object DatabaseKeyManager {
+    private const val TAG = "DatabaseKeyManager"
+    private const val KEYSTORE_ALIAS = "flockyou_db_key_v2"
+    private const val LEGACY_KEYSTORE_ALIAS = "flockyou_db_key"
+    private const val PREFS_NAME = "flockyou_secure_prefs"
+    private const val PREFS_KEY_PASSPHRASE = "encrypted_db_passphrase_v2"
+    private const val PREFS_KEY_IV = "db_passphrase_iv_v2"
+    private const val PREFS_KEY_SECURITY_LEVEL = "db_key_security_level"
+    private const val LEGACY_PREFS_KEY_PASSPHRASE = "encrypted_db_passphrase"
+    private const val LEGACY_PREFS_KEY_IV = "db_passphrase_iv"
+    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+
+    @Volatile
+    private var cachedSecurityLevel: DatabaseSecurityLevel? = null
+
+    /**
+     * Check if StrongBox is available on this device.
+     */
+    fun hasStrongBox(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
+        } else {
+            false
+        }
+    }
+
+    /**
+     * Get the current security level of the database encryption key.
+     */
+    fun getSecurityLevel(context: Context): DatabaseSecurityLevel {
+        cachedSecurityLevel?.let { return it }
+
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val levelName = prefs.getString(PREFS_KEY_SECURITY_LEVEL, null)
+
+        val level = try {
+            levelName?.let { DatabaseSecurityLevel.valueOf(it) }
+                ?: detectKeySecurityLevel()
+        } catch (e: Exception) {
+            detectKeySecurityLevel()
+        }
+
+        cachedSecurityLevel = level
+        return level
+    }
+
+    /**
+     * Detect the actual security level of the current key.
+     */
+    private fun detectKeySecurityLevel(): DatabaseSecurityLevel {
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+            keyStore.load(null)
+
+            if (!keyStore.containsAlias(KEYSTORE_ALIAS)) {
+                return DatabaseSecurityLevel.SOFTWARE_ONLY
+            }
+
+            val key = keyStore.getKey(KEYSTORE_ALIAS, null) as? SecretKey
+                ?: return DatabaseSecurityLevel.SOFTWARE_ONLY
+
+            val factory = SecretKeyFactory.getInstance(key.algorithm, ANDROID_KEYSTORE)
+            val keyInfo = factory.getKeySpec(key, KeyInfo::class.java) as KeyInfo
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                when (keyInfo.securityLevel) {
+                    KeyProperties.SECURITY_LEVEL_STRONGBOX -> DatabaseSecurityLevel.STRONGBOX
+                    KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT -> DatabaseSecurityLevel.TEE
+                    else -> DatabaseSecurityLevel.SOFTWARE_ONLY
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                if (keyInfo.isInsideSecureHardware) DatabaseSecurityLevel.TEE
+                else DatabaseSecurityLevel.SOFTWARE_ONLY
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting key security level", e)
+            DatabaseSecurityLevel.SOFTWARE_ONLY
+        }
+    }
+
+    /**
+     * Get a human-readable description of the current security level.
+     */
+    fun getSecurityLevelDescription(context: Context): String {
+        return when (getSecurityLevel(context)) {
+            DatabaseSecurityLevel.STRONGBOX -> "StrongBox (Hardware TPM)"
+            DatabaseSecurityLevel.TEE -> "TEE (Trusted Execution Environment)"
+            DatabaseSecurityLevel.SOFTWARE_ONLY -> "Software-only"
+        }
+    }
+
+    /**
+     * Get or create the database passphrase with hardware-backed protection.
+     * The passphrase is generated once and stored encrypted using Android Keystore.
+     */
+    fun getOrCreatePassphrase(context: Context): ByteArray {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val encryptedPassphrase = prefs.getString(PREFS_KEY_PASSPHRASE, null)
+        val ivString = prefs.getString(PREFS_KEY_IV, null)
+
+        return if (encryptedPassphrase != null && ivString != null) {
+            // Decrypt existing passphrase
+            try {
+                decryptPassphrase(
+                    Base64.decode(encryptedPassphrase, Base64.NO_WRAP),
+                    Base64.decode(ivString, Base64.NO_WRAP)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decrypt passphrase", e)
+                // Try to migrate from legacy key
+                if (tryMigrateLegacyPassphrase(context, prefs)) {
+                    getOrCreatePassphrase(context) // Retry after migration
+                } else {
+                    Log.w(TAG, "Generating new passphrase - existing encrypted data will be lost")
+                    generateAndStoreNewPassphrase(context, prefs)
+                }
+            }
+        } else {
+            // Check for legacy passphrase and migrate
+            if (tryMigrateLegacyPassphrase(context, prefs)) {
+                getOrCreatePassphrase(context) // Retry after migration
+            } else {
+                generateAndStoreNewPassphrase(context, prefs)
+            }
+        }
+    }
+
+    private fun generateAndStoreNewPassphrase(
+        context: Context,
+        prefs: SharedPreferences
+    ): ByteArray {
+        // Generate a random 32-byte passphrase
+        val passphrase = ByteArray(32)
+        SecureRandom().nextBytes(passphrase)
+
+        // Create or get the key from Android Keystore (with hardware backing)
+        val secretKey = getOrCreateSecretKey(context)
+
+        // Encrypt the passphrase
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = cipher.iv
+        val encryptedPassphrase = cipher.doFinal(passphrase)
+
+        // Detect and store security level
+        val securityLevel = detectKeySecurityLevel()
+        cachedSecurityLevel = securityLevel
+
+        // Store encrypted passphrase, IV, and security level
+        prefs.edit()
+            .putString(PREFS_KEY_PASSPHRASE, Base64.encodeToString(encryptedPassphrase, Base64.NO_WRAP))
+            .putString(PREFS_KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
+            .putString(PREFS_KEY_SECURITY_LEVEL, securityLevel.name)
+            .apply()
+
+        Log.i(TAG, "Generated new database passphrase with security level: $securityLevel")
+        return passphrase
+    }
+
+    private fun decryptPassphrase(encryptedPassphrase: ByteArray, iv: ByteArray): ByteArray {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+        keyStore.load(null)
+
+        val secretKey = if (keyStore.containsAlias(KEYSTORE_ALIAS)) {
+            (keyStore.getEntry(KEYSTORE_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
+        } else {
+            throw IllegalStateException("Database key not found")
+        }
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+        return cipher.doFinal(encryptedPassphrase)
+    }
+
+    private fun getOrCreateSecretKey(context: Context): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+        keyStore.load(null)
+
+        // Check if key already exists
+        if (keyStore.containsAlias(KEYSTORE_ALIAS)) {
+            val entry = keyStore.getEntry(KEYSTORE_ALIAS, null) as KeyStore.SecretKeyEntry
+            return entry.secretKey
+        }
+
+        // Generate new hardware-backed key
+        val keyGenerator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            ANDROID_KEYSTORE
+        )
+
+        val builder = KeyGenParameterSpec.Builder(
+            KEYSTORE_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .setRandomizedEncryptionRequired(true)
+
+        var useStrongBox = false
+
+        // Enable StrongBox if available (API 28+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && hasStrongBox(context)) {
+            builder.setIsStrongBoxBacked(true)
+            useStrongBox = true
+            Log.d(TAG, "Requesting StrongBox-backed database key")
+        }
+
+        // Note: We intentionally do NOT use setUnlockedDeviceRequired(true) here.
+        // While it adds security, it causes crashes when:
+        // 1. App launches before user unlocks device after boot (Direct Boot)
+        // 2. Background workers run while device is locked
+        // The hardware-backed key still provides strong protection.
+
+        return try {
+            keyGenerator.init(builder.build())
+            val key = keyGenerator.generateKey()
+            Log.i(TAG, "Created database key with StrongBox=$useStrongBox")
+            key
+        } catch (e: Exception) {
+            // StrongBox may fail on some devices - fallback to TEE
+            if (useStrongBox) {
+                Log.w(TAG, "StrongBox key creation failed, falling back to TEE", e)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    builder.setIsStrongBoxBacked(false)
+                }
+                try {
+                    keyGenerator.init(builder.build())
+                    keyGenerator.generateKey()
+                } catch (teeException: Exception) {
+                    // TEE also failed - try software-only as last resort
+                    Log.w(TAG, "TEE key creation also failed, falling back to software-only", teeException)
+                    createSoftwareOnlyKey(keyGenerator)
+                }
+            } else {
+                // Non-StrongBox already failed - try software-only
+                Log.w(TAG, "Hardware-backed key creation failed, falling back to software-only", e)
+                createSoftwareOnlyKey(keyGenerator)
+            }
+        }
+    }
+
+    /**
+     * Create a software-only key as a last resort fallback.
+     * This is less secure but allows the app to function on devices
+     * where hardware-backed keys fail unexpectedly.
+     */
+    private fun createSoftwareOnlyKey(keyGenerator: KeyGenerator): SecretKey {
+        // Create a simple software-only key without hardware requirements
+        val softwareBuilder = KeyGenParameterSpec.Builder(
+            KEYSTORE_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .setRandomizedEncryptionRequired(true)
+            // No StrongBox or other hardware requirements
+
+        keyGenerator.init(softwareBuilder.build())
+        val key = keyGenerator.generateKey()
+        Log.w(TAG, "Created software-only database key (less secure)")
+        return key
+    }
+
+    /**
+     * Destroy the database encryption key material (crypto-erasure).
+     *
+     * This is the primary defensible secure-erasure primitive on flash/UFS storage: after this
+     * returns, the SQLCipher database file is permanently undecryptable even if its bytes are
+     * recovered by a forensic tool, because the 256-bit passphrase that encrypts the pages is
+     * itself wrapped by a Keystore key that no longer exists, and the wrapped passphrase has been
+     * removed from preferences.
+     *
+     * Multi-pass overwrite cannot guarantee physical block erasure on flash/UFS (wear leveling and
+     * the flash translation layer remap logical writes to different physical cells), so key
+     * destruction is the guarantee we rely on; file overwrite/delete is only a best-effort
+     * complement, never the primary mechanism.
+     *
+     * @return true if any key entry was destroyed, false if none was present.
+     */
+    fun destroyKeyMaterial(context: Context): Boolean {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+
+        var destroyed = false
+        for (alias in listOf(KEYSTORE_ALIAS, LEGACY_KEYSTORE_ALIAS)) {
+            if (keyStore.containsAlias(alias)) {
+                keyStore.deleteEntry(alias)
+                destroyed = true
+            }
+        }
+
+        // Remove the wrapped passphrase, IV, and recorded security level from preferences.
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PREFS_KEY_PASSPHRASE)
+            .remove(PREFS_KEY_IV)
+            .remove(PREFS_KEY_SECURITY_LEVEL)
+            .remove(LEGACY_PREFS_KEY_PASSPHRASE)
+            .remove(LEGACY_PREFS_KEY_IV)
+            .apply()
+
+        cachedSecurityLevel = null
+        Log.i(TAG, "Database key material destroyed (crypto-erasure), anyKeyDestroyed=$destroyed")
+        return destroyed
+    }
+
+    /**
+     * Try to migrate from legacy passphrase (non-hardware-backed) to new hardware-backed key.
+     * Returns true if migration was successful or not needed.
+     */
+    private fun tryMigrateLegacyPassphrase(context: Context, prefs: SharedPreferences): Boolean {
+        val legacyEncrypted = prefs.getString(LEGACY_PREFS_KEY_PASSPHRASE, null)
+        val legacyIv = prefs.getString(LEGACY_PREFS_KEY_IV, null)
+
+        if (legacyEncrypted == null || legacyIv == null) {
+            return false // No legacy passphrase to migrate
+        }
+
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
+        keyStore.load(null)
+
+        if (!keyStore.containsAlias(LEGACY_KEYSTORE_ALIAS)) {
+            return false // No legacy key
+        }
+
+        return try {
+            Log.i(TAG, "Migrating legacy database passphrase to hardware-backed key")
+
+            // Decrypt with legacy key
+            val legacyKey = (keyStore.getEntry(LEGACY_KEYSTORE_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                legacyKey,
+                GCMParameterSpec(128, Base64.decode(legacyIv, Base64.NO_WRAP))
+            )
+            val passphrase = cipher.doFinal(Base64.decode(legacyEncrypted, Base64.NO_WRAP))
+
+            // Re-encrypt with new hardware-backed key
+            val newKey = getOrCreateSecretKey(context)
+            cipher.init(Cipher.ENCRYPT_MODE, newKey)
+            val newIv = cipher.iv
+            val newEncrypted = cipher.doFinal(passphrase)
+
+            // Detect security level
+            val securityLevel = detectKeySecurityLevel()
+            cachedSecurityLevel = securityLevel
+
+            // Store with new keys and remove legacy
+            prefs.edit()
+                .putString(PREFS_KEY_PASSPHRASE, Base64.encodeToString(newEncrypted, Base64.NO_WRAP))
+                .putString(PREFS_KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
+                .putString(PREFS_KEY_SECURITY_LEVEL, securityLevel.name)
+                .remove(LEGACY_PREFS_KEY_PASSPHRASE)
+                .remove(LEGACY_PREFS_KEY_IV)
+                .apply()
+
+            // Clear passphrase from memory
+            passphrase.fill(0)
+
+            // Delete legacy key
+            keyStore.deleteEntry(LEGACY_KEYSTORE_ALIAS)
+
+            Log.i(TAG, "Successfully migrated database key to hardware-backed storage (level: $securityLevel)")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to migrate legacy passphrase", e)
+            false
+        }
+    }
+}
+
+/**
+ * Room database for storing detections.
+ *
+ * Encryption truthfulness: pages are encrypted at rest by SQLCipher (net.zetetic 4.x). SQLCipher's
+ * page encryption is AES-256-CBC with an HMAC integrity check per page — it is NOT GCM. The only
+ * use of AES/GCM in this file is the wrapping of the database passphrase by [DatabaseKeyManager]
+ * (the 256-bit passphrase is itself encrypted with an AES/GCM Keystore key). Do not conflate the
+ * two: the passphrase wrapper is GCM; the database page encryption is SQLCipher's CBC+HMAC.
+ */
+@Database(
+    entities = [
+        Detection::class,
+        OuiEntry::class,
+        SeenCellTowerEntity::class,
+        TrustedCellEntity::class,
+        CellularEventEntity::class
+    ],
+    version = 10,
+    exportSchema = true
+)
+@TypeConverters(Converters::class)
+abstract class FlockYouDatabase : RoomDatabase() {
+    abstract fun detectionDao(): DetectionDao
+    abstract fun ouiDao(): OuiDao
+    abstract fun cellularDao(): CellularDao
+
+    companion object {
+        private const val TAG = "FlockYouDatabase"
+
+        @Volatile
+        private var INSTANCE: FlockYouDatabase? = null
+
+        // Migration from version 3 to 4 - adds indices
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create indices for better query performance
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_macAddress ON detections(macAddress)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_ssid ON detections(ssid)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_threatLevel ON detections(threatLevel)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_deviceType ON detections(deviceType)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_timestamp ON detections(timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_lastSeenTimestamp ON detections(lastSeenTimestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_isActive ON detections(isActive)")
+            }
+        }
+
+        // Migration from version 4 to 5 - adds OUI entries table
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS oui_entries (
+                        ouiPrefix TEXT NOT NULL PRIMARY KEY,
+                        organizationName TEXT NOT NULL,
+                        registry TEXT NOT NULL DEFAULT 'MA-L',
+                        address TEXT,
+                        lastUpdated INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_oui_entries_ouiPrefix ON oui_entries(ouiPrefix)")
+            }
+        }
+
+        // Migration from version 5 to 6 - adds false positive analysis fields
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add false positive analysis columns with NULL defaults
+                db.execSQL("ALTER TABLE detections ADD COLUMN fpScore REAL DEFAULT NULL")
+                db.execSQL("ALTER TABLE detections ADD COLUMN fpReason TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE detections ADD COLUMN fpCategory TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE detections ADD COLUMN analyzedAt INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE detections ADD COLUMN llmAnalyzed INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // Migration from version 6 to 7 - adds serviceUuids index for BLE deduplication
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_serviceUuids ON detections(serviceUuids)")
+            }
+        }
+
+        // Migration from version 7 to 8 - adds detectionSource field for tracking scan origin (Flipper vs native)
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE detections ADD COLUMN detectionSource TEXT NOT NULL DEFAULT 'UNKNOWN'")
+            }
+        }
+
+        // Migration from version 8 to 9 - adds userNote and confirmedThreat fields for user actions
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE detections ADD COLUMN userNote TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE detections ADD COLUMN confirmedThreat INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // Migration from version 9 to 10 - adds cellular persistence tables
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create seen_cell_towers table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS seen_cell_towers (
+                        cellId TEXT NOT NULL PRIMARY KEY,
+                        lac INTEGER,
+                        tac INTEGER,
+                        mcc TEXT,
+                        mnc TEXT,
+                        operator TEXT,
+                        networkType TEXT NOT NULL,
+                        networkGeneration TEXT NOT NULL,
+                        firstSeen INTEGER NOT NULL,
+                        lastSeen INTEGER NOT NULL,
+                        seenCount INTEGER NOT NULL,
+                        minSignal INTEGER NOT NULL,
+                        maxSignal INTEGER NOT NULL,
+                        lastSignal INTEGER NOT NULL,
+                        latitude REAL,
+                        longitude REAL,
+                        isTrusted INTEGER NOT NULL
+                    )
+                """)
+
+                // Create trusted_cells table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS trusted_cells (
+                        cellId TEXT NOT NULL PRIMARY KEY,
+                        seenCount INTEGER NOT NULL,
+                        firstSeen INTEGER NOT NULL,
+                        lastSeen INTEGER NOT NULL,
+                        locationsJson TEXT NOT NULL,
+                        operator TEXT,
+                        networkType TEXT
+                    )
+                """)
+
+                // Create cellular_events table
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS cellular_events (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        timestamp INTEGER NOT NULL,
+                        eventType TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        cellId TEXT,
+                        networkType TEXT,
+                        signalStrength INTEGER,
+                        isAnomaly INTEGER NOT NULL,
+                        threatLevel TEXT NOT NULL,
+                        latitude REAL,
+                        longitude REAL
+                    )
+                """)
+
+                // Create index for cellular events timestamp
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_cellular_events_timestamp ON cellular_events(timestamp)")
+            }
+        }
+
+        fun getDatabase(context: Context): FlockYouDatabase {
+            return INSTANCE ?: synchronized(this) {
+                // Load SQLCipher native library
+                System.loadLibrary("sqlcipher")
+
+                // Get or create encryption passphrase
+                val passphrase = DatabaseKeyManager.getOrCreatePassphrase(context)
+                val factory = SupportOpenHelperFactory(passphrase)
+
+                // Clear passphrase from memory after factory creation
+                // The factory has already copied the passphrase internally
+                java.util.Arrays.fill(passphrase, 0.toByte())
+
+                Log.d(TAG, "Creating encrypted database")
+
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    FlockYouDatabase::class.java,
+                    "flockyou_database_encrypted"  // New name to avoid conflicts with old unencrypted DB
+                )
+                    .openHelperFactory(factory)
+                    // ScanningService runs in :scanning while the UI reads Room in the main process.
+                    // Without multi-instance invalidation, UI Flows can remain stale until service reconnect/stop.
+                    .enableMultiInstanceInvalidation()
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    // Fail loudly on an unhandled UPGRADE (so we never silently destroy a user's
+                    // encrypted history because a future migration was forgotten). Only a genuine
+                    // DOWNGRADE (installing an older APK) falls back to destructive recreation.
+                    .fallbackToDestructiveMigrationOnDowngrade()
+                    .build()
+                INSTANCE = instance
+                instance
+            }
+        }
+
+        /**
+         * Clear the singleton instance after database is closed/wiped.
+         * This allows the database to be re-created if the app continues running after a nuke.
+         * Must be called after close() and before any file deletion.
+         */
+        fun clearInstance() {
+            synchronized(this) {
+                INSTANCE = null
+                Log.d(TAG, "Database instance cleared - will be recreated on next access")
+            }
+        }
+    }
+}

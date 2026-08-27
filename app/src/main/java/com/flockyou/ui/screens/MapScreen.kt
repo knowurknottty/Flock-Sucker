@@ -1,0 +1,1202 @@
+package com.flockyou.ui.screens
+
+import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.flockyou.config.NetworkConfig
+import com.flockyou.data.model.*
+import com.flockyou.service.ScanningService
+import com.flockyou.ui.components.*
+import com.flockyou.ui.theme.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import java.text.SimpleDateFormat
+import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun MapScreen(
+    viewModel: MapViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit,
+    onNavigateToDetectionDetail: ((String) -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val filteredDetections by viewModel.detectionsWithLocation.collectAsStateWithLifecycle()
+    val hasAnyDetections by viewModel.hasAnyDetections.collectAsStateWithLifecycle()
+    val hasLocatedDetections by viewModel.hasLocatedDetections.collectAsStateWithLifecycle()
+    val isScanning by viewModel.isScanning.collectAsStateWithLifecycle()
+    var selectedDetection by remember { mutableStateOf<Detection?>(null) }
+    var mapView by remember { mutableStateOf<MapView?>(null) }
+    var zoomBucket by remember { mutableStateOf(MapZoomBucket.WORLD) }
+    var didAutoFit by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
+
+    // GPS status state
+    var gpsStatus by remember { mutableStateOf(MapGpsStatus.SEARCHING) }
+    var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
+
+    // Location permission launcher for requesting location permissions
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        // Permissions result received - the map will update automatically when
+        // new detections with location data are received
+    }
+
+    // Function to request location permissions
+    val requestLocationPermissions: () -> Unit = {
+        val permissionsToRequest = buildList {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            }
+        }
+        locationPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+    }
+
+    // Function to start scanning service
+    val startScanning: () -> Unit = {
+        val intent = Intent(context, ScanningService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
+
+    // This map has stored detection coordinates, not an Android Location accuracy fix.
+    // Never infer GPS +/- meters from the surveillance device RSSI/signal-strength field.
+    LaunchedEffect(filteredDetections, hasAnyDetections, hasLocatedDetections, isScanning) {
+        gpsStatus = MapPresentationPolicy.gpsStatus(
+            hasLocatedDetections = hasLocatedDetections,
+            hasAnyDetections = hasAnyDetections,
+            isScanning = isScanning
+        )
+        userLocation = filteredDetections
+            .maxByOrNull { it.timestamp }
+            ?.let { latest -> GeoPoint(latest.latitude!!, latest.longitude!!) }
+    }
+    
+    // Initialize osmdroid configuration
+    LaunchedEffect(Unit) {
+        Configuration.getInstance().apply {
+            userAgentValue = context.packageName
+            osmdroidBasePath = context.getExternalFilesDir(null)
+            osmdroidTileCache = context.getExternalFilesDir("tiles")
+        }
+    }
+    
+    // Update markers when detections change - with clustering support
+    LaunchedEffect(filteredDetections, mapView, zoomBucket) {
+        mapView?.let { map ->
+            // Clear existing markers and overlays
+            map.overlays.removeAll { it is Marker }
+
+            // DetectionRepository.detectionsWithLocation already guarantees coordinates.
+            val detectionsWithCoords = filteredDetections
+
+            if (detectionsWithCoords.isEmpty()) {
+                map.invalidate()
+                return@let
+            }
+
+            val points = mutableListOf<GeoPoint>()
+
+            if (zoomBucket != MapZoomBucket.DETAIL) {
+                // Cluster on coarse zoom tiers. The policy uses bounded grid bucketing rather than
+                // comparing every detection with every other detection.
+                val clusters = MapPresentationPolicy.clusterDetections(detectionsWithCoords, zoomBucket)
+
+                clusters.forEach { cluster ->
+                    val clusterCenter = GeoPoint(cluster.centerLatitude, cluster.centerLongitude)
+                    points.add(clusterCenter)
+
+                    if (cluster.detections.size == 1) {
+                        // Single detection - show normal marker
+                        val detection = cluster.detections.first()
+                        val marker = Marker(map).apply {
+                            position = clusterCenter
+                            title = detection.deviceType.name.replace("_", " ")
+                            snippet = detection.macAddress ?: detection.ssid ?: "Unknown"
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            icon = createMarkerDrawable(detection.threatLevel)
+
+                            setOnMarkerClickListener { _, _ ->
+                                selectedDetection = detection
+                                true
+                            }
+                        }
+                        map.overlays.add(marker)
+                    } else {
+                        // Multiple detections - show cluster marker
+                        val marker = Marker(map).apply {
+                            position = clusterCenter
+                            title = "${cluster.detections.size} detections"
+                            snippet = "Tap to zoom in"
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            icon = createClusterDrawable(
+                                count = cluster.detections.size,
+                                threatLevel = cluster.highestThreatLevel
+                            )
+
+                            setOnMarkerClickListener { _, _ ->
+                                // Zoom in to show individual markers
+                                val clusterPoints = cluster.detections.map {
+                                    GeoPoint(it.latitude!!, it.longitude!!)
+                                }
+                                zoomToFitPoints(map, clusterPoints, minZoom = 16.0)
+                                true
+                            }
+                        }
+                        map.overlays.add(marker)
+                    }
+                }
+            } else {
+                // No clustering - show individual markers
+                detectionsWithCoords.forEach { detection ->
+                    val geoPoint = GeoPoint(detection.latitude!!, detection.longitude!!)
+                    points.add(geoPoint)
+
+                    val marker = Marker(map).apply {
+                        position = geoPoint
+                        title = detection.deviceType.name.replace("_", " ")
+                        snippet = detection.macAddress ?: detection.ssid ?: "Unknown"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        icon = createMarkerDrawable(detection.threatLevel)
+
+                        setOnMarkerClickListener { _, _ ->
+                            selectedDetection = detection
+                            true
+                        }
+                    }
+                    map.overlays.add(marker)
+                }
+            }
+
+            // Auto-zoom to fit all markers on first load
+            if (points.isNotEmpty() && !didAutoFit) {
+                didAutoFit = true
+                zoomToFitPoints(map, points)
+            }
+
+            map.invalidate()
+        }
+    }
+
+    // Track only meaningful zoom-tier changes and remove the listener when the MapView changes.
+    // Assigning the same enum value is a no-op, so fractional zoom updates inside one tier no longer
+    // invalidate and rebuild the complete marker overlay.
+    DisposableEffect(mapView) {
+        val map = mapView
+        if (map == null) {
+            onDispose { }
+        } else {
+            val listener = object : org.osmdroid.events.MapListener {
+                override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean = false
+
+                override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean {
+                    zoomBucket = MapZoomBucket.forZoom(map.zoomLevelDouble)
+                    return false
+                }
+            }
+            map.addMapListener(listener)
+            onDispose { map.removeMapListener(listener) }
+        }
+    }
+    
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Detection Map") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Filter button
+                    FilterButton(
+                        filterCount = viewModel.getActiveFilterCount(),
+                        onClick = { showFilterSheet = true }
+                    )
+
+                    // Reset View / Zoom to fit all markers - always works
+                    IconButton(onClick = {
+                        mapView?.let { map ->
+                            val points = filteredDetections
+                                .map { GeoPoint(it.latitude!!, it.longitude!!) }
+
+                            if (points.isNotEmpty()) {
+                                zoomToFitPoints(map, points)
+                            } else {
+                                // Reset to default view of USA
+                                map.controller.animateTo(
+                                    GeoPoint(39.8283, -98.5795),
+                                    4.0,
+                                    500L
+                                )
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Reset View")
+                    }
+
+                    // Center on user location (if available from detections)
+                    IconButton(onClick = {
+                        mapView?.let { map ->
+                            val latest = filteredDetections
+                                .maxByOrNull { it.timestamp }
+
+                            if (latest != null) {
+                                map.controller.animateTo(
+                                    GeoPoint(latest.latitude!!, latest.longitude!!),
+                                    16.0,
+                                    500L
+                                )
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "Latest Detection Location")
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            val hasLocationData = filteredDetections.isNotEmpty()
+
+            if (!hasLocationData) {
+                val hasActiveFilters = viewModel.getActiveFilterCount() > 0
+                MapEmptyState(
+                    hasDetections = hasAnyDetections,
+                    hasLocatedDetections = hasLocatedDetections,
+                    hasActiveFilters = hasActiveFilters,
+                    isScanning = isScanning,
+                    onAction = when {
+                        hasLocatedDetections && hasActiveFilters -> viewModel::clearFilters
+                        hasAnyDetections -> requestLocationPermissions
+                        else -> startScanning
+                    }
+                )
+            } else {
+                // OpenStreetMap View with HTTPS tile source
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        MapView(ctx).apply {
+                            // Use HTTPS tile source for security
+                            setTileSource(HTTPS_MAPNIK)
+                            setMultiTouchControls(true)
+                            controller.setZoom(4.0)
+                            controller.setCenter(GeoPoint(39.8283, -98.5795))
+                            zoomController.setVisibility(
+                                org.osmdroid.views.CustomZoomButtonsController.Visibility.SHOW_AND_FADEOUT
+                            )
+                            mapView = this
+                        }
+                    },
+                    update = { map ->
+                        mapView = map
+                    }
+                )
+            }
+
+            // GPS Status Indicator (top-start corner)
+            GpsStatusIndicator(
+                status = gpsStatus,
+                accuracyMeters = null,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
+            )
+
+            // Detection count (top-end corner)
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${filteredDetections.size} locations",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
+            // Legend (bottom-start corner)
+            if (hasLocationData) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Threat Levels",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LegendItem("Critical", ThreatCritical)
+                        LegendItem("High", ThreatHigh)
+                        LegendItem("Medium", ThreatMedium)
+                        LegendItem("Low", ThreatLow)
+                        LegendItem("Info", ThreatInfo)
+                    }
+                }
+            }
+
+            // Attribution (bottom-end corner)
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                )
+            ) {
+                Text(
+                    text = "(C) OpenStreetMap",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+    
+    // Detection detail sheet
+    selectedDetection?.let { detection ->
+        MapDetectionSheet(
+            detection = detection,
+            onDismiss = { selectedDetection = null },
+            onCopyCoordinates = { lat, lon ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("coordinates", "$lat, $lon")
+                clipboard.setPrimaryClip(clip)
+            },
+            onViewFullDetails = onNavigateToDetectionDetail?.let { { id -> it(id) } }
+        )
+    }
+
+    // Filter bottom sheet
+    if (showFilterSheet) {
+        MapFilterBottomSheet(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { showFilterSheet = false }
+        )
+    }
+
+    // Cleanup
+    DisposableEffect(Unit) {
+        onDispose {
+            mapView?.onDetach()
+        }
+    }
+}
+
+private fun zoomToFitPoints(map: MapView, points: List<GeoPoint>, minZoom: Double? = null) {
+    if (points.isEmpty()) return
+
+    if (points.size == 1) {
+        // Single point - just center and zoom
+        val zoom = minZoom ?: 16.0
+        map.controller.animateTo(points.first(), zoom, 500L)
+        return
+    }
+
+    // Calculate bounding box for all points
+    var north = -90.0
+    var south = 90.0
+    var east = -180.0
+    var west = 180.0
+
+    for (point in points) {
+        if (point.latitude > north) north = point.latitude
+        if (point.latitude < south) south = point.latitude
+        if (point.longitude > east) east = point.longitude
+        if (point.longitude < west) west = point.longitude
+    }
+
+    // Add padding (10%)
+    val latPadding = (north - south) * 0.1
+    val lonPadding = (east - west) * 0.1
+
+    val boundingBox = BoundingBox(
+        north + latPadding,
+        east + lonPadding,
+        south - latPadding,
+        west - lonPadding
+    )
+
+    // Zoom to bounding box
+    map.post {
+        map.zoomToBoundingBox(boundingBox, true, 50)
+        // Ensure minimum zoom level if specified
+        minZoom?.let {
+            if (map.zoomLevelDouble < it) {
+                map.controller.setZoom(it)
+            }
+        }
+    }
+}
+
+private fun createMarkerDrawable(threatLevel: ThreatLevel): android.graphics.drawable.Drawable {
+    val color = when (threatLevel) {
+        ThreatLevel.CRITICAL -> Color.parseColor("#D32F2F")
+        ThreatLevel.HIGH -> Color.parseColor("#F57C00")
+        ThreatLevel.MEDIUM -> Color.parseColor("#FBC02D")
+        ThreatLevel.LOW -> Color.parseColor("#388E3C")
+        ThreatLevel.INFO -> Color.parseColor("#1976D2")
+    }
+
+    return GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(color)
+        setStroke(4, Color.WHITE)
+        setSize(48, 48)
+    }
+}
+
+/**
+ * Create a cluster marker drawable with count indicator
+ */
+private fun createClusterDrawable(count: Int, threatLevel: ThreatLevel): android.graphics.drawable.Drawable {
+    val color = when (threatLevel) {
+        ThreatLevel.CRITICAL -> Color.parseColor("#D32F2F")
+        ThreatLevel.HIGH -> Color.parseColor("#F57C00")
+        ThreatLevel.MEDIUM -> Color.parseColor("#FBC02D")
+        ThreatLevel.LOW -> Color.parseColor("#388E3C")
+        ThreatLevel.INFO -> Color.parseColor("#1976D2")
+    }
+
+    // Create a larger circle for clusters
+    val size = when {
+        count >= 10 -> 72
+        count >= 5 -> 64
+        else -> 56
+    }
+
+    return GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(color)
+        setStroke(4, Color.WHITE)
+        setSize(size, size)
+    }
+}
+
+@Composable
+private fun LegendItem(
+    label: String,
+    color: androidx.compose.ui.graphics.Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) {
+        Box(modifier = Modifier.size(12.dp).padding(2.dp)) {
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                drawCircle(color = color)
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text = label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/**
+ * HTTPS tile source for OpenStreetMap.
+ * Uses HTTPS to prevent MITM attacks on map tile requests.
+ * Tile server URLs are configurable via NetworkConfig for OEM customization.
+ */
+private val HTTPS_MAPNIK: OnlineTileSourceBase by lazy {
+    object : OnlineTileSourceBase(
+        "Mapnik-HTTPS",
+        0,
+        19,
+        256,
+        ".png",
+        NetworkConfig.MAP_TILE_SERVERS.toTypedArray(),
+        "(c) OpenStreetMap contributors"
+    ) {
+        override fun getTileURLString(pMapTileIndex: Long): String {
+            val zoom = MapTileIndex.getZoom(pMapTileIndex)
+            val x = MapTileIndex.getX(pMapTileIndex)
+            val y = MapTileIndex.getY(pMapTileIndex)
+            return baseUrl + zoom + "/" + x + "/" + y + mImageFilenameEnding
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MapDetectionSheet(
+    detection: Detection,
+    onDismiss: () -> Unit,
+    onCopyCoordinates: ((Double, Double) -> Unit)? = null,
+    onViewFullDetails: ((String) -> Unit)? = null
+) {
+    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm:ss", Locale.getDefault()) }
+    var showCopiedToast by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header with device info
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = detection.deviceType.toIcon(),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = detection.deviceType.name.replace("_", " "),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    detection.manufacturer?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                ThreatBadge(threatLevel = detection.threatLevel)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Detection statistics
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                ) {
+                    // Seen count
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Seen ${detection.seenCount} time${if (detection.seenCount > 1) "s" else ""}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // First seen timestamp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "First seen",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = dateFormat.format(Date(detection.timestamp)),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Last seen timestamp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Update,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Last seen",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = dateFormat.format(Date(detection.lastSeenTimestamp)),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Device identifiers
+            detection.macAddress?.let {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Bluetooth,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "MAC: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+            detection.ssid?.let {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Wifi,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "SSID: $it",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.SignalCellularAlt,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    "Signal: ${detection.rssi} dBm (${detection.signalStrength.displayName})",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            // Location with copy button
+            if (detection.latitude != null && detection.longitude != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Location",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "%.6f, %.6f".format(detection.latitude, detection.longitude),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        if (onCopyCoordinates != null) {
+                            IconButton(
+                                onClick = {
+                                    onCopyCoordinates(detection.latitude, detection.longitude)
+                                    showCopiedToast = true
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (showCopiedToast) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = "Copy coordinates",
+                                    tint = if (showCopiedToast) StatusActive else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Reset copied toast after delay
+                LaunchedEffect(showCopiedToast) {
+                    if (showCopiedToast) {
+                        kotlinx.coroutines.delay(2000)
+                        showCopiedToast = false
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Action buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // View Full Details button
+                if (onViewFullDetails != null) {
+                    OutlinedButton(
+                        onClick = {
+                            onViewFullDetails(detection.id)
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInFull,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Full Details")
+                    }
+                }
+
+                // Close button
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Close")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * GPS Status Indicator component
+ */
+@Composable
+private fun GpsStatusIndicator(
+    status: MapGpsStatus,
+    accuracyMeters: Float?,
+    modifier: Modifier = Modifier
+) {
+    val (statusColor, statusIcon, statusText) = when (status) {
+        MapGpsStatus.ACTIVE -> Triple(
+            StatusActive,
+            Icons.Default.LocationOn,
+            MapPresentationPolicy.gpsStatusLabel(status)
+        )
+        MapGpsStatus.SEARCHING -> Triple(
+            StatusWarning,
+            Icons.Default.GpsNotFixed,
+            MapPresentationPolicy.gpsStatusLabel(status)
+        )
+        MapGpsStatus.IDLE -> Triple(
+            StatusInactive,
+            Icons.Default.GpsNotFixed,
+            MapPresentationPolicy.gpsStatusLabel(status)
+        )
+        MapGpsStatus.DISABLED -> Triple(
+            StatusError,
+            Icons.Default.GpsOff,
+            MapPresentationPolicy.gpsStatusLabel(status)
+        )
+    }
+
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(statusColor)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = statusIcon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = statusColor
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Column {
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = statusColor
+                )
+                if (status == MapGpsStatus.ACTIVE && accuracyMeters != null) {
+                    Text(
+                        text = "+/- ${accuracyMeters.toInt()}m",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Empty state for the map screen
+ */
+@Composable
+private fun MapEmptyState(
+    hasDetections: Boolean,
+    hasLocatedDetections: Boolean,
+    hasActiveFilters: Boolean,
+    isScanning: Boolean,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val presentation = MapPresentationPolicy.emptyStatePresentation(
+        hasDetections = hasDetections,
+        hasLocatedDetections = hasLocatedDetections,
+        hasActiveFilters = hasActiveFilters,
+        isScanning = isScanning
+    )
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .padding(32.dp)
+                .fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = if (hasDetections) Icons.Default.LocationOff else Icons.Default.Map,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = presentation.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = presentation.body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onAction,
+                    enabled = presentation.actionEnabled
+                ) {
+                    Icon(
+                        imageVector = if (hasDetections) Icons.Default.LocationOn else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = presentation.actionLabel)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Filter bottom sheet for the map screen
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun MapFilterBottomSheet(
+    uiState: MapUiState,
+    viewModel: MapViewModel,
+    onDismiss: () -> Unit
+) {
+    // Section expansion states
+    var timeRangeExpanded by remember { mutableStateOf(uiState.filterTimeRange != TimeRange.ALL_TIME) }
+    var protocolExpanded by remember { mutableStateOf(uiState.filterProtocols.isNotEmpty()) }
+    var threatExpanded by remember { mutableStateOf(uiState.filterThreatLevel != null) }
+    var signalExpanded by remember { mutableStateOf(uiState.filterSignalStrength.isNotEmpty()) }
+    var deviceTypeExpanded by remember { mutableStateOf(uiState.filterDeviceTypes.isNotEmpty()) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Map Filters",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                TextButton(onClick = { viewModel.clearFilters() }) {
+                    Text("Clear")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Quick Filters Row
+            Text(
+                text = "Quick Filters",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            QuickFiltersRow(
+                activeOnly = uiState.filterActiveOnly,
+                timeRange = uiState.filterTimeRange,
+                onActiveOnlyChange = { viewModel.setActiveOnly(it) },
+                onTimeRangeChange = { viewModel.setTimeRange(it) }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Time Range Section
+            CollapsibleFilterSection(
+                title = "Time Range",
+                selectedCount = if (uiState.filterTimeRange != TimeRange.ALL_TIME) 1 else 0,
+                expanded = timeRangeExpanded,
+                onExpandedChange = { timeRangeExpanded = it }
+            ) {
+                TimeRangeFilterSection(
+                    selected = uiState.filterTimeRange,
+                    customStart = uiState.filterCustomStartTime,
+                    customEnd = uiState.filterCustomEndTime,
+                    onSelectPreset = { viewModel.setTimeRange(it) },
+                    onSelectCustom = { start, end -> viewModel.setCustomTimeRange(start, end) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Protocol Section
+            CollapsibleFilterSection(
+                title = "Protocol",
+                selectedCount = uiState.filterProtocols.size,
+                expanded = protocolExpanded,
+                onExpandedChange = { protocolExpanded = it }
+            ) {
+                ProtocolFilterSection(
+                    selected = uiState.filterProtocols,
+                    onToggle = { viewModel.toggleProtocolFilter(it) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Threat Level Section
+            CollapsibleFilterSection(
+                title = "Threat Level",
+                selectedCount = if (uiState.filterThreatLevel != null) 1 else 0,
+                expanded = threatExpanded,
+                onExpandedChange = { threatExpanded = it }
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ThreatLevel.entries.forEach { level ->
+                        FilterChip(
+                            selected = uiState.filterThreatLevel == level,
+                            onClick = {
+                                viewModel.setThreatFilter(
+                                    if (uiState.filterThreatLevel == level) null else level
+                                )
+                            },
+                            label = { Text(level.name) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = level.toColor().copy(alpha = 0.2f),
+                                selectedLabelColor = level.toColor()
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Signal Strength Section
+            CollapsibleFilterSection(
+                title = "Signal Strength",
+                selectedCount = uiState.filterSignalStrength.size,
+                expanded = signalExpanded,
+                onExpandedChange = { signalExpanded = it }
+            ) {
+                SignalStrengthFilterSection(
+                    selected = uiState.filterSignalStrength,
+                    onToggle = { viewModel.toggleSignalStrengthFilter(it) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Device Type Section
+            CollapsibleFilterSection(
+                title = "Device Type",
+                selectedCount = uiState.filterDeviceTypes.size,
+                expanded = deviceTypeExpanded,
+                onExpandedChange = { deviceTypeExpanded = it }
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DeviceType.entries.forEach { type ->
+                        FilterChip(
+                            selected = type in uiState.filterDeviceTypes,
+                            onClick = { viewModel.toggleDeviceTypeFilter(type) },
+                            label = { Text(type.name.replace("_", " ")) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = type.toIcon(),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Apply Button
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Apply Filters")
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}

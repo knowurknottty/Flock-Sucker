@@ -1,0 +1,1336 @@
+package com.flockyou.detection.handler
+
+import android.util.Log
+import com.flockyou.ai.EnrichedDetectorData
+import com.flockyou.data.DetectionSettingsRepository
+import com.flockyou.data.SatellitePattern
+import com.flockyou.data.SatelliteThresholds
+import com.flockyou.data.model.Detection
+import com.flockyou.data.model.DetectionMethod
+import com.flockyou.data.model.DetectionProtocol
+import com.flockyou.data.model.DeviceType
+import com.flockyou.data.model.SignalStrength
+import com.flockyou.data.model.ThreatLevel
+import com.flockyou.monitoring.SatelliteDetectionHeuristics
+import com.flockyou.monitoring.SatelliteMonitor
+import com.flockyou.monitoring.SatelliteMonitor.AnomalySeverity
+import com.flockyou.monitoring.SatelliteMonitor.SatelliteAnomaly
+import com.flockyou.monitoring.SatelliteMonitor.SatelliteAnomalyType
+import com.flockyou.monitoring.SatelliteMonitor.SatelliteConnectionType
+import com.flockyou.monitoring.SatelliteMonitor.SatelliteProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Detection context for satellite/NTN anomalies.
+ * Contains all relevant information about the satellite connection state
+ * when an anomaly was detected.
+ *
+ * == Android Feasibility Notes ==
+ *
+ * Android 14+ (API 34):
+ *   - SatelliteManager introduced in android.telephony.satellite package
+ *   - requestIsSupported(), requestIsEnabled(), registerForModemStateChanged()
+ *   - SatelliteManager.SatelliteCallback for modem state transitions
+ *   - ServiceState.getNetworkRegistrationInfoList() may report NTN access tech
+ *
+ * Android 15 (API 35) Satellite Connectivity APIs:
+ *   - SatelliteManager.requestNtnSignalStrength() for direct NTN signal readings
+ *   - SatelliteManager.requestIsCommunicationAllowedForCurrentLocation() for geofencing
+ *   - Improved ServiceState with explicit isNonTerrestrialNetwork() on
+ *     NetworkRegistrationInfo (vendor extension, not yet in public SDK)
+ *   - TelephonyCallback.ServiceStateListener can detect NTN transitions via
+ *     ServiceState.getNetworkRegistrationInfoList() + checking for NTN indicators
+ *     in the access network technology and registration info string representation
+ *   - SatelliteManager.SatelliteModemStateCallback reports modem lifecycle:
+ *     IDLE -> LISTENING -> NOT_CONNECTED -> CONNECTED -> DATAGRAM_TRANSFERRING
+ *
+ * 3GPP NTN Band Reporting:
+ *   - NTN uses dedicated bands: n255 (L-band, 1525-1559/1626-1660 MHz) and
+ *     n256 (S-band, 1980-2010/2170-2200 MHz) per 3GPP TS 38.101-5
+ *   - On 5G NR NTN, CellIdentityNr.getNrarfcn() reports ARFCN in NTN ranges:
+ *     L-band: 422000-434000, S-band: 434001-440000
+ *   - Band detection: compare NRARFCN against known NTN ranges (see NTNBands)
+ *   - Note: Some devices may not expose NRARFCN for satellite connections,
+ *     especially when using NB-IoT NTN (Skylo) vs NR-NTN (Starlink D2D)
+ *
+ * T-Mobile Starlink Beta Impact on Accuracy:
+ *   - T-Mobile Starlink D2D launched commercially July 2025, initially SMS-only
+ *   - As of late 2025/early 2026, supports SMS, MMS, limited data apps
+ *   - Network names vary: "T-Mobile SpaceX", "T-Sat+Starlink", "T-Satellite"
+ *   - Same PLMNs as terrestrial T-Mobile (310260, 311490, 310120), making
+ *     satellite detection dependent on operator name, NTN band ARFCN, and
+ *     ServiceState NTN indicators rather than PLMN alone
+ *   - False positive risk: initial rollout may show unstable NTN connections
+ *     as devices transition between terrestrial and satellite coverage,
+ *     especially in fringe coverage areas. The SATELLITE_SWITCHOVER event
+ *     (INFO severity) helps users distinguish normal switchovers from anomalies
+ *   - Users on T-Mobile Starlink beta may see frequent UNEXPECTED_SATELLITE
+ *     and RAPID_SATELLITE_SWITCHING detections in fringe areas; threshold
+ *     tuning via ProtectionPreset and SatelliteThresholds addresses this
+ */
+data class SatelliteDetectionContext(
+    /** Unique identifier for this detection context */
+    val id: String? = null,
+
+    /** Timestamp of the detection */
+    val timestamp: Long = System.currentTimeMillis(),
+
+    /** The detected anomaly */
+    val anomaly: SatelliteAnomaly,
+
+    /** The type of network connection (e.g., "5G", "LTE", "Satellite", "T-Mobile Starlink") */
+    val networkType: String,
+
+    /** Satellite identifier if available (e.g., Starlink satellite ID) */
+    val satelliteId: String? = null,
+
+    /** NTN parameters from the connection */
+    val ntnParameters: NtnParameters? = null,
+
+    /** Timing advance value in microseconds (for timing anomaly detection) */
+    val timingAdvance: Long? = null,
+
+    /** Signal strength in dBm */
+    val signalStrength: Int? = null,
+
+    /** Whether terrestrial coverage is available at this location */
+    val hasTerrestrialCoverage: Boolean = false,
+
+    /** Last known terrestrial signal strength in dBm */
+    val lastTerrestrialSignalDbm: Int? = null,
+
+    /** Time since last good terrestrial signal in milliseconds */
+    val timeSinceGoodTerrestrialMs: Long? = null,
+
+    /** The satellite provider if identified */
+    val provider: SatelliteProvider = SatelliteProvider.UNKNOWN,
+
+    /** Connection type classification */
+    val connectionType: SatelliteConnectionType = SatelliteConnectionType.NONE,
+
+    /** Frequency in MHz if available */
+    val frequencyMHz: Int? = null,
+
+    /** Whether frequency is in valid NTN band */
+    val isValidNtnBand: Boolean = true,
+
+    /** Recent handoff count (for rapid switching detection) */
+    val recentHandoffCount: Int = 0,
+
+    /** Location information */
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+
+    /** Whether this is an urban area with expected terrestrial coverage */
+    val isUrbanArea: Boolean = false,
+
+    /** The detection method to use */
+    val detectionMethod: DetectionMethod = DetectionMethod.SAT_UNEXPECTED_CONNECTION
+)
+
+/**
+ * NTN (Non-Terrestrial Network) parameters for satellite connections.
+ * Based on 3GPP Release 17 NTN specifications.
+ */
+data class NtnParameters(
+    /** Radio access technology (NB-IoT NTN, NR-NTN, eMTC-NTN, Proprietary) */
+    val radioTechnology: Int = SatelliteMonitor.Companion.NTRadioTechnology.UNKNOWN,
+
+    /** Orbital type (LEO, MEO, GEO) */
+    val orbitalType: OrbitalType = OrbitalType.UNKNOWN,
+
+    /** Expected round-trip time based on orbit in milliseconds */
+    val expectedRttMs: Long? = null,
+
+    /** Measured round-trip time in milliseconds */
+    val measuredRttMs: Long? = null,
+
+    /** HARQ process count (NTN uses up to 32 vs 16 for terrestrial) */
+    val harqProcessCount: Int? = null,
+
+    /** Channel bandwidth in MHz */
+    val channelBandwidthMHz: Int? = null,
+
+    /** Whether beamforming is active */
+    val beamformingActive: Boolean = false,
+
+    /** NTN band identifier (e.g., n253, n254, n255, n256) */
+    val ntnBand: String? = null
+)
+
+/**
+ * Orbital types for satellite classification.
+ */
+enum class OrbitalType(val displayName: String, val minRttMs: Long, val maxRttMs: Long) {
+    LEO("Low Earth Orbit", 20, 80),
+    MEO("Medium Earth Orbit", 80, 200),
+    GEO("Geostationary Orbit", 200, 600),
+    UNKNOWN("Unknown", 0, Long.MAX_VALUE)
+}
+
+/**
+ * Handler for satellite/NTN detection anomalies.
+ *
+ * Converts SatelliteMonitor.SatelliteAnomaly events to Detection objects
+ * with appropriate threat levels, device types, and AI analysis prompts.
+ *
+ * Supports detection methods:
+ * - SAT_UNEXPECTED_CONNECTION: Satellite connection when terrestrial available
+ * - SAT_FORCED_HANDOFF: Suspicious handoff to satellite
+ * - SAT_SUSPICIOUS_NTN: Unusual NTN parameters suggesting spoofing
+ * - SAT_TIMING_ANOMALY: Timing doesn't match claimed orbit
+ * - SAT_DOWNGRADE: Forced from better technology to satellite
+ *
+ * Device types:
+ * - SATELLITE_NTN: Standard satellite NTN device
+ * - STINGRAY_IMSI: Cell site simulator using satellite-based interception
+ *
+ * == NTN Allowlisting ==
+ *
+ * The following are legitimate NTN services that should NOT trigger high-severity
+ * alerts for normal satellite transitions (SATELLITE_SWITCHOVER at INFO level):
+ *
+ * - T-Mobile Starlink Direct to Cell: SatelliteProvider.STARLINK
+ *   PLMNs 310260/311490/310120, network names "T-Mobile SpaceX", "T-Satellite", etc.
+ *   Expected LEO timing: 20-80ms RTT. L-band and S-band NTN frequencies.
+ *
+ * - Skylo NTN (Pixel 9/10 Satellite SOS): SatelliteProvider.SKYLO
+ *   Network names "Skylo", "Skylo NTN", "Satellite SOS".
+ *   NB-IoT NTN, primarily emergency/SOS and location sharing.
+ *
+ * - Apple/Globalstar Emergency SOS: SatelliteProvider.GLOBALSTAR
+ *   iPhone 14+ only, proprietary protocol, emergency-only.
+ *
+ * The handler distinguishes legitimate NTN usage from forced/malicious handoffs by:
+ * 1. Provider identification: Known providers (Starlink, Skylo, Globalstar, Iridium,
+ *    Inmarsat, AST SpaceMobile, Lynk) are identified via detectProvider() in
+ *    SatelliteMonitor. Unknown providers receive +10 threat score and are flagged.
+ * 2. Contextual analysis: hasTerrestrialCoverage, isUrbanArea, timeSinceGoodTerrestrial
+ *    determine whether satellite usage is expected for the current environment.
+ * 3. Timing validation: RTT measurements are compared against expected orbital ranges.
+ *    RTT < 10ms on a claimed satellite = ground-based spoofing indicator.
+ * 4. Frequency validation: NRARFCN and frequency are checked against valid NTN bands.
+ *    Non-NTN frequencies on a claimed satellite connection = strong spoofing indicator.
+ * 5. The SATELLITE_SWITCHOVER anomaly (always fires, INFO severity) is treated as
+ *    informational and never generates detection alerts unless other anomalies co-occur.
+ *
+ * TODO: Consider adding user-configurable NTN service allowlist (e.g., "I am a T-Mobile
+ * Starlink subscriber") to suppress UNEXPECTED_SATELLITE and SATELLITE_IN_COVERAGE
+ * alerts for known-subscribed services. This would reduce false positives for users
+ * who are legitimately using satellite connectivity.
+ */
+@Singleton
+class SatelliteDetectionHandler @Inject constructor(
+    private val detectionSettingsRepository: DetectionSettingsRepository
+) {
+
+    companion object {
+        private const val TAG = "SatelliteDetectionHandler"
+
+        /**
+         * == Rate Limiting / Cooldown Architecture ==
+         *
+         * Satellite detection events are rate-limited at multiple levels:
+         *
+         * 1. SatelliteMonitor level:
+         *    - Periodic state checks run at DEFAULT_PERIODIC_CHECK_INTERVAL_MS (3s)
+         *    - Anomaly detection runs at DEFAULT_ANOMALY_DETECTION_INTERVAL_MS (5s)
+         *    - Both intervals are configurable via updateScanTiming(intervalSeconds)
+         *      which accepts 5-60 second values. Anomaly detection runs at 2x the
+         *      periodic check interval.
+         *    - Connection history is capped at 1000 events (maxHistorySize)
+         *
+         * 2. Rapid switching detection:
+         *    - Uses a 60-second sliding window (checkRapidSwitchingPattern)
+         *    - Triggers at 3+ connection events within the window
+         *    - SatelliteThresholds.rapidSwitchingCount allows user-configurable
+         *      threshold (checked in meetsThresholds for MEDIUM severity)
+         *
+         * 3. Handler level (handleAnomaly):
+         *    - Severity gating: only HIGH and CRITICAL anomalies pass by default
+         *    - MEDIUM anomalies must pass meetsThresholds() checks:
+         *      * UNEXPECTED_SATELLITE: requires both signal > minSignalForTerrestrial
+         *        AND time < unexpectedSatelliteThresholdMs
+         *      * FORCED_HANDOFF: requires time < rapidHandoffThresholdMs
+         *      * RAPID_SWITCHING: requires count >= rapidSwitchingCount
+         *    - LOW and INFO anomalies are dropped (except SATELLITE_SWITCHOVER)
+         *    - SATELLITE_SWITCHOVER always passes (informational)
+         *
+         * 4. Detection pipeline level:
+         *    - DetectionDeduplicator applies 5-second rapid detection throttle
+         *    - Multi-level matching prevents duplicate detections for the same event
+         *
+         * Note: There is no explicit per-anomaly-type cooldown timer in this handler.
+         * The 5-second anomaly detection interval in SatelliteMonitor acts as the
+         * effective minimum interval between timing-based anomalies. Connection-based
+         * anomalies (UNEXPECTED_SATELLITE, UNKNOWN_NETWORK) only fire on state
+         * transitions (wasConnectedBefore == false), providing implicit deduplication.
+         */
+    }
+
+    /**
+     * Supported detection methods for satellite handler
+     */
+    val supportedMethods: Set<DetectionMethod> = setOf(
+        DetectionMethod.SAT_UNEXPECTED_CONNECTION,
+        DetectionMethod.SAT_FORCED_HANDOFF,
+        DetectionMethod.SAT_SUSPICIOUS_NTN,
+        DetectionMethod.SAT_TIMING_ANOMALY,
+        DetectionMethod.SAT_DOWNGRADE
+    )
+
+    /**
+     * Supported device types for satellite handler
+     */
+    val supportedDeviceTypes: Set<DeviceType> = setOf(
+        DeviceType.SATELLITE_NTN,
+        DeviceType.STINGRAY_IMSI
+    )
+
+    /**
+     * Check if this handler can process the given detection method
+     */
+    fun canHandle(method: DetectionMethod): Boolean {
+        return method in supportedMethods
+    }
+
+    /**
+     * Check if this handler can process the given device type
+     */
+    fun canHandleDeviceType(deviceType: DeviceType): Boolean {
+        return deviceType in supportedDeviceTypes
+    }
+
+    /**
+     * Handle a satellite detection context and produce a Detection object.
+     */
+    fun handle(context: SatelliteDetectionContext): Detection {
+        Log.d(TAG, "Handling satellite detection: method=${context.detectionMethod}, " +
+            "provider=${context.provider}, network=${context.networkType}")
+
+        val detectionMethod = determineDetectionMethod(context)
+        val deviceType = determineDeviceType(context)
+        val threatLevel = calculateThreatLevel(context)
+        val threatScore = calculateThreatScore(context)
+
+        return Detection(
+            id = context.id ?: UUID.randomUUID().toString(),
+            timestamp = context.timestamp,
+            protocol = DetectionProtocol.SATELLITE,
+            detectionMethod = detectionMethod,
+            deviceType = deviceType,
+            deviceName = buildDeviceName(context, detectionMethod),
+            macAddress = null, // Satellites don't have MAC addresses
+            ssid = context.networkType,
+            rssi = context.signalStrength ?: -80,
+            signalStrength = signalDbmToStrength(context.signalStrength),
+            latitude = context.latitude,
+            longitude = context.longitude,
+            threatLevel = threatLevel,
+            threatScore = threatScore,
+            manufacturer = formatProviderName(context.provider),
+            firmwareVersion = null,
+            serviceUuids = null,
+            matchedPatterns = buildMatchedPatterns(context),
+            rawData = buildRawData(context),
+            isActive = true,
+            seenCount = 1,
+            lastSeenTimestamp = context.timestamp
+        )
+    }
+
+    /**
+     * Handle a satellite anomaly from the monitor.
+     * Checks settings and thresholds before converting to Detection.
+     */
+    suspend fun handleAnomaly(
+        anomaly: SatelliteAnomaly,
+        connectionState: SatelliteMonitor.SatelliteConnectionState,
+        lastTerrestrialSignalDbm: Int? = null,
+        timeSinceGoodTerrestrialMs: Long? = null,
+        recentHandoffCount: Int = 0,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        isUrbanArea: Boolean = false
+    ): Detection? {
+        val settings = detectionSettingsRepository.settings.first()
+
+        // Check if satellite detection is enabled globally
+        if (!settings.enableSatelliteDetection) {
+            Log.d(TAG, "Satellite detection disabled globally")
+            return null
+        }
+
+        // Check if the specific pattern is enabled
+        val pattern = mapAnomalyTypeToPattern(anomaly.type)
+        if (pattern != null && pattern !in settings.enabledSatellitePatterns) {
+            Log.d(TAG, "Pattern ${pattern.name} is disabled")
+            return null
+        }
+
+        // Check severity threshold - only HIGH and CRITICAL generate detections by default
+        // SATELLITE_SWITCHOVER is always allowed through as an informational alert
+        if (anomaly.type != SatelliteAnomalyType.SATELLITE_SWITCHOVER &&
+            anomaly.severity !in listOf(AnomalySeverity.HIGH, AnomalySeverity.CRITICAL)) {
+            // For MEDIUM severity, check if it meets threshold criteria
+            if (anomaly.severity == AnomalySeverity.MEDIUM) {
+                if (!meetsThresholds(
+                    anomaly,
+                    lastTerrestrialSignalDbm,
+                    timeSinceGoodTerrestrialMs,
+                    recentHandoffCount,
+                    settings.satelliteThresholds
+                )) {
+                    Log.d(TAG, "Anomaly doesn't meet thresholds: ${anomaly.type}")
+                    return null
+                }
+            } else {
+                Log.d(TAG, "Anomaly severity too low: ${anomaly.severity}")
+                return null
+            }
+        }
+
+        val context = createContext(
+            anomaly = anomaly,
+            connectionState = connectionState,
+            lastTerrestrialSignalDbm = lastTerrestrialSignalDbm,
+            timeSinceGoodTerrestrialMs = timeSinceGoodTerrestrialMs,
+            recentHandoffCount = recentHandoffCount,
+            latitude = latitude,
+            longitude = longitude,
+            isUrbanArea = isUrbanArea
+        )
+
+        return handle(context)
+    }
+
+    /**
+     * Build an AI prompt for analyzing the detection context
+     */
+    fun buildAiPrompt(context: SatelliteDetectionContext): String {
+        val anomaly = context.anomaly
+
+        val promptBuilder = StringBuilder()
+
+        promptBuilder.appendLine("Analyze this satellite network anomaly for potential surveillance activity:")
+        promptBuilder.appendLine()
+        promptBuilder.appendLine("## Anomaly Details")
+        promptBuilder.appendLine("- Type: ${anomaly.type.name}")
+        promptBuilder.appendLine("- Severity: ${anomaly.severity.name}")
+        promptBuilder.appendLine("- Description: ${anomaly.description}")
+        promptBuilder.appendLine("- Detection Method: ${context.detectionMethod.displayName}")
+        promptBuilder.appendLine()
+
+        promptBuilder.appendLine("## Network Context")
+        promptBuilder.appendLine("- Network Type: ${context.networkType}")
+        promptBuilder.appendLine("- Provider: ${formatProviderName(context.provider)}")
+        promptBuilder.appendLine("- Connection Type: ${context.connectionType.name}")
+        context.signalStrength?.let { promptBuilder.appendLine("- Signal Strength: $it dBm") }
+        promptBuilder.appendLine("- Terrestrial Coverage Available: ${context.hasTerrestrialCoverage}")
+        context.lastTerrestrialSignalDbm?.let { promptBuilder.appendLine("- Last Terrestrial Signal: $it dBm") }
+        promptBuilder.appendLine("- Urban Area: ${context.isUrbanArea}")
+        promptBuilder.appendLine()
+
+        // NTN-specific analysis
+        context.ntnParameters?.let { ntn ->
+            promptBuilder.appendLine("## NTN Parameters")
+            promptBuilder.appendLine("- Orbital Type: ${ntn.orbitalType.displayName}")
+            ntn.ntnBand?.let { promptBuilder.appendLine("- NTN Band: $it") }
+            ntn.expectedRttMs?.let { promptBuilder.appendLine("- Expected RTT: ${it}ms") }
+            ntn.measuredRttMs?.let { promptBuilder.appendLine("- Measured RTT: ${it}ms") }
+            ntn.harqProcessCount?.let { promptBuilder.appendLine("- HARQ Processes: $it") }
+            promptBuilder.appendLine("- Beamforming: ${if (ntn.beamformingActive) "Active" else "Inactive"}")
+            promptBuilder.appendLine()
+
+            // Timing analysis if available
+            if (ntn.measuredRttMs != null) {
+                promptBuilder.appendLine("## Timing Analysis")
+                val timingAnalysis = SatelliteDetectionHeuristics.SurveillanceHeuristics.TimingHeuristics.analyzeRTT(
+                    ntn.measuredRttMs,
+                    ntn.orbitalType.name
+                )
+                promptBuilder.appendLine("- Analysis: $timingAnalysis")
+
+                if (ntn.measuredRttMs < 10) {
+                    promptBuilder.appendLine("- WARNING: RTT of ${ntn.measuredRttMs}ms is suspiciously low for satellite communication")
+                    promptBuilder.appendLine("- This timing is more consistent with ground-based equipment")
+                }
+                promptBuilder.appendLine()
+            }
+        }
+
+        // Frequency analysis
+        context.frequencyMHz?.let { freq ->
+            promptBuilder.appendLine("## Frequency Analysis")
+            promptBuilder.appendLine("- Frequency: ${freq}MHz")
+            promptBuilder.appendLine("- Valid NTN Band: ${context.isValidNtnBand}")
+            if (!context.isValidNtnBand) {
+                promptBuilder.appendLine("- WARNING: Frequency is outside standard NTN bands (L-band: 1525-1660MHz, S-band: 1980-2200MHz)")
+            }
+            val matchingBands = SatelliteDetectionHeuristics.NTNBands.getAllBandsForFrequency(freq)
+            if (matchingBands.isNotEmpty()) {
+                promptBuilder.appendLine("- Matching 3GPP NTN Bands: ${matchingBands.joinToString(", ")}")
+            }
+            promptBuilder.appendLine()
+        }
+
+        // Switching pattern analysis
+        if (context.recentHandoffCount > 0) {
+            promptBuilder.appendLine("## Switching Pattern")
+            promptBuilder.appendLine("- Recent Handoff Count: ${context.recentHandoffCount}")
+            val switchingAnalysis = SatelliteDetectionHeuristics.SurveillanceHeuristics.SwitchingHeuristics.analyzeSwitchingPattern(
+                (0 until context.recentHandoffCount).map { context.timestamp - it * 30000L }
+            )
+            promptBuilder.appendLine("- Pattern Analysis: $switchingAnalysis")
+            promptBuilder.appendLine()
+        }
+
+        promptBuilder.appendLine("## Analysis Questions")
+        promptBuilder.appendLine("1. Is this anomaly consistent with legitimate satellite connectivity or potential surveillance?")
+        promptBuilder.appendLine("2. What specific indicators suggest this could be a cell site simulator?")
+        promptBuilder.appendLine("3. What actions should the user take to protect their privacy?")
+        promptBuilder.appendLine()
+
+        if (anomaly.recommendations.isNotEmpty()) {
+            promptBuilder.appendLine("## Existing Recommendations")
+            anomaly.recommendations.forEachIndexed { index, rec ->
+                promptBuilder.appendLine("${index + 1}. $rec")
+            }
+        }
+
+        return promptBuilder.toString()
+    }
+
+    /**
+     * Get enriched detector data for AI analysis.
+     *
+     * This method produces enriched data covering all SatellitePattern types:
+     *
+     * - UNEXPECTED_SATELLITE: Covered via hasTerrestrialCoverage, isUrbanArea,
+     *   timeSinceGoodTerrestrial, and lastTerrestrialSignalDbm fields.
+     *
+     * - FORCED_HANDOFF: Covered via handoffContext (recentHandoffCount,
+     *   timeSinceGoodTerrestrial), plus the anomaly description and
+     *   detectionMethod fields in metadata.
+     *
+     * - SUSPICIOUS_NTN_PARAMS: Covered via NTN parameter fields (orbitalType,
+     *   expectedRtt, measuredRtt, ntnBand, beamforming, harqProcessCount,
+     *   radioTechnology) and protocol-level risk indicators.
+     *
+     * - UNKNOWN_SATELLITE_NETWORK: Covered via provider identification ("Unknown
+     *   Provider") and risk indicator "Unknown satellite provider".
+     *
+     * - SATELLITE_IN_COVERAGE: Covered via hasTerrestrialCoverage, isUrbanArea,
+     *   and lastTerrestrialSignalDbm.
+     *
+     * - RAPID_SATELLITE_SWITCHING: Covered via recentHandoffCount field in both
+     *   metadata and risk indicators (threshold: >5 handoffs).
+     *
+     * - NTN_BAND_MISMATCH: Covered via isValidNtnBand, frequency, ntnBand, and
+     *   risk indicator "Invalid NTN frequency band".
+     *
+     * - TIMING_ANOMALY: Covered via measuredRtt, expectedRtt, orbitalType, and
+     *   RTT-based risk indicators (too low, deviation from expected).
+     *
+     * - DOWNGRADE_TO_SATELLITE: Covered via detectionMethod, hasTerrestrialCoverage,
+     *   lastTerrestrialSignalDbm, and the anomaly description.
+     *
+     * Signal characteristics include: signalStrength, frequency, ntnBand.
+     * Metadata includes: satellite ID, orbit type, timing info, handoff context,
+     * band info, provider info, and detection method context.
+     */
+    fun getEnrichedData(context: SatelliteDetectionContext): EnrichedDetectorData? {
+        val ntnParams = context.ntnParameters
+
+        // Build NTN-specific enriched data with comprehensive coverage of all
+        // SatellitePattern types. Each field below is tagged with the pattern(s)
+        // it supports for traceability.
+        val metadata = buildMap {
+            // Core identification (all patterns)
+            put("networkType", context.networkType)
+            put("provider", formatProviderName(context.provider))
+            put("connectionType", context.connectionType.name)
+            put("detectionMethod", context.detectionMethod.name)
+            put("anomalyType", context.anomaly.type.name)
+            put("anomalySeverity", context.anomaly.severity.name)
+
+            // Satellite identification (UNKNOWN_SATELLITE_NETWORK, TIMING_ANOMALY)
+            context.satelliteId?.let { put("satelliteId", it) }
+
+            // Coverage context (UNEXPECTED_SATELLITE, SATELLITE_IN_COVERAGE, DOWNGRADE_TO_SATELLITE)
+            put("hasTerrestrialCoverage", context.hasTerrestrialCoverage.toString())
+            put("isUrbanArea", context.isUrbanArea.toString())
+            context.lastTerrestrialSignalDbm?.let { put("lastTerrestrialSignalDbm", "${it}dBm") }
+            context.timeSinceGoodTerrestrialMs?.let { put("timeSinceGoodTerrestrialMs", "${it}ms") }
+
+            // Signal info (NTN_BAND_MISMATCH, SUSPICIOUS_NTN_PARAMS)
+            context.signalStrength?.let { put("signalStrength", "${it}dBm") }
+            context.frequencyMHz?.let { put("frequency", "${it}MHz") }
+            put("isValidNtnBand", context.isValidNtnBand.toString())
+
+            // Handoff context (FORCED_HANDOFF, RAPID_SATELLITE_SWITCHING)
+            if (context.recentHandoffCount > 0) {
+                put("recentHandoffCount", context.recentHandoffCount.toString())
+            }
+
+            // NTN parameters (SUSPICIOUS_NTN_PARAMS, TIMING_ANOMALY, NTN_BAND_MISMATCH)
+            ntnParams?.let { ntn ->
+                put("orbitalType", ntn.orbitalType.displayName)
+                ntn.expectedRttMs?.let { put("expectedRtt", "${it}ms") }
+                ntn.measuredRttMs?.let { put("measuredRtt", "${it}ms") }
+                ntn.ntnBand?.let { put("ntnBand", it) }
+                put("beamforming", ntn.beamformingActive.toString())
+                ntn.harqProcessCount?.let { put("harqProcessCount", it.toString()) }
+                put("radioTechnology", when (ntn.radioTechnology) {
+                    SatelliteMonitor.Companion.NTRadioTechnology.NB_IOT_NTN -> "NB-IoT NTN"
+                    SatelliteMonitor.Companion.NTRadioTechnology.NR_NTN -> "NR-NTN (5G)"
+                    SatelliteMonitor.Companion.NTRadioTechnology.EMTC_NTN -> "eMTC NTN"
+                    SatelliteMonitor.Companion.NTRadioTechnology.PROPRIETARY -> "Proprietary"
+                    else -> "Unknown"
+                })
+                ntn.channelBandwidthMHz?.let { put("channelBandwidthMHz", "${it}MHz") }
+            }
+
+            // Timing advance (TIMING_ANOMALY)
+            context.timingAdvance?.let { put("timingAdvance", "${it}us") }
+        }
+
+        val riskIndicators = mutableListOf<String>()
+
+        // Analyze risk indicators, tagged by the SatellitePattern they support
+
+        // NTN_BAND_MISMATCH
+        if (!context.isValidNtnBand) {
+            riskIndicators.add("Invalid NTN frequency band")
+        }
+
+        // UNEXPECTED_SATELLITE, SATELLITE_IN_COVERAGE
+        if (context.hasTerrestrialCoverage && context.isUrbanArea) {
+            riskIndicators.add("Satellite used in urban area with terrestrial coverage")
+        }
+
+        // UNKNOWN_SATELLITE_NETWORK
+        if (context.provider == SatelliteProvider.UNKNOWN) {
+            riskIndicators.add("Unknown satellite provider")
+        }
+
+        // TIMING_ANOMALY, SUSPICIOUS_NTN_PARAMS
+        ntnParams?.let { ntn ->
+            if (ntn.measuredRttMs != null && ntn.measuredRttMs < 10) {
+                riskIndicators.add("RTT too low for satellite (suggests ground-based spoofing)")
+            }
+            if (ntn.measuredRttMs != null && ntn.expectedRttMs != null) {
+                val diff = kotlin.math.abs(ntn.measuredRttMs - ntn.expectedRttMs)
+                if (diff > 50) {
+                    riskIndicators.add("Significant RTT deviation from expected (${diff}ms)")
+                }
+            }
+        }
+
+        // RAPID_SATELLITE_SWITCHING, FORCED_HANDOFF
+        if (context.recentHandoffCount > 5) {
+            riskIndicators.add("Rapid satellite switching detected (${context.recentHandoffCount} handoffs)")
+        }
+
+        // DOWNGRADE_TO_SATELLITE
+        if (context.detectionMethod == DetectionMethod.SAT_DOWNGRADE &&
+            context.hasTerrestrialCoverage) {
+            riskIndicators.add("Forced downgrade from terrestrial to satellite with coverage available")
+        }
+
+        // NTN allowlisting context: note when the provider is a known legitimate service
+        // This helps the LLM provide balanced analysis
+        val isKnownLegitimateProvider = context.provider in setOf(
+            SatelliteProvider.STARLINK,
+            SatelliteProvider.SKYLO,
+            SatelliteProvider.GLOBALSTAR,
+            SatelliteProvider.IRIDIUM,
+            SatelliteProvider.INMARSAT,
+            SatelliteProvider.AST_SPACEMOBILE,
+            SatelliteProvider.LYNK
+        )
+        if (isKnownLegitimateProvider && riskIndicators.isEmpty()) {
+            // No risk indicators with a known provider - likely legitimate
+            riskIndicators.add("Known legitimate NTN provider (${formatProviderName(context.provider)})")
+        }
+
+        return EnrichedDetectorData.Satellite(
+            detectorType = "Satellite/NTN",
+            metadata = metadata,
+            signalCharacteristics = mapOf(
+                "signalStrength" to (context.signalStrength?.toString() ?: "unknown"),
+                "frequency" to (context.frequencyMHz?.toString() ?: "unknown"),
+                "ntnBand" to (ntnParams?.ntnBand ?: "unknown"),
+                "orbitalType" to (ntnParams?.orbitalType?.displayName ?: "unknown"),
+                "measuredRtt" to (ntnParams?.measuredRttMs?.toString() ?: "unknown")
+            ),
+            riskIndicators = riskIndicators,
+            timestamp = context.timestamp
+        )
+    }
+
+    // ========================================================================
+    // Private Implementation Methods
+    // ========================================================================
+
+    /**
+     * Determine the detection method from context.
+     */
+    private fun determineDetectionMethod(context: SatelliteDetectionContext): DetectionMethod {
+        return mapAnomalyTypeToDetectionMethod(context.anomaly.type)
+    }
+
+    /**
+     * Map anomaly type to SatellitePattern enum.
+     */
+    private fun mapAnomalyTypeToPattern(type: SatelliteAnomalyType): SatellitePattern? {
+        return when (type) {
+            // Satellite switchover (informational)
+            SatelliteAnomalyType.SATELLITE_SWITCHOVER,
+
+            // Unexpected connections
+            SatelliteAnomalyType.UNEXPECTED_SATELLITE_CONNECTION,
+            SatelliteAnomalyType.NTN_IN_FULL_TERRESTRIAL_COVERAGE,
+            SatelliteAnomalyType.COVERAGE_HOLE_IMPOSSIBLE,
+            SatelliteAnomalyType.NTN_CAMPING_PERSISTENT -> SatellitePattern.UNEXPECTED_SATELLITE
+
+            // Forced handoffs
+            SatelliteAnomalyType.FORCED_SATELLITE_HANDOFF,
+            SatelliteAnomalyType.HANDOVER_TIMING_IMPOSSIBLE,
+            SatelliteAnomalyType.FORCED_NTN_AFTER_CALL,
+            SatelliteAnomalyType.HANDOVER_BACK_BLOCKED -> SatellitePattern.FORCED_HANDOFF
+
+            // Suspicious NTN parameters
+            SatelliteAnomalyType.SUSPICIOUS_NTN_PARAMETERS,
+            SatelliteAnomalyType.UNEXPECTED_MODEM_STATE,
+            SatelliteAnomalyType.CAPABILITY_MISMATCH,
+            SatelliteAnomalyType.MIB_SIB_INCONSISTENT,
+            SatelliteAnomalyType.PLMN_NOT_NTN_REGISTERED,
+            SatelliteAnomalyType.CELL_ID_FORMAT_WRONG,
+            SatelliteAnomalyType.PAGING_CYCLE_TERRESTRIAL,
+            SatelliteAnomalyType.DRX_TOO_SHORT,
+            SatelliteAnomalyType.RACH_PROCEDURE_WRONG,
+            SatelliteAnomalyType.MEASUREMENT_GAP_MISSING,
+            SatelliteAnomalyType.GNSS_ASSISTANCE_REJECTED,
+            SatelliteAnomalyType.HARQ_RETRANSMISSION_TIMING_WRONG,
+            SatelliteAnomalyType.SIGNAL_TOO_STRONG,
+            SatelliteAnomalyType.WRONG_POLARIZATION,
+            SatelliteAnomalyType.BANDWIDTH_MISMATCH,
+            SatelliteAnomalyType.MULTIPATH_IN_CLEAR_SKY,
+            SatelliteAnomalyType.SUBCARRIER_SPACING_WRONG,
+            SatelliteAnomalyType.ENCRYPTION_DOWNGRADE,
+            SatelliteAnomalyType.IDENTITY_REQUEST_FLOOD,
+            SatelliteAnomalyType.REPLAY_ATTACK_DETECTED,
+            SatelliteAnomalyType.CERTIFICATE_MISMATCH,
+            SatelliteAnomalyType.NULL_CIPHER_OFFERED,
+            SatelliteAnomalyType.AUTH_REJECT_LOOP,
+            SatelliteAnomalyType.SUPI_CONCEALMENT_DISABLED,
+            SatelliteAnomalyType.GEOFENCE_VIOLATION,
+            SatelliteAnomalyType.INDOOR_SATELLITE_CONNECTION,
+            SatelliteAnomalyType.ALTITUDE_INCOMPATIBLE,
+            SatelliteAnomalyType.URBAN_CANYON_SATELLITE,
+            SatelliteAnomalyType.GNSS_POSITION_COVERAGE_MISMATCH,
+            SatelliteAnomalyType.SIMULTANEOUS_GNSS_JAMMING,
+            SatelliteAnomalyType.CELLULAR_NTN_GEOMETRY_IMPOSSIBLE,
+            SatelliteAnomalyType.WIFI_SATELLITE_CONFLICT,
+            SatelliteAnomalyType.NTN_TRACKING_PATTERN,
+            SatelliteAnomalyType.SELECTIVE_NTN_ROUTING,
+            SatelliteAnomalyType.PEER_DEVICE_DIVERGENCE,
+            SatelliteAnomalyType.MODEM_STATE_TRANSITION_IMPOSSIBLE,
+            SatelliteAnomalyType.CAPABILITY_ANNOUNCEMENT_WRONG,
+            SatelliteAnomalyType.BASEBAND_FIRMWARE_TAMPERED,
+            SatelliteAnomalyType.ANTENNA_CONFIGURATION_WRONG,
+            SatelliteAnomalyType.POWER_CLASS_MISMATCH,
+            SatelliteAnomalyType.SIMULTANEOUS_BAND_CONFLICT,
+            SatelliteAnomalyType.SKYLO_MODEM_MISSING,
+            SatelliteAnomalyType.IRIDIUM_CONSTELLATION_MISMATCH,
+            SatelliteAnomalyType.GLOBALSTAR_BAND_WRONG,
+            SatelliteAnomalyType.AST_SPACEMOBILE_PREMATURE,
+            SatelliteAnomalyType.PROVIDER_CAPABILITY_MISMATCH,
+            SatelliteAnomalyType.SMS_ROUTING_SUSPICIOUS,
+            SatelliteAnomalyType.DATAGRAM_SIZE_EXCEEDED,
+            SatelliteAnomalyType.STORE_FORWARD_MISSING,
+            SatelliteAnomalyType.SOS_REDIRECT_SUSPICIOUS,
+            SatelliteAnomalyType.E911_LOCATION_INJECTION,
+            SatelliteAnomalyType.EMERGENCY_CALL_BLOCKED,
+            SatelliteAnomalyType.FAKE_EMERGENCY_ALERT,
+            SatelliteAnomalyType.SATELLITE_ID_REUSE -> SatellitePattern.SUSPICIOUS_NTN_PARAMS
+
+            // Unknown network
+            SatelliteAnomalyType.UNKNOWN_SATELLITE_NETWORK -> SatellitePattern.UNKNOWN_SATELLITE_NETWORK
+
+            // Satellite in coverage
+            SatelliteAnomalyType.SATELLITE_IN_COVERED_AREA -> SatellitePattern.SATELLITE_IN_COVERAGE
+
+            // Rapid switching
+            SatelliteAnomalyType.RAPID_SATELLITE_SWITCHING -> SatellitePattern.RAPID_SATELLITE_SWITCHING
+
+            // Band mismatch
+            SatelliteAnomalyType.NTN_BAND_MISMATCH,
+            SatelliteAnomalyType.NRARFCN_NTN_BAND_INVALID -> SatellitePattern.NTN_BAND_MISMATCH
+
+            // Timing anomalies
+            SatelliteAnomalyType.TIMING_ADVANCE_ANOMALY,
+            SatelliteAnomalyType.EPHEMERIS_MISMATCH,
+            SatelliteAnomalyType.RTT_ORBIT_MISMATCH,
+            SatelliteAnomalyType.DOPPLER_SHIFT_MISMATCH,
+            SatelliteAnomalyType.PROPAGATION_DELAY_VARIANCE_WRONG,
+            SatelliteAnomalyType.TIMING_ADVANCE_TOO_SMALL,
+            SatelliteAnomalyType.SATELLITE_BELOW_HORIZON,
+            SatelliteAnomalyType.WRONG_ORBITAL_PLANE,
+            SatelliteAnomalyType.PASS_DURATION_EXCEEDED,
+            SatelliteAnomalyType.ELEVATION_ANGLE_IMPOSSIBLE,
+            SatelliteAnomalyType.TLE_POSITION_MISMATCH,
+            SatelliteAnomalyType.CARRIER_FREQUENCY_DRIFT_WRONG,
+            SatelliteAnomalyType.GNSS_NTN_TIME_CONFLICT,
+            SatelliteAnomalyType.TIME_OF_DAY_VISIBILITY_ANOMALY,
+            SatelliteAnomalyType.STARLINK_ORBITAL_PARAMS_WRONG,
+            SatelliteAnomalyType.MESSAGE_LATENCY_WRONG,
+            SatelliteAnomalyType.ACK_TIMING_TERRESTRIAL -> SatellitePattern.TIMING_ANOMALY
+
+            // Downgrade
+            SatelliteAnomalyType.DOWNGRADE_TO_SATELLITE -> SatellitePattern.DOWNGRADE_TO_SATELLITE
+        }
+    }
+
+    /**
+     * Map anomaly type to DetectionMethod enum.
+     */
+    private fun mapAnomalyTypeToDetectionMethod(type: SatelliteAnomalyType): DetectionMethod {
+        return when (type) {
+            // Satellite switchover (informational)
+            SatelliteAnomalyType.SATELLITE_SWITCHOVER,
+
+            // Unexpected connections
+            SatelliteAnomalyType.UNEXPECTED_SATELLITE_CONNECTION,
+            SatelliteAnomalyType.SATELLITE_IN_COVERED_AREA,
+            SatelliteAnomalyType.NTN_IN_FULL_TERRESTRIAL_COVERAGE,
+            SatelliteAnomalyType.COVERAGE_HOLE_IMPOSSIBLE,
+            SatelliteAnomalyType.NTN_CAMPING_PERSISTENT -> DetectionMethod.SAT_UNEXPECTED_CONNECTION
+
+            // Forced handoff
+            SatelliteAnomalyType.FORCED_SATELLITE_HANDOFF,
+            SatelliteAnomalyType.RAPID_SATELLITE_SWITCHING,
+            SatelliteAnomalyType.HANDOVER_TIMING_IMPOSSIBLE,
+            SatelliteAnomalyType.FORCED_NTN_AFTER_CALL,
+            SatelliteAnomalyType.HANDOVER_BACK_BLOCKED -> DetectionMethod.SAT_FORCED_HANDOFF
+
+            // Timing anomalies
+            SatelliteAnomalyType.TIMING_ADVANCE_ANOMALY,
+            SatelliteAnomalyType.EPHEMERIS_MISMATCH,
+            SatelliteAnomalyType.RTT_ORBIT_MISMATCH,
+            SatelliteAnomalyType.DOPPLER_SHIFT_MISMATCH,
+            SatelliteAnomalyType.PROPAGATION_DELAY_VARIANCE_WRONG,
+            SatelliteAnomalyType.TIMING_ADVANCE_TOO_SMALL,
+            SatelliteAnomalyType.SATELLITE_BELOW_HORIZON,
+            SatelliteAnomalyType.WRONG_ORBITAL_PLANE,
+            SatelliteAnomalyType.PASS_DURATION_EXCEEDED,
+            SatelliteAnomalyType.ELEVATION_ANGLE_IMPOSSIBLE,
+            SatelliteAnomalyType.TLE_POSITION_MISMATCH,
+            SatelliteAnomalyType.CARRIER_FREQUENCY_DRIFT_WRONG,
+            SatelliteAnomalyType.GNSS_NTN_TIME_CONFLICT,
+            SatelliteAnomalyType.TIME_OF_DAY_VISIBILITY_ANOMALY,
+            SatelliteAnomalyType.STARLINK_ORBITAL_PARAMS_WRONG,
+            SatelliteAnomalyType.MESSAGE_LATENCY_WRONG,
+            SatelliteAnomalyType.ACK_TIMING_TERRESTRIAL -> DetectionMethod.SAT_TIMING_ANOMALY
+
+            // Downgrade
+            SatelliteAnomalyType.DOWNGRADE_TO_SATELLITE -> DetectionMethod.SAT_DOWNGRADE
+
+            // Everything else maps to suspicious NTN
+            else -> DetectionMethod.SAT_SUSPICIOUS_NTN
+        }
+    }
+
+    /**
+     * Determine the device type based on the anomaly context.
+     * STINGRAY_IMSI is used when the anomaly suggests a cell site simulator
+     * is using satellite-based interception techniques.
+     */
+    private fun determineDeviceType(context: SatelliteDetectionContext): DeviceType {
+        val anomaly = context.anomaly
+
+        // Indicators of cell site simulator activity via satellite
+        val stingrayIndicators = listOf(
+            // Unknown satellite network could be a fake satellite
+            anomaly.type == SatelliteAnomalyType.UNKNOWN_SATELLITE_NETWORK,
+            // NTN band mismatch suggests spoofing
+            anomaly.type == SatelliteAnomalyType.NTN_BAND_MISMATCH,
+            // Timing anomaly with ground-level RTT suggests ground-based spoofing
+            anomaly.type == SatelliteAnomalyType.TIMING_ADVANCE_ANOMALY &&
+                context.ntnParameters?.measuredRttMs?.let { it < 10 } == true,
+            // Critical severity with forced handoff
+            anomaly.severity == AnomalySeverity.CRITICAL &&
+                anomaly.type == SatelliteAnomalyType.FORCED_SATELLITE_HANDOFF,
+            // Downgrade in urban area with good terrestrial signal
+            anomaly.type == SatelliteAnomalyType.DOWNGRADE_TO_SATELLITE &&
+                context.isUrbanArea &&
+                (context.lastTerrestrialSignalDbm ?: -120) > -90
+        )
+
+        return if (stingrayIndicators.any { it }) {
+            DeviceType.STINGRAY_IMSI
+        } else {
+            DeviceType.SATELLITE_NTN
+        }
+    }
+
+    /**
+     * Calculate threat level based on anomaly severity and context.
+     */
+    private fun calculateThreatLevel(context: SatelliteDetectionContext): ThreatLevel {
+        val severity = context.anomaly.severity
+        val deviceType = determineDeviceType(context)
+
+        // If identified as a StingRay, increase threat level
+        if (deviceType == DeviceType.STINGRAY_IMSI) {
+            return when (severity) {
+                AnomalySeverity.CRITICAL -> ThreatLevel.CRITICAL
+                AnomalySeverity.HIGH -> ThreatLevel.CRITICAL
+                AnomalySeverity.MEDIUM -> ThreatLevel.HIGH
+                AnomalySeverity.LOW -> ThreatLevel.MEDIUM
+                AnomalySeverity.INFO -> ThreatLevel.LOW
+            }
+        }
+
+        return when (severity) {
+            AnomalySeverity.CRITICAL -> ThreatLevel.CRITICAL
+            AnomalySeverity.HIGH -> ThreatLevel.HIGH
+            AnomalySeverity.MEDIUM -> ThreatLevel.MEDIUM
+            AnomalySeverity.LOW -> ThreatLevel.LOW
+            AnomalySeverity.INFO -> ThreatLevel.INFO
+        }
+    }
+
+    /**
+     * Calculate a threat score based on multiple factors.
+     */
+    private fun calculateThreatScore(context: SatelliteDetectionContext): Int {
+        val anomaly = context.anomaly
+
+        var score = when (anomaly.severity) {
+            AnomalySeverity.CRITICAL -> 90
+            AnomalySeverity.HIGH -> 75
+            AnomalySeverity.MEDIUM -> 55
+            AnomalySeverity.LOW -> 35
+            AnomalySeverity.INFO -> 15
+        }
+
+        // Increase score for suspicious indicators
+        if (context.hasTerrestrialCoverage &&
+            (context.lastTerrestrialSignalDbm ?: -120) > -90) {
+            score += 10 // Good terrestrial signal available
+        }
+
+        if (context.isUrbanArea) {
+            score += 5 // Urban area with expected coverage
+        }
+
+        if (!context.isValidNtnBand) {
+            score += 15 // Invalid NTN frequency band
+        }
+
+        if (context.provider == SatelliteProvider.UNKNOWN) {
+            score += 10 // Unknown provider
+        }
+
+        // Timing anomaly analysis
+        context.ntnParameters?.let { ntn ->
+            if (ntn.measuredRttMs != null && ntn.expectedRttMs != null) {
+                val rttDiff = kotlin.math.abs(ntn.measuredRttMs - ntn.expectedRttMs)
+                if (rttDiff > 50) {
+                    score += 15 // Significant RTT mismatch
+                }
+            }
+            // Ground-level RTT on claimed satellite
+            if (ntn.measuredRttMs != null && ntn.measuredRttMs < 10) {
+                score += 20 // Suspiciously low RTT
+            }
+        }
+
+        // Rapid switching
+        if (context.recentHandoffCount > 3) {
+            score += 5 * (context.recentHandoffCount - 3).coerceAtMost(4)
+        }
+
+        return score.coerceIn(0, 100)
+    }
+
+    /**
+     * Check if the anomaly meets configurable thresholds.
+     */
+    private fun meetsThresholds(
+        anomaly: SatelliteAnomaly,
+        lastTerrestrialSignalDbm: Int?,
+        timeSinceGoodTerrestrialMs: Long?,
+        recentHandoffCount: Int,
+        thresholds: SatelliteThresholds
+    ): Boolean {
+        return when (anomaly.type) {
+            SatelliteAnomalyType.UNEXPECTED_SATELLITE_CONNECTION,
+            SatelliteAnomalyType.SATELLITE_IN_COVERED_AREA -> {
+                // Check if terrestrial signal was good enough
+                val signalOk = (lastTerrestrialSignalDbm ?: -120) > thresholds.minSignalForTerrestrial
+                val timeOk = (timeSinceGoodTerrestrialMs ?: Long.MAX_VALUE) < thresholds.unexpectedSatelliteThresholdMs
+                signalOk && timeOk
+            }
+
+            SatelliteAnomalyType.FORCED_SATELLITE_HANDOFF -> {
+                (timeSinceGoodTerrestrialMs ?: Long.MAX_VALUE) < thresholds.rapidHandoffThresholdMs
+            }
+
+            SatelliteAnomalyType.RAPID_SATELLITE_SWITCHING -> {
+                recentHandoffCount >= thresholds.rapidSwitchingCount
+            }
+
+            else -> true // Other types don't have specific thresholds
+        }
+    }
+
+    /**
+     * Build a user-friendly device name for the detection.
+     */
+    private fun buildDeviceName(context: SatelliteDetectionContext, method: DetectionMethod): String {
+        val emoji = when {
+            determineDeviceType(context) == DeviceType.STINGRAY_IMSI -> "📶"
+            else -> "🛰️"
+        }
+
+        val typeName = when (context.anomaly.type) {
+            // Informational
+            SatelliteAnomalyType.SATELLITE_SWITCHOVER -> "Satellite Switchover"
+
+            // Core anomaly types
+            SatelliteAnomalyType.UNEXPECTED_SATELLITE_CONNECTION -> "Unexpected Satellite"
+            SatelliteAnomalyType.FORCED_SATELLITE_HANDOFF -> "Forced Satellite Handoff"
+            SatelliteAnomalyType.SUSPICIOUS_NTN_PARAMETERS -> "Suspicious NTN"
+            SatelliteAnomalyType.UNKNOWN_SATELLITE_NETWORK -> "Unknown Satellite Network"
+            SatelliteAnomalyType.SATELLITE_IN_COVERED_AREA -> "Satellite in Coverage Area"
+            SatelliteAnomalyType.RAPID_SATELLITE_SWITCHING -> "Rapid Satellite Switching"
+            SatelliteAnomalyType.NTN_BAND_MISMATCH -> "NTN Band Mismatch"
+            SatelliteAnomalyType.TIMING_ADVANCE_ANOMALY -> "Satellite Timing Anomaly"
+            SatelliteAnomalyType.EPHEMERIS_MISMATCH -> "Satellite Position Mismatch"
+            SatelliteAnomalyType.DOWNGRADE_TO_SATELLITE -> "Network Downgrade to Satellite"
+            SatelliteAnomalyType.RTT_ORBIT_MISMATCH -> "RTT/Orbit Mismatch"
+            SatelliteAnomalyType.UNEXPECTED_MODEM_STATE -> "Unexpected Modem State"
+            SatelliteAnomalyType.CAPABILITY_MISMATCH -> "Capability Mismatch"
+            SatelliteAnomalyType.NRARFCN_NTN_BAND_INVALID -> "Invalid NTN Band"
+
+            // Timing & Latency anomalies
+            SatelliteAnomalyType.DOPPLER_SHIFT_MISMATCH -> "Doppler Shift Mismatch"
+            SatelliteAnomalyType.PROPAGATION_DELAY_VARIANCE_WRONG -> "Propagation Delay Anomaly"
+            SatelliteAnomalyType.TIMING_ADVANCE_TOO_SMALL -> "Timing Advance Too Small"
+            SatelliteAnomalyType.HARQ_RETRANSMISSION_TIMING_WRONG -> "HARQ Timing Anomaly"
+            SatelliteAnomalyType.HANDOVER_TIMING_IMPOSSIBLE -> "Impossible Handover Timing"
+            SatelliteAnomalyType.MESSAGE_LATENCY_WRONG -> "Message Latency Anomaly"
+            SatelliteAnomalyType.ACK_TIMING_TERRESTRIAL -> "Terrestrial ACK Timing"
+
+            // Orbital & Ephemeris anomalies
+            SatelliteAnomalyType.SATELLITE_BELOW_HORIZON -> "Satellite Below Horizon"
+            SatelliteAnomalyType.WRONG_ORBITAL_PLANE -> "Wrong Orbital Plane"
+            SatelliteAnomalyType.PASS_DURATION_EXCEEDED -> "Pass Duration Exceeded"
+            SatelliteAnomalyType.ELEVATION_ANGLE_IMPOSSIBLE -> "Impossible Elevation Angle"
+            SatelliteAnomalyType.TLE_POSITION_MISMATCH -> "TLE Position Mismatch"
+            SatelliteAnomalyType.CARRIER_FREQUENCY_DRIFT_WRONG -> "Carrier Frequency Drift"
+            SatelliteAnomalyType.GNSS_NTN_TIME_CONFLICT -> "GNSS/NTN Time Conflict"
+            SatelliteAnomalyType.TIME_OF_DAY_VISIBILITY_ANOMALY -> "Visibility Anomaly"
+
+            // Signal & RF anomalies
+            SatelliteAnomalyType.SIGNAL_TOO_STRONG -> "Signal Too Strong"
+            SatelliteAnomalyType.WRONG_POLARIZATION -> "Wrong Polarization"
+            SatelliteAnomalyType.BANDWIDTH_MISMATCH -> "Bandwidth Mismatch"
+            SatelliteAnomalyType.MULTIPATH_IN_CLEAR_SKY -> "Multipath in Clear Sky"
+            SatelliteAnomalyType.SUBCARRIER_SPACING_WRONG -> "Subcarrier Spacing Wrong"
+
+            // Protocol & Network anomalies
+            SatelliteAnomalyType.MIB_SIB_INCONSISTENT -> "MIB/SIB Inconsistent"
+            SatelliteAnomalyType.PLMN_NOT_NTN_REGISTERED -> "PLMN Not NTN Registered"
+            SatelliteAnomalyType.CELL_ID_FORMAT_WRONG -> "Cell ID Format Wrong"
+            SatelliteAnomalyType.PAGING_CYCLE_TERRESTRIAL -> "Paging Cycle Terrestrial"
+            SatelliteAnomalyType.DRX_TOO_SHORT -> "DRX Too Short"
+            SatelliteAnomalyType.RACH_PROCEDURE_WRONG -> "RACH Procedure Wrong"
+            SatelliteAnomalyType.MEASUREMENT_GAP_MISSING -> "Measurement Gap Missing"
+            SatelliteAnomalyType.GNSS_ASSISTANCE_REJECTED -> "GNSS Assistance Rejected"
+
+            // Security anomalies
+            SatelliteAnomalyType.ENCRYPTION_DOWNGRADE -> "Encryption Downgrade"
+            SatelliteAnomalyType.IDENTITY_REQUEST_FLOOD -> "Identity Request Flood"
+            SatelliteAnomalyType.REPLAY_ATTACK_DETECTED -> "Replay Attack Detected"
+            SatelliteAnomalyType.CERTIFICATE_MISMATCH -> "Certificate Mismatch"
+            SatelliteAnomalyType.NULL_CIPHER_OFFERED -> "Null Cipher Offered"
+            SatelliteAnomalyType.AUTH_REJECT_LOOP -> "Auth Reject Loop"
+            SatelliteAnomalyType.SUPI_CONCEALMENT_DISABLED -> "SUPI Concealment Disabled"
+
+            // Coverage & Location anomalies
+            SatelliteAnomalyType.NTN_IN_FULL_TERRESTRIAL_COVERAGE -> "NTN in Terrestrial Coverage"
+            SatelliteAnomalyType.COVERAGE_HOLE_IMPOSSIBLE -> "Impossible Coverage Hole"
+            SatelliteAnomalyType.GEOFENCE_VIOLATION -> "Geofence Violation"
+            SatelliteAnomalyType.INDOOR_SATELLITE_CONNECTION -> "Indoor Satellite Connection"
+            SatelliteAnomalyType.ALTITUDE_INCOMPATIBLE -> "Altitude Incompatible"
+            SatelliteAnomalyType.URBAN_CANYON_SATELLITE -> "Urban Canyon Satellite"
+            SatelliteAnomalyType.GNSS_POSITION_COVERAGE_MISMATCH -> "GNSS Position Mismatch"
+
+            // Cross-system anomalies
+            SatelliteAnomalyType.SIMULTANEOUS_GNSS_JAMMING -> "GNSS Jamming Detected"
+            SatelliteAnomalyType.CELLULAR_NTN_GEOMETRY_IMPOSSIBLE -> "Impossible Cell Geometry"
+            SatelliteAnomalyType.WIFI_SATELLITE_CONFLICT -> "WiFi/Satellite Conflict"
+
+            // Behavioral anomalies
+            SatelliteAnomalyType.NTN_CAMPING_PERSISTENT -> "Persistent NTN Camping"
+            SatelliteAnomalyType.FORCED_NTN_AFTER_CALL -> "Forced NTN After Call"
+            SatelliteAnomalyType.HANDOVER_BACK_BLOCKED -> "Handover Back Blocked"
+            SatelliteAnomalyType.NTN_TRACKING_PATTERN -> "NTN Tracking Pattern"
+            SatelliteAnomalyType.SELECTIVE_NTN_ROUTING -> "Selective NTN Routing"
+            SatelliteAnomalyType.PEER_DEVICE_DIVERGENCE -> "Peer Device Divergence"
+
+            // Hardware/Modem anomalies
+            SatelliteAnomalyType.MODEM_STATE_TRANSITION_IMPOSSIBLE -> "Impossible Modem Transition"
+            SatelliteAnomalyType.CAPABILITY_ANNOUNCEMENT_WRONG -> "Capability Announcement Wrong"
+            SatelliteAnomalyType.BASEBAND_FIRMWARE_TAMPERED -> "Baseband Firmware Tampered"
+            SatelliteAnomalyType.ANTENNA_CONFIGURATION_WRONG -> "Antenna Config Wrong"
+            SatelliteAnomalyType.POWER_CLASS_MISMATCH -> "Power Class Mismatch"
+            SatelliteAnomalyType.SIMULTANEOUS_BAND_CONFLICT -> "Band Conflict"
+
+            // Provider-specific anomalies
+            SatelliteAnomalyType.STARLINK_ORBITAL_PARAMS_WRONG -> "Starlink Orbital Params Wrong"
+            SatelliteAnomalyType.SKYLO_MODEM_MISSING -> "Skylo Modem Missing"
+            SatelliteAnomalyType.IRIDIUM_CONSTELLATION_MISMATCH -> "Iridium Constellation Mismatch"
+            SatelliteAnomalyType.GLOBALSTAR_BAND_WRONG -> "Globalstar Band Wrong"
+            SatelliteAnomalyType.AST_SPACEMOBILE_PREMATURE -> "AST SpaceMobile Premature"
+            SatelliteAnomalyType.PROVIDER_CAPABILITY_MISMATCH -> "Provider Capability Mismatch"
+
+            // Message/Data anomalies
+            SatelliteAnomalyType.SMS_ROUTING_SUSPICIOUS -> "Suspicious SMS Routing"
+            SatelliteAnomalyType.DATAGRAM_SIZE_EXCEEDED -> "Datagram Size Exceeded"
+            SatelliteAnomalyType.STORE_FORWARD_MISSING -> "Store/Forward Missing"
+            SatelliteAnomalyType.SATELLITE_ID_REUSE -> "Satellite ID Reuse"
+
+            // Emergency anomalies
+            SatelliteAnomalyType.SOS_REDIRECT_SUSPICIOUS -> "Suspicious SOS Redirect"
+            SatelliteAnomalyType.E911_LOCATION_INJECTION -> "E911 Location Injection"
+            SatelliteAnomalyType.EMERGENCY_CALL_BLOCKED -> "Emergency Call Blocked"
+            SatelliteAnomalyType.FAKE_EMERGENCY_ALERT -> "Fake Emergency Alert"
+        }
+
+        return "$emoji $typeName"
+    }
+
+    /**
+     * Build a description of matched patterns and technical details.
+     */
+    private fun buildMatchedPatterns(context: SatelliteDetectionContext): String {
+        val anomaly = context.anomaly
+        val parts = mutableListOf<String>()
+
+        // Add anomaly description
+        parts.add(anomaly.description)
+
+        // Add technical details
+        if (anomaly.technicalDetails.isNotEmpty()) {
+            val details = anomaly.technicalDetails.entries.joinToString(", ") { (k, v) -> "$k: $v" }
+            parts.add("Technical: $details")
+        }
+
+        // Add NTN parameters if available
+        context.ntnParameters?.let { ntn ->
+            val ntnDetails = mutableListOf<String>()
+            ntn.ntnBand?.let { ntnDetails.add("Band: $it") }
+            ntn.orbitalType.takeIf { it != OrbitalType.UNKNOWN }?.let { ntnDetails.add("Orbit: ${it.displayName}") }
+            ntn.measuredRttMs?.let { ntnDetails.add("RTT: ${it}ms") }
+            if (ntnDetails.isNotEmpty()) {
+                parts.add("NTN: ${ntnDetails.joinToString(", ")}")
+            }
+        }
+
+        // Add frequency info
+        context.frequencyMHz?.let { freq ->
+            val bandInfo = SatelliteDetectionHeuristics.NTNBands.getBandForFrequency(freq)
+            parts.add("Frequency: ${freq}MHz" + (bandInfo?.let { " ($it)" } ?: " (non-NTN)"))
+        }
+
+        return parts.joinToString(" | ")
+    }
+
+    /**
+     * Build raw data JSON for advanced mode display.
+     */
+    private fun buildRawData(context: SatelliteDetectionContext): String {
+        val anomaly = context.anomaly
+
+        val data = buildMap {
+            put("anomalyType", anomaly.type.name)
+            put("severity", anomaly.severity.name)
+            put("timestamp", context.timestamp)
+            put("networkType", context.networkType)
+            context.satelliteId?.let { put("satelliteId", it) }
+            context.provider.takeIf { it != SatelliteProvider.UNKNOWN }?.let { put("provider", it.name) }
+            context.connectionType.takeIf { it != SatelliteConnectionType.NONE }?.let { put("connectionType", it.name) }
+            context.signalStrength?.let { put("signalStrength", it) }
+            context.frequencyMHz?.let { put("frequencyMHz", it) }
+            put("isValidNtnBand", context.isValidNtnBand)
+            put("hasTerrestrialCoverage", context.hasTerrestrialCoverage)
+            context.lastTerrestrialSignalDbm?.let { put("lastTerrestrialSignalDbm", it) }
+            context.timeSinceGoodTerrestrialMs?.let { put("timeSinceGoodTerrestrialMs", it) }
+            context.recentHandoffCount.takeIf { it > 0 }?.let { put("recentHandoffCount", it) }
+            put("isUrbanArea", context.isUrbanArea)
+
+            context.ntnParameters?.let { ntn ->
+                val ntnData = buildMap {
+                    put("radioTechnology", ntn.radioTechnology)
+                    ntn.orbitalType.takeIf { it != OrbitalType.UNKNOWN }?.let { put("orbitalType", it.name) }
+                    ntn.expectedRttMs?.let { put("expectedRttMs", it) }
+                    ntn.measuredRttMs?.let { put("measuredRttMs", it) }
+                    ntn.harqProcessCount?.let { put("harqProcessCount", it) }
+                    ntn.channelBandwidthMHz?.let { put("channelBandwidthMHz", it) }
+                    put("beamformingActive", ntn.beamformingActive)
+                    ntn.ntnBand?.let { put("ntnBand", it) }
+                }
+                put("ntnParameters", ntnData)
+            }
+
+            anomaly.technicalDetails.takeIf { it.isNotEmpty() }?.let { put("technicalDetails", it) }
+            anomaly.recommendations.takeIf { it.isNotEmpty() }?.let { put("recommendations", it) }
+        }
+
+        return data.entries.joinToString(",\n  ", "{\n  ", "\n}") { (k, v) ->
+            "\"$k\": ${formatJsonValue(v)}"
+        }
+    }
+
+    /**
+     * Format a value for JSON output.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun formatJsonValue(value: Any?): String {
+        return when (value) {
+            null -> "null"
+            is String -> "\"$value\""
+            is Number -> value.toString()
+            is Boolean -> value.toString()
+            is Map<*, *> -> {
+                val map = value as Map<String, Any?>
+                map.entries.joinToString(", ", "{", "}") { (k, v) ->
+                    "\"$k\": ${formatJsonValue(v)}"
+                }
+            }
+            is List<*> -> {
+                value.joinToString(", ", "[", "]") { formatJsonValue(it) }
+            }
+            else -> "\"$value\""
+        }
+    }
+
+    /**
+     * Convert signal dBm to SignalStrength enum.
+     */
+    private fun signalDbmToStrength(dbm: Int?): SignalStrength {
+        return dbm?.let {
+            when {
+                it > -50 -> SignalStrength.EXCELLENT
+                it > -60 -> SignalStrength.GOOD
+                it > -70 -> SignalStrength.MEDIUM
+                it > -80 -> SignalStrength.WEAK
+                else -> SignalStrength.VERY_WEAK
+            }
+        } ?: SignalStrength.UNKNOWN
+    }
+
+    /**
+     * Format provider name for display.
+     */
+    private fun formatProviderName(provider: SatelliteProvider): String {
+        return when (provider) {
+            SatelliteProvider.STARLINK -> "SpaceX Starlink"
+            SatelliteProvider.SKYLO -> "Skylo NTN"
+            SatelliteProvider.GLOBALSTAR -> "Globalstar"
+            SatelliteProvider.AST_SPACEMOBILE -> "AST SpaceMobile"
+            SatelliteProvider.LYNK -> "Lynk"
+            SatelliteProvider.IRIDIUM -> "Iridium"
+            SatelliteProvider.INMARSAT -> "Inmarsat"
+            SatelliteProvider.UNKNOWN -> "Unknown Provider"
+        }
+    }
+
+    // ========================================================================
+    // Factory Methods
+    // ========================================================================
+
+    /**
+     * Create a SatelliteDetectionContext from a SatelliteAnomaly and connection state.
+     */
+    fun createContext(
+        anomaly: SatelliteAnomaly,
+        connectionState: SatelliteMonitor.SatelliteConnectionState,
+        lastTerrestrialSignalDbm: Int? = null,
+        timeSinceGoodTerrestrialMs: Long? = null,
+        recentHandoffCount: Int = 0,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        isUrbanArea: Boolean = false
+    ): SatelliteDetectionContext {
+        // Extract frequency from technical details if available
+        val frequencyMHz = anomaly.technicalDetails["frequency"]?.toString()?.toIntOrNull()
+            ?: anomaly.technicalDetails["frequencyMHz"]?.toString()?.toIntOrNull()
+
+        // Determine orbital type from provider
+        val orbitalType = when (connectionState.provider) {
+            SatelliteProvider.STARLINK -> OrbitalType.LEO
+            SatelliteProvider.SKYLO -> OrbitalType.LEO
+            SatelliteProvider.AST_SPACEMOBILE -> OrbitalType.LEO
+            SatelliteProvider.LYNK -> OrbitalType.LEO
+            SatelliteProvider.GLOBALSTAR -> OrbitalType.LEO
+            SatelliteProvider.IRIDIUM -> OrbitalType.LEO
+            SatelliteProvider.INMARSAT -> OrbitalType.GEO
+            SatelliteProvider.UNKNOWN -> OrbitalType.UNKNOWN
+        }
+
+        // Extract RTT if available
+        val measuredRttMs = anomaly.technicalDetails["rttMs"]?.toString()?.toLongOrNull()
+            ?: anomaly.technicalDetails["measuredRtt"]?.toString()?.toLongOrNull()
+
+        val ntnParameters = NtnParameters(
+            radioTechnology = connectionState.radioTechnology,
+            orbitalType = orbitalType,
+            expectedRttMs = when (orbitalType) {
+                OrbitalType.LEO -> 30L
+                OrbitalType.MEO -> 140L
+                OrbitalType.GEO -> 250L
+                OrbitalType.UNKNOWN -> null
+            },
+            measuredRttMs = measuredRttMs,
+            harqProcessCount = SatelliteMonitor.Companion.StarlinkDTC.MAX_HARQ_PROCESSES,
+            beamformingActive = orbitalType == OrbitalType.LEO, // LEO typically uses beamforming
+            ntnBand = frequencyMHz?.let { SatelliteDetectionHeuristics.NTNBands.getBandForFrequency(it) }
+        )
+
+        val isValidNtnBand = frequencyMHz?.let { SatelliteDetectionHeuristics.NTNBands.isNTNFrequency(it) } ?: true
+
+        return SatelliteDetectionContext(
+            id = UUID.randomUUID().toString(),
+            timestamp = anomaly.timestamp,
+            anomaly = anomaly,
+            networkType = connectionState.networkName ?: connectionState.connectionType.name,
+            satelliteId = anomaly.technicalDetails["satelliteId"]?.toString(),
+            ntnParameters = ntnParameters,
+            timingAdvance = anomaly.technicalDetails["timingAdvance"]?.toString()?.toLongOrNull(),
+            signalStrength = connectionState.signalStrength?.let { it * -20 - 40 }, // Convert level to approximate dBm
+            hasTerrestrialCoverage = lastTerrestrialSignalDbm != null &&
+                lastTerrestrialSignalDbm > SatelliteMonitor.MIN_SIGNAL_FOR_TERRESTRIAL_DBM,
+            lastTerrestrialSignalDbm = lastTerrestrialSignalDbm,
+            timeSinceGoodTerrestrialMs = timeSinceGoodTerrestrialMs,
+            provider = connectionState.provider,
+            connectionType = connectionState.connectionType,
+            frequencyMHz = frequencyMHz,
+            isValidNtnBand = isValidNtnBand,
+            recentHandoffCount = recentHandoffCount,
+            latitude = latitude,
+            longitude = longitude,
+            isUrbanArea = isUrbanArea,
+            detectionMethod = mapAnomalyTypeToDetectionMethod(anomaly.type)
+        )
+    }
+}

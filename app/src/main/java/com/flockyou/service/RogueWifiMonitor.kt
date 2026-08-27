@@ -1,0 +1,2121 @@
+package com.flockyou.service
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.wifi.ScanResult
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.util.Log
+import com.flockyou.data.model.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+
+/**
+ * Monitors WiFi environment for rogue access points and surveillance indicators.
+ *
+ * Detection methods:
+ * 1. Evil Twin Detection - Same SSID, different BSSID/MAC
+ * 2. Deauth Attack Detection - Rapid disconnections from known networks
+ * 3. Hidden Camera WiFi - Common IoT camera SSIDs/MACs
+ * 4. Suspicious Open Networks - Open networks in sensitive locations
+ * 5. Captive Portal Fingerprinting - Malicious captive portals
+ * 6. Signal Strength Anomalies - Unusually strong signals from unknown APs
+ * 7. MAC Randomization Detection - Networks that track MAC changes
+ * 8. Surveillance Van Detection - Mobile hotspots with surveillance patterns
+ */
+class RogueWifiMonitor(
+    private val context: Context,
+    private val errorCallback: DetectorCallback? = null
+) {
+    private val explicitSuppressionCounter = AtomicInteger(0)
+    val suppressedCandidateCount: Int
+        get() = explicitSuppressionCounter.get()
+
+    // Minimum distance traveled (in meters) before reporting a tracking device
+    // Default: 1609 meters (1 mile) - can be configured via settings
+    var minTrackingDistanceMeters: Double = 1609.0
+
+    companion object {
+        private const val TAG = "RogueWifiMonitor"
+
+        // Thresholds
+        private const val EVIL_TWIN_SIGNAL_DIFF_THRESHOLD = 15 // dBm difference to flag
+        private const val STRONG_SIGNAL_THRESHOLD = -40 // dBm - suspiciously close
+        private const val NETWORK_HISTORY_SIZE = 500
+        private const val DEAUTH_WINDOW_MS = 60_000L // 1 minute
+        private const val DEAUTH_THRESHOLD = 5 // 5 disconnects in 1 minute
+        private const val ANOMALY_COOLDOWN_MS = 120_000L // 2 minutes between same type
+        private const val TRACKING_DURATION_MS = 300_000L // 5 minutes
+        private const val FOLLOWING_LOCATION_THRESHOLD = 0.001 // ~100m in lat/lon
+
+        // Hidden camera OUI prefixes (common IoT camera manufacturers)
+        // Based on FCC filings, security research, and real-world detections
+        private val HIDDEN_CAMERA_OUIS = setOf(
+            // === Hikvision (world's largest surveillance camera maker) ===
+            "B4:A3:82", // Hangzhou Hikvision
+            "44:19:B6", // Hangzhou Hikvision
+            "54:C4:15", // Hangzhou Hikvision
+            "28:57:BE", // Hangzhou Hikvision
+            "C0:56:E3", // Hangzhou Hikvision
+            "4C:BD:8F", // Hangzhou Hikvision
+            "18:68:CB", // Hangzhou Hikvision
+            "C4:2F:90", // Hangzhou Hikvision
+
+            // === Dahua (second largest, also Chinese state-linked) ===
+            "E0:50:8B", // Zhejiang Dahua
+            "3C:EF:8C", // Zhejiang Dahua
+            "4C:11:BF", // Zhejiang Dahua
+            "A0:BD:1D", // Zhejiang Dahua
+            "90:02:A9", // Zhejiang Dahua
+            "B0:A7:32", // Zhejiang Dahua
+
+            // === Known spy/covert camera manufacturers ===
+            "00:18:AE", // Shenzhen TVT (common in hidden cameras)
+            "7C:DD:90", // Shenzhen Ogemray (spy cameras)
+            "D4:D2:52", // Shenzhen Bilian (mini/pinhole cameras)
+            "E8:AB:FA", // Shenzhen Reecam (nanny cams)
+            "AC:B7:4D", // LIFI Labs (covert cameras)
+            "00:62:6E", // Shenzhen various IoT/cameras
+            "EC:71:DB", // Shenzhen iComm (hidden cameras)
+            "48:02:2A", // Shenzhen B-Link (mini cameras)
+
+            // === Common IP camera chipset manufacturers ===
+            "00:0C:43", // Ralink (cheap IoT cameras, ESP8266 clones)
+            "00:26:86", // Quantenna (streaming devices)
+            "5C:CF:7F", // Espressif (ESP8266/ESP32 - very common in DIY/cheap cams)
+            "60:01:94", // Espressif
+            "A4:7B:9D", // Espressif
+            "24:0A:C4", // Espressif
+            "84:F3:EB", // Espressif
+
+            // === Reolink (common in Airbnb/hotel hidden cams) ===
+            "EC:71:DB", // Reolink
+            "9C:8E:CD", // Reolink
+
+            // === YI/Xiaomi cameras (common, often unauthorized placement) ===
+            "78:8B:2A", // Xiaomi/YI
+            "64:09:80", // Xiaomi/YI
+            "F8:A4:5F", // Xiaomi/YI
+
+            // === Amcrest/Foscam (common in covert setups) ===
+            "9C:8E:CD", // Amcrest
+            "00:62:6E", // Foscam
+            "C0:25:67", // Amcrest/Foscam OEM
+
+            // === Wyze (legitimate but often placed without consent) ===
+            "2C:AA:8E", // Wyze Labs
+            "D0:3F:27", // Wyze Labs
+
+            // === Generic/white-label camera modules ===
+            "00:12:17", // Cisco-Linksys (repurposed for cameras)
+            "B0:B9:8A", // Netgear (repurposed routers)
+            "00:E0:64", // Samsung (various IoT)
+            "00:1C:B3"  // Apple (rare - disguised tracking devices)
+        )
+
+        // Suspicious SSID patterns for hidden cameras/surveillance
+        // Based on real-world camera default SSIDs and common naming conventions
+        private val HIDDEN_CAMERA_SSID_PATTERNS = listOf(
+            // === Generic camera naming patterns ===
+            Regex("(?i)^(hd|ip|wifi)?[-_]?cam(era)?[-_]?[0-9a-f]*$"),
+            Regex("(?i)^(spy|nanny|hidden|covert|mini|pinhole)[-_]?cam.*"),
+            Regex("(?i)^(smart|home|security|indoor|outdoor)[-_]?cam.*"),
+            Regex("(?i)^baby[-_]?(monitor|cam).*"),
+            Regex("(?i)^pet[-_]?(cam|monitor).*"),
+
+            // === Brand-specific default SSIDs ===
+            // These brands are commonly found in unauthorized surveillance
+            Regex("(?i)^(yi|wyze|blink|ring|arlo|nest|eufy)[-_]?.*"),
+            Regex("(?i)^(ezviz|hikvision|hik)[-_]?.*"),
+            Regex("(?i)^(dahua|dh|ipc)[-_]?.*"),
+            Regex("(?i)^(amcrest|foscam|wansview|reolink)[-_]?.*"),
+            Regex("(?i)^(vivotek|axis|bosch|honeywell)[-_]?cam.*"),
+            Regex("(?i)^(tenvis|sricam|escam|vstarcam)[-_]?.*"),
+
+            // === Common default SSID formats from cheap cameras ===
+            Regex("(?i)^ipc[-_]?[0-9a-f]{6,}$"),       // IPCamera defaults
+            Regex("(?i)^camera[-_]?[0-9a-f]{4,}$"),   // Generic defaults
+            Regex("(?i)^p2p[-_]?[0-9a-f]+$"),          // P2P camera protocol
+            Regex("(?i)^hd[-_]?ipc[-_]?[0-9]+$"),      // HD IP Camera
+            Regex("(?i)^wificam[-_]?[0-9a-f]*$"),      // WiFi camera defaults
+            Regex("(?i)^ufo[-_]?cam.*"),               // UFO-style hidden cams
+            Regex("(?i)^cctv[-_]?[0-9]+$"),            // CCTV naming
+
+            // === Setup/Configuration mode SSIDs (camera in setup) ===
+            Regex("(?i)^setup[-_]?[0-9a-f]+$"),
+            Regex("(?i)^config[-_]?[0-9a-f]+$"),
+            Regex("(?i)^direct[-_]?[0-9a-f]*$"),
+            Regex("(?i)^(device|iot)[-_]?setup.*"),
+            Regex("(?i)^smartlife[-_]?[0-9a-f]+$"),    // Tuya/SmartLife cameras
+            Regex("(?i)^tuya[-_]?.*"),
+
+            // === Streaming/P2P protocol SSIDs ===
+            Regex("(?i)^(tutk|p2p|yoosee)[-_]?[0-9a-f]*$"),
+            Regex("(?i)^gk[-_]?[0-9a-f]{8,}$"),       // GK chipset cameras
+
+            // === Specific hidden camera product SSIDs ===
+            Regex("(?i)^(clock|smoke|outlet|charger)[-_]?cam.*"),  // Disguised cameras
+            Regex("(?i)^(usb|adapter|hub)[-_]?[0-9a-f]+$"),        // USB charger cams
+            Regex("(?i)^mirror[-_]?(cam|[0-9]+).*")                 // Mirror cameras
+        )
+
+        // ==================== JOKE SSID EXCLUSION LIST ====================
+        // These SSIDs are 100% JOKES - real surveillance would NEVER use obvious names.
+        // Alerting on these creates annoying false positives and makes users distrust the app.
+        // Pattern: If it sounds like a movie/TV joke, it IS a joke.
+        private val JOKE_SURVEILLANCE_SSID_PATTERNS = listOf(
+            // === Classic "FBI Van" jokes ===
+            Regex("(?i).*fbi[-_\\s]*(surveillance[-_\\s]*)?(van|truck|mobile).*"),
+            Regex("(?i).*cia[-_\\s]*(surveillance[-_\\s]*)?(van|truck|mobile).*"),
+            Regex("(?i).*nsa[-_\\s]*(surveillance[-_\\s]*)?(van|truck|mobile).*"),
+            Regex("(?i)^fbi[-_]?van.*"),
+            Regex("(?i)^cia[-_]?van.*"),
+            Regex("(?i)^nsa[-_]?van.*"),
+
+            // === Standalone agency names (people naming WiFi "FBI" as a joke) ===
+            Regex("(?i)^fbi$"),
+            Regex("(?i)^cia$"),
+            Regex("(?i)^nsa$"),
+            Regex("(?i)^dhs$"),
+            Regex("(?i)^atf$"),
+            Regex("(?i)^dea$"),
+
+            // === "Definitely not" pattern (sarcastic joke format) ===
+            Regex("(?i).*(definitely|totally|certainly|absolutely)[-_\\s]*(not|no)[-_\\s]*(fbi|cia|nsa|surveillance|spying|watching).*"),
+            Regex("(?i)^not[-_\\s]*(the[-_\\s]*)?(fbi|cia|nsa|police|cops).*"),
+
+            // === Explicit surveillance humor ===
+            Regex("(?i).*surveillance[-_\\s]*(van|truck|vehicle).*"),
+            Regex("(?i).*undercover[-_\\s]*(van|cop|police).*"),
+            Regex("(?i).*unmarked[-_\\s]*(van|vehicle|police).*"),
+            Regex("(?i).*stakeout.*"),
+            Regex("(?i).*wiretap.*"),
+            Regex("(?i).*spying[-_\\s]*on[-_\\s]*you.*"),
+            Regex("(?i).*watching[-_\\s]*you.*"),
+            Regex("(?i).*we[-_\\s]*(are|r)[-_\\s]*watching.*"),
+            Regex("(?i).*big[-_\\s]*brother.*"),
+
+            // === Movie/TV references ===
+            Regex("(?i).*flowers[-_\\s]*by[-_\\s]*irene.*"),  // Classic FBI surveillance reference
+            Regex("(?i).*jack[-_\\s]*bauer.*"),
+            Regex("(?i).*homeland[-_\\s]*security.*"),
+
+            // === Other obvious jokes ===
+            Regex("(?i).*pretty[-_\\s]*fly[-_\\s]*for[-_\\s]*(a[-_\\s]*)?(wifi|wi-fi).*"),
+            Regex("(?i).*bill[-_\\s]*wi[-_\\s]*the[-_\\s]*science[-_\\s]*fi.*"),
+            Regex("(?i).*wu[-_\\s]*tang[-_\\s]*lan.*"),
+            Regex("(?i).*the[-_\\s]*promised[-_\\s]*lan.*"),
+            Regex("(?i).*it[-_\\s]*hurts[-_\\s]*when[-_\\s]*ip.*"),
+            Regex("(?i).*drop[-_\\s]*it[-_\\s]*like[-_\\s]*its[-_\\s]*hotspot.*")
+        )
+
+        // Surveillance van / mobile surveillance patterns
+        // NOTE: Real surveillance operations use BLAND, generic names - not "FBI_Van"!
+        // Joke SSIDs are filtered out by JOKE_SURVEILLANCE_SSID_PATTERNS above.
+        // These patterns catch legitimate indicators:
+        // - Fleet vehicle router defaults (Sierra Wireless, Cradlepoint)
+        // - Mobile hotspot naming conventions used by field operations
+        private val SURVEILLANCE_VAN_PATTERNS = listOf(
+            // === Fleet vehicle patterns (Sierra Wireless, Cradlepoint defaults) ===
+            // These are the ACTUAL indicators - equipment used in real surveillance
+            Regex("(?i)^mp70[-_]?[0-9a-f]+$"),              // Sierra Wireless MP70 fleet router
+            Regex("(?i)^ibr[-_]?[0-9]+.*"),                  // Cradlepoint IBR series
+            Regex("(?i)^airlink[-_]?[0-9a-f]+$"),           // Sierra Wireless AirLink
+            Regex("(?i)^cradlepoint[-_]?[0-9a-f]+$"),       // Cradlepoint default SSID
+            Regex("(?i)^rv50[-_]?[0-9a-f]+$"),              // Sierra Wireless RV50 LTE gateway
+            Regex("(?i)^es450[-_]?[0-9a-f]+$"),             // Cradlepoint ES450
+
+            // === Generic numbered vehicle patterns (bland names = suspicious) ===
+            // Format: "unit123", "vehicle-42", "van001" - boring names used in real ops
+            Regex("(?i)^(van|unit|car|truck)[-_]?[0-9]{2,4}$"),
+            Regex("(?i)^(vehicle|veh)[-_]?[0-9]{2,4}$"),
+            Regex("(?i)^fleet[-_]?[0-9]{1,4}$"),
+
+            // === Mobile command center patterns ===
+            // These would be at events, not randomly in suburbs
+            Regex("(?i)^mobile[-_]?(command|unit)[-_]?[0-9]+$"),
+            Regex("(?i)^field[-_]?unit[-_]?[0-9]+$"),
+
+            // === Contractor/utility cover patterns (real surveillance disguises) ===
+            // Vans disguised as utilities - bland numbering schemes
+            Regex("(?i)^(service|utility|maint)[-_]?[0-9]{3,5}$"),
+            Regex("(?i)^tech[-_]?[0-9]{3,5}$")
+        )
+
+        // Common legitimate networks to reduce false positives
+        // These are known public WiFi networks that should NOT trigger alerts
+        private val COMMON_LEGITIMATE_SSIDS = setOf(
+            // === ISP/Carrier hotspots ===
+            // These appear from EVERY subscriber's router - expect many in any neighborhood
+            "xfinitywifi", "xfinity", "attwifi", "att wifi",
+            "t-mobile", "tmobile", "t-mobile hotspot",
+            "verizon", "verizon wifi", "vzwifi",
+            "spectrum", "spectrum wifi", "spectrum mobile",
+            "cox wifi", "cox hotspot",
+            "optimum wifi", "optimumwifi",
+            "centurylink", "frontier",
+            "cablewifi", "twcwifi", "brighthouse",  // Time Warner/Spectrum legacy
+
+            // === Coffee shops / restaurants ===
+            "starbucks", "starbucks wifi", "google starbucks",
+            "mcdonalds", "mcdonalds free wifi", "mcd-free-wifi",
+            "dunkin", "dunkin donuts",
+            "peets", "peets coffee",
+            "panera", "panera bread",
+            "chipotle", "chick-fil-a",
+
+            // === Retail stores ===
+            "walmart wifi", "target wifi", "best buy",
+            "home depot", "lowes", "costco",
+            "kroger", "safeway", "whole foods",
+            "apple store", "microsoft store",
+
+            // === Hotels ===
+            "marriott", "hilton", "hyatt", "ihg",
+            "holiday inn", "hampton inn", "courtyard",
+            "guest", "guest wifi", "hotel wifi",
+
+            // === Travel ===
+            "boingo", "boingo hotspot", "boingo wireless",
+            "amtrak", "amtrak wifi",
+            "southwest wifi", "delta wifi", "american wifi", "united wifi",
+            "jetblue", "gogo inflight",
+            "airport wifi", "airport free wifi",
+
+            // === Education ===
+            "eduroam", "university wifi", "campus wifi",
+            "library wifi", "public library",
+
+            // === Government ===
+            "govwifi", "gov wifi", "cityofwifi",
+
+            // === Generic guest/public patterns ===
+            "free wifi", "free public wifi", "public wifi",
+            "guest network", "visitor wifi", "visitors"
+        )
+
+        // ==================== COMMON SSID PATTERNS FOR NEIGHBORHOOD WALKING ====================
+        // These SSIDs are commonly used by multiple unrelated households.
+        // Walking through a suburb, you'll see the same SSID from different homes = NOT evil twin.
+        // Evil twin requires SAME network being spoofed, not unrelated networks sharing a name.
+        //
+        // Examples where multiple BSSIDs with same SSID is NORMAL:
+        // - "xfinitywifi" from every Comcast customer's router
+        // - "NETGEAR" / "linksys" from people who never changed default
+        // - "HOME-XXXX" pattern from ISP-provided routers
+        // - Popular names people choose: "FBI Van", "Pretty Fly for a WiFi", etc.
+        // - Mesh network names from different households: "Eero", "Google Wifi"
+        private val NEIGHBORHOOD_COMMON_SSID_PATTERNS = listOf(
+            // === ISP default patterns ===
+            // ISP routers often use default SSIDs - every customer has the same one
+            Regex("(?i)^xfinitywifi$"),                      // Comcast/Xfinity community hotspot
+            Regex("(?i)^attwifi$"),                          // AT&T community hotspot
+            Regex("(?i)^(home|myhome|mynetwork)[-_]?[0-9a-f]{4,8}$"),  // ISP default format
+            Regex("(?i)^(att|xfinity|spectrum|cox|verizon)[-_]?[0-9a-z]+$"),  // ISP branded
+
+            // === Router manufacturer defaults ===
+            // Many people never change from factory default
+            Regex("(?i)^netgear[-_]?[0-9]*$"),
+            Regex("(?i)^linksys[-_]?[0-9]*$"),
+            Regex("(?i)^dlink[-_]?[0-9]*$"),
+            Regex("(?i)^tp[-_]?link[-_]?[0-9]*$"),
+            Regex("(?i)^asus[-_]?[0-9]*$"),
+            Regex("(?i)^belkin[-_]?[0-9]*$"),
+            Regex("(?i)^arris[-_]?[0-9]*$"),
+            Regex("(?i)^motorola[-_]?[0-9]*$"),
+            Regex("(?i)^ubnt[-_]?.*"),                       // Ubiquiti
+            Regex("(?i)^unifi[-_]?.*"),                      // Ubiquiti UniFi
+
+            // === Mesh network defaults ===
+            // Mesh systems from different homes with default names
+            Regex("(?i)^eero[-_]?.*"),
+            Regex("(?i)^google[-_]?wifi.*"),
+            Regex("(?i)^nest[-_]?wifi.*"),
+            Regex("(?i)^orbi[-_]?.*"),
+            Regex("(?i)^velop[-_]?.*"),
+            Regex("(?i)^amplifi[-_]?.*"),
+            Regex("(?i)^deco[-_]?.*"),                       // TP-Link Deco
+
+            // === Common home network names ===
+            // Popular names people choose - multiple unrelated homes may use same name
+            Regex("(?i)^(my[-_]?)?wifi$"),
+            Regex("(?i)^(my[-_]?)?network$"),
+            Regex("(?i)^(my[-_]?)?home[-_]?(wifi|network)?$"),
+            Regex("(?i)^(the[-_]?)?smith(s)?[-_]?(wifi|network)?$"),  // Common surname
+            Regex("(?i)^(the[-_]?)?johnson(s)?[-_]?(wifi|network)?$"),
+            Regex("(?i)^(the[-_]?)?williams(s)?[-_]?(wifi|network)?$"),
+            Regex("(?i)^(the[-_]?)?jones(s)?[-_]?(wifi|network)?$"),
+
+            // === Joke/Meme SSIDs ===
+            // These are deliberately chosen - seeing multiple is coincidence, not attack
+            Regex("(?i).*pretty[-_]?fly.*"),
+            Regex("(?i).*fbi[-_]?van.*"),
+            Regex("(?i).*cia[-_]?.*"),
+            Regex("(?i).*lan[-_]?(solo|of[-_]?milk).*"),
+            Regex("(?i).*loading[-_]?\\.\\.\\..*"),
+            Regex("(?i).*virus[-_]?free.*"),
+            Regex("(?i).*get[-_]?your[-_]?own.*"),
+
+            // === Smart home / IoT defaults ===
+            // Same device type in multiple homes
+            Regex("(?i)^ring[-_]?.*"),
+            Regex("(?i)^nest[-_]?.*"),
+            Regex("(?i)^wyze[-_]?.*"),
+            Regex("(?i)^blink[-_]?.*"),
+            Regex("(?i)^arlo[-_]?.*"),
+            Regex("(?i)^eufy[-_]?.*"),
+            Regex("(?i)^simplisafe[-_]?.*")
+        )
+    }
+
+    private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+    // Monitoring state
+    @Volatile private var isMonitoring = false
+    @Volatile private var currentLatitude: Double? = null
+    @Volatile private var currentLongitude: Double? = null
+
+    // Network history for pattern detection - use concurrent collections for thread safety
+    private val networkHistory = java.util.concurrent.ConcurrentHashMap<String, NetworkHistory>() // BSSID -> history
+    private val ssidToBssids = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>() // SSID -> set of BSSIDs
+    private val disconnectHistory = java.util.concurrent.CopyOnWriteArrayList<Long>() // Timestamps of disconnects
+    private val lastAnomalyTimes = java.util.concurrent.ConcurrentHashMap<WifiAnomalyType, Long>()
+
+    // Tracking networks that appear to be following - use concurrent map
+    private val followingNetworks = java.util.concurrent.ConcurrentHashMap<String, MutableList<NetworkSighting>>()
+
+    // State flows
+    private val _anomalies = MutableStateFlow<List<WifiAnomaly>>(emptyList())
+    val anomalies: StateFlow<List<WifiAnomaly>> = _anomalies.asStateFlow()
+
+    private val _wifiStatus = MutableStateFlow<WifiEnvironmentStatus?>(null)
+    val wifiStatus: StateFlow<WifiEnvironmentStatus?> = _wifiStatus.asStateFlow()
+
+    private val _wifiEvents = MutableStateFlow<List<WifiEvent>>(emptyList())
+    val wifiEvents: StateFlow<List<WifiEvent>> = _wifiEvents.asStateFlow()
+
+    private val _suspiciousNetworks = MutableStateFlow<List<SuspiciousNetwork>>(emptyList())
+    val suspiciousNetworks: StateFlow<List<SuspiciousNetwork>> = _suspiciousNetworks.asStateFlow()
+
+    private val detectedAnomalies = java.util.concurrent.CopyOnWriteArrayList<WifiAnomaly>()
+    private val eventHistory = java.util.concurrent.CopyOnWriteArrayList<WifiEvent>()
+    private val maxEventHistory = 200
+
+    private var wifiReceiver: BroadcastReceiver? = null
+    private var connectionReceiver: BroadcastReceiver? = null
+
+    // Data classes
+    data class NetworkHistory(
+        val bssid: String,
+        val ssid: String,
+        var firstSeen: Long = System.currentTimeMillis(),
+        var lastSeen: Long = System.currentTimeMillis(),
+        var seenCount: Int = 0,
+        val signalHistory: MutableList<SignalSample> = mutableListOf(),
+        val locationHistory: MutableList<Pair<Double, Double>> = mutableListOf(),
+        var isOpen: Boolean = false,
+        var capabilities: String = "",
+        var frequency: Int = 0,
+        var channelWidth: Int = 0
+    )
+
+    data class SignalSample(
+        val timestamp: Long,
+        val rssi: Int
+    )
+
+    data class NetworkSighting(
+        val timestamp: Long,
+        val latitude: Double,
+        val longitude: Double,
+        val rssi: Int,
+        val userLatitude: Double? = null,  // User's location at time of sighting
+        val userLongitude: Double? = null
+    )
+
+    /**
+     * Time pattern classification for network appearances
+     */
+    enum class TimePattern(val displayName: String) {
+        RANDOM("Random"),
+        PERIODIC("Periodic"),
+        CORRELATED("Correlated with user"),
+        UNKNOWN("Unknown")
+    }
+
+    /**
+     * Signal trend classification
+     */
+    enum class SignalTrend(val displayName: String) {
+        STABLE("Stable"),
+        APPROACHING("Approaching"),
+        DEPARTING("Departing"),
+        ERRATIC("Erratic")
+    }
+
+    /**
+     * Comprehensive following network analysis
+     */
+    data class FollowingNetworkAnalysis(
+        // Temporal Patterns
+        val sightingCount: Int,
+        val distinctLocations: Int,
+        val avgTimeBetweenSightingsMs: Long,
+        val timePattern: TimePattern,
+        val trackingDurationMs: Long,
+
+        // Movement Correlation
+        val pathCorrelation: Float,              // 0.0-1.0, how closely network follows user path
+        val leadsUser: Boolean,                   // Network appears before user arrives at location
+        val lagTimeMs: Long?,                     // Average time delay behind user
+        val totalDistanceTraveledMeters: Double, // Total distance user traveled while being followed
+
+        // Signal Analysis
+        val signalConsistency: Float,             // 0-1, how consistent is signal strength
+        val signalTrend: SignalTrend,
+        val avgSignalStrength: Int,
+        val signalVariance: Float,
+
+        // Device Classification
+        val likelyMobile: Boolean,                // Signal pattern suggests mobile device
+        val vehicleMounted: Boolean,              // Large movements suggest vehicle
+        val possibleFootSurveillance: Boolean,    // Slower, closer movements
+
+        // Risk Score
+        val followingConfidence: Float,           // 0-100%
+        val followingDurationMs: Long,
+        val riskIndicators: List<String>,
+
+        // False Positive Heuristics
+        val falsePositiveLikelihood: Float = 0f,  // 0-100%
+        val fpIndicators: List<String> = emptyList(),
+        val isLikelyNeighborNetwork: Boolean = false,     // Common neighbor/business WiFi
+        val isLikelyMobileHotspot: Boolean = false,       // Personal hotspot from family/coworker
+        val isLikelyCommuterDevice: Boolean = false,      // Same commute pattern
+        val isLikelyPublicTransit: Boolean = false        // Bus/train WiFi
+    )
+
+    data class WifiAnomaly(
+        val id: String = UUID.randomUUID().toString(),
+        val timestamp: Long = System.currentTimeMillis(),
+        val type: WifiAnomalyType,
+        val severity: ThreatLevel,
+        val confidence: AnomalyConfidence,
+        val description: String,
+        val technicalDetails: String,
+        val ssid: String?,
+        val bssid: String?,
+        val rssi: Int?,
+        val latitude: Double?,
+        val longitude: Double?,
+        val contributingFactors: List<String> = emptyList(),
+        val relatedNetworks: List<String> = emptyList(), // Related BSSIDs
+        // Full heuristics analysis for LLM processing (for following network anomalies)
+        val followingAnalysis: FollowingNetworkAnalysis? = null
+    )
+
+    enum class AnomalyConfidence(val displayName: String) {
+        LOW("Low - Possibly Normal"),
+        MEDIUM("Medium - Suspicious"),
+        HIGH("High - Likely Threat"),
+        CRITICAL("Critical - Strong Indicators")
+    }
+
+    enum class WifiAnomalyType(
+        val displayName: String,
+        val baseScore: Int,
+        val emoji: String
+    ) {
+        EVIL_TWIN("Evil Twin AP", 85, "👥"),
+        DEAUTH_ATTACK("Deauth Attack", 90, "⚡"),
+        HIDDEN_CAMERA("Hidden Camera WiFi", 75, "📹"),
+        SUSPICIOUS_OPEN_NETWORK("Suspicious Open Network", 60, "🔓"),
+        SIGNAL_ANOMALY("Signal Strength Anomaly", 50, "📶"),
+        FOLLOWING_NETWORK("Network Following You", 80, "🚐"),
+        SURVEILLANCE_VAN("Possible Surveillance Van", 85, "🚙"),
+        ROGUE_AP("Rogue Access Point", 70, "🏴"),
+        KARMA_ATTACK("Possible Karma Attack", 80, "🎭")
+    }
+
+    enum class WifiEventType(val displayName: String, val emoji: String) {
+        NETWORK_APPEARED("Network Appeared", "📡"),
+        NETWORK_DISAPPEARED("Network Disappeared", "📴"),
+        SIGNAL_CHANGED("Signal Changed", "📊"),
+        EVIL_TWIN_DETECTED("Evil Twin Detected", "👥"),
+        ANOMALY_DETECTED("Anomaly Detected", "⚠️"),
+        MONITORING_STARTED("Monitoring Started", "▶️"),
+        MONITORING_STOPPED("Monitoring Stopped", "⏹️"),
+        DISCONNECT_DETECTED("Disconnect Detected", "🔌")
+    }
+
+    data class WifiEvent(
+        val id: String = UUID.randomUUID().toString(),
+        val timestamp: Long = System.currentTimeMillis(),
+        val type: WifiEventType,
+        val title: String,
+        val description: String,
+        val ssid: String?,
+        val bssid: String?,
+        val rssi: Int?,
+        val isAnomaly: Boolean = false,
+        val threatLevel: ThreatLevel = ThreatLevel.INFO,
+        val latitude: Double? = null,
+        val longitude: Double? = null
+    )
+
+    data class WifiEnvironmentStatus(
+        val totalNetworks: Int,
+        val openNetworks: Int,
+        val hiddenNetworks: Int,
+        val potentialEvilTwins: Int,
+        val suspiciousNetworks: Int,
+        val strongestSignal: Int?,
+        val channelCongestion: Map<Int, Int>, // channel -> network count
+        val lastScanTime: Long
+    )
+
+    data class SuspiciousNetwork(
+        val bssid: String,
+        val ssid: String,
+        val rssi: Int,
+        val reason: String,
+        val threatLevel: ThreatLevel,
+        val firstSeen: Long,
+        val lastSeen: Long,
+        val seenCount: Int,
+        val isOpen: Boolean,
+        val frequency: Int,
+        val latitude: Double?,
+        val longitude: Double?
+    )
+
+    fun startMonitoring() {
+        if (isMonitoring) return
+        isMonitoring = true
+
+        Log.d(TAG, "Starting rogue WiFi monitoring")
+
+        addTimelineEvent(
+            type = WifiEventType.MONITORING_STARTED,
+            title = "WiFi Threat Monitoring Started",
+            description = "Monitoring for evil twins, hidden cameras, and surveillance"
+        )
+
+        try {
+            registerReceivers()
+            errorCallback?.onDetectorStarted(DetectorHealthStatus.DETECTOR_ROGUE_WIFI)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting rogue WiFi monitoring", e)
+            errorCallback?.onError(
+                DetectorHealthStatus.DETECTOR_ROGUE_WIFI,
+                "Failed to register receivers: ${e.message}",
+                recoverable = true
+            )
+        }
+    }
+
+    fun stopMonitoring() {
+        isMonitoring = false
+        try {
+            unregisterReceivers()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering receivers", e)
+        }
+
+        addTimelineEvent(
+            type = WifiEventType.MONITORING_STOPPED,
+            title = "WiFi Threat Monitoring Stopped",
+            description = "WiFi surveillance detection paused"
+        )
+
+        errorCallback?.onDetectorStopped(DetectorHealthStatus.DETECTOR_ROGUE_WIFI)
+        Log.d(TAG, "Stopped rogue WiFi monitoring")
+    }
+
+    fun updateLocation(latitude: Double, longitude: Double) {
+        currentLatitude = latitude
+        currentLongitude = longitude
+    }
+
+    /**
+     * Process WiFi scan results from ScanningService
+     */
+    fun processScanResults(results: List<ScanResult>) {
+        if (!isMonitoring) return
+
+        try {
+            processScanResultsInternal(results)
+            errorCallback?.onScanSuccess(DetectorHealthStatus.DETECTOR_ROGUE_WIFI)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing WiFi scan results", e)
+            errorCallback?.onError(
+                DetectorHealthStatus.DETECTOR_ROGUE_WIFI,
+                "Scan processing error: ${e.message}",
+                recoverable = true
+            )
+        }
+    }
+
+    /**
+     * Internal processing of WiFi scan results
+     */
+    private fun processScanResultsInternal(results: List<ScanResult>) {
+        val now = System.currentTimeMillis()
+        val currentBssids = mutableSetOf<String>()
+        var openCount = 0
+        var hiddenCount = 0
+        val channelCongestion = mutableMapOf<Int, Int>()
+        val suspiciousFound = mutableListOf<SuspiciousNetwork>()
+
+        // Filter out invalid results (RSSI of 0 is invalid, valid range is typically -100 to -20 dBm)
+        val validResults = results.filter { result ->
+            val rssi = result.level
+            rssi != 0 && rssi in -120..-10
+        }
+
+        if (validResults.size < results.size) {
+            Log.d(TAG, "Filtered ${results.size - validResults.size} WiFi results with invalid RSSI values")
+        }
+
+        for (result in validResults) {
+            val bssid = result.BSSID?.uppercase() ?: continue
+            @Suppress("DEPRECATION")
+            val ssid = result.SSID ?: ""
+            currentBssids.add(bssid)
+
+            // Track channel congestion
+            val channel = frequencyToChannel(result.frequency)
+            channelCongestion[channel] = (channelCongestion[channel] ?: 0) + 1
+
+            // Check if open network
+            val isOpen = !result.capabilities.contains("WPA") &&
+                         !result.capabilities.contains("WEP") &&
+                         !result.capabilities.contains("RSN")
+            if (isOpen) openCount++
+            if (ssid.isEmpty()) hiddenCount++
+
+            // Update network history
+            val history = networkHistory.getOrPut(bssid) {
+                NetworkHistory(bssid = bssid, ssid = ssid)
+            }
+            history.lastSeen = now
+            history.seenCount++
+            history.isOpen = isOpen
+            history.capabilities = result.capabilities
+            history.frequency = result.frequency
+            history.signalHistory.add(SignalSample(now, result.level))
+            if (history.signalHistory.size > 100) {
+                history.signalHistory.removeAt(0)
+            }
+
+            // Track location history
+            currentLatitude?.let { lat ->
+                currentLongitude?.let { lon ->
+                    if (history.locationHistory.size < 50) {
+                        history.locationHistory.add(lat to lon)
+                    }
+                }
+            }
+
+            // Track SSID -> BSSID mapping for evil twin detection
+            if (ssid.isNotEmpty()) {
+                val bssidsForSsid = ssidToBssids.getOrPut(ssid) { mutableSetOf() }
+                bssidsForSsid.add(bssid)
+            }
+
+            // Track networks for following detection - include user's location at time of sighting
+            currentLatitude?.let { userLat ->
+                currentLongitude?.let { userLon ->
+                    val sightings = followingNetworks.getOrPut(bssid) { mutableListOf() }
+                    // Network location is approximated by user location (we're detecting the network nearby)
+                    sightings.add(NetworkSighting(
+                        timestamp = now,
+                        latitude = userLat,  // Network seen at user's location
+                        longitude = userLon,
+                        rssi = result.level,
+                        userLatitude = userLat,
+                        userLongitude = userLon
+                    ))
+                    // Keep only recent sightings
+                    sightings.removeAll { now - it.timestamp > TRACKING_DURATION_MS }
+                }
+            }
+
+            // Analyze this network
+            val suspicion = analyzeNetwork(result, history)
+            if (suspicion != null) {
+                suspiciousFound.add(suspicion)
+            }
+        }
+
+        // Check for evil twins
+        checkForEvilTwins(results)
+
+        // Check for networks following user
+        checkForFollowingNetworks()
+
+        // Check for deauth attacks (sudden disconnect + many networks)
+        checkDeauthIndicators()
+
+        // Update status
+        _wifiStatus.value = WifiEnvironmentStatus(
+            totalNetworks = results.size,
+            openNetworks = openCount,
+            hiddenNetworks = hiddenCount,
+            potentialEvilTwins = countPotentialEvilTwins(),
+            suspiciousNetworks = suspiciousFound.size,
+            strongestSignal = results.maxOfOrNull { it.level },
+            channelCongestion = channelCongestion,
+            lastScanTime = now
+        )
+
+        _suspiciousNetworks.value = suspiciousFound.sortedByDescending { it.threatLevel.ordinal }
+
+        // Detect networks that disappeared (potential deauth)
+        detectDisappearedNetworks(currentBssids)
+    }
+
+    /**
+     * Called when WiFi disconnects unexpectedly
+     */
+    fun onDisconnect() {
+        val now = System.currentTimeMillis()
+        disconnectHistory.add(now)
+        disconnectHistory.removeAll { now - it > DEAUTH_WINDOW_MS }
+
+        addTimelineEvent(
+            type = WifiEventType.DISCONNECT_DETECTED,
+            title = "WiFi Disconnected",
+            description = "Unexpected WiFi disconnect - ${disconnectHistory.size} in last minute"
+        )
+
+        checkDeauthIndicators()
+    }
+
+    private fun analyzeNetwork(result: ScanResult, history: NetworkHistory): SuspiciousNetwork? {
+        val bssid = result.BSSID?.uppercase() ?: return null
+        @Suppress("DEPRECATION")
+        val ssid = result.SSID ?: ""
+        val oui = bssid.take(8)
+
+        var suspicionReason: String? = null
+        var threatLevel = ThreatLevel.INFO
+
+        // Check for hidden camera OUIs
+        if (oui in HIDDEN_CAMERA_OUIS) {
+            suspicionReason = "Known hidden camera manufacturer (${getManufacturerFromOui(oui)})"
+            threatLevel = ThreatLevel.MEDIUM
+        }
+
+        // Check for hidden camera SSID patterns
+        if (ssid.isNotEmpty()) {
+            for (pattern in HIDDEN_CAMERA_SSID_PATTERNS) {
+                if (pattern.matches(ssid)) {
+                    suspicionReason = "Hidden camera SSID pattern: $ssid"
+                    threatLevel = ThreatLevel.MEDIUM
+                    break
+                }
+            }
+
+            // Check for surveillance van patterns
+            // FIRST: Check if this is an obvious JOKE SSID (e.g., "FBI Van", "CIA Surveillance")
+            // Real surveillance uses BLAND names, not movie references. Skip jokes entirely.
+            val isJokeSsid = JOKE_SURVEILLANCE_SSID_PATTERNS.any { it.matches(ssid) }
+
+            if (!isJokeSsid) {
+                for (pattern in SURVEILLANCE_VAN_PATTERNS) {
+                    if (pattern.matches(ssid)) {
+                        suspicionReason = "Possible surveillance van: $ssid"
+                        threatLevel = ThreatLevel.HIGH
+
+                        reportAnomaly(
+                            type = WifiAnomalyType.SURVEILLANCE_VAN,
+                            description = "Network matches surveillance vehicle pattern",
+                            technicalDetails = "SSID '$ssid' matches known fleet/surveillance router naming patterns. " +
+                                "Real surveillance uses bland names like this - not obvious 'FBI Van' jokes.",
+                            ssid = ssid,
+                            bssid = bssid,
+                            rssi = result.level,
+                            confidence = AnomalyConfidence.MEDIUM,
+                            contributingFactors = listOf(
+                                "SSID matches fleet router pattern",
+                                "Manufacturer: ${getManufacturerFromOui(oui)}",
+                                "Note: Joke SSIDs like 'FBI Van' are filtered out"
+                            )
+                        )
+                        break
+                    }
+                }
+            } else {
+                // Log that we skipped a joke SSID (useful for debugging)
+                Log.d(TAG, "Skipping joke SSID '$ssid' - not real surveillance")
+            }
+        }
+
+        // Check for suspiciously strong signals from unknown networks
+        if (result.level > STRONG_SIGNAL_THRESHOLD && history.seenCount <= 2) {
+            val isLegitimate = COMMON_LEGITIMATE_SSIDS.any {
+                ssid.lowercase().contains(it)
+            }
+            if (!isLegitimate && history.isOpen) {
+                suspicionReason = "Very strong signal from unknown open network"
+                threatLevel = ThreatLevel.MEDIUM
+            }
+        }
+
+        // Check for open networks that shouldn't be open
+        if (history.isOpen && ssid.isNotEmpty()) {
+            val isCommonOpen = COMMON_LEGITIMATE_SSIDS.any {
+                ssid.lowercase().contains(it)
+            }
+            if (!isCommonOpen && !ssid.lowercase().contains("guest") &&
+                !ssid.lowercase().contains("free") && !ssid.lowercase().contains("public")) {
+                // Open network with non-public name
+                if (suspicionReason == null) {
+                    suspicionReason = "Unexpected open network"
+                    threatLevel = ThreatLevel.LOW
+                }
+            }
+        }
+
+        if (suspicionReason != null) {
+            return SuspiciousNetwork(
+                bssid = bssid,
+                ssid = ssid,
+                rssi = result.level,
+                reason = suspicionReason,
+                threatLevel = threatLevel,
+                firstSeen = history.firstSeen,
+                lastSeen = history.lastSeen,
+                seenCount = history.seenCount,
+                isOpen = history.isOpen,
+                frequency = result.frequency,
+                latitude = currentLatitude,
+                longitude = currentLongitude
+            )
+        }
+
+        return null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun checkForEvilTwins(results: List<ScanResult>) {
+        for ((ssid, bssids) in ssidToBssids) {
+            if (bssids.size < 2) continue
+
+            // Skip SSIDs that are in the common legitimate list
+            if (COMMON_LEGITIMATE_SSIDS.any { ssid.lowercase().contains(it) }) continue
+
+            // ==================== NEIGHBORHOOD WALKING FALSE POSITIVE CHECK ====================
+            // Walking through a suburb, you'll see the SAME SSID from DIFFERENT homes.
+            // This is NOT an evil twin attack - it's just common names (ISP defaults, router
+            // manufacturer defaults, popular names multiple people choose).
+            //
+            // An evil twin attack requires:
+            // 1. Attacker spoofing YOUR specific network's SSID
+            // 2. Attacker's AP being in close proximity to trick YOUR device
+            //
+            // Walking past "xfinitywifi" from 10 different Comcast routers is NOT this.
+            // Walking past "NETGEAR" from 5 homes with default SSIDs is NOT this.
+            //
+            // Skip SSIDs that match neighborhood-common patterns.
+            val isNeighborhoodCommonSsid = NEIGHBORHOOD_COMMON_SSID_PATTERNS.any { pattern ->
+                pattern.matches(ssid)
+            }
+            if (isNeighborhoodCommonSsid) {
+                Log.d(TAG, "SSID '$ssid' matches neighborhood-common pattern - skipping evil twin check")
+                continue
+            }
+
+            // Get all APs with this SSID including their frequencies
+            val apDetails = results
+                .filter { it.SSID == ssid && it.BSSID != null }
+                .map { ApDetails(it.BSSID!!.uppercase(), it.level, it.frequency) }
+
+            if (apDetails.size >= 2) {
+                // ==================== OUI DIVERSITY CHECK ====================
+                // Evil twin: Attacker spoofs SSID with their own hardware = SAME OUI ecosystem
+                // Neighborhood walking: Different homes' routers = DIVERSE OUIs from different vendors
+                //
+                // If we see completely different OUI prefixes (different manufacturers),
+                // this is almost certainly different homes, not an attack.
+                val uniqueOuis = apDetails.map { it.bssid.take(8) }.toSet()
+                val ouiDiversity = uniqueOuis.size.toFloat() / apDetails.size
+
+                // ==================== SAME OUI = SAME HOUSEHOLD ====================
+                // If ALL APs have the EXACT same OUI prefix, this is almost certainly:
+                // - A mesh network (e.g., Google WiFi, Eero, Orbi)
+                // - A multi-AP setup from the same router (dual/tri-band)
+                // - Multiple routers from the same manufacturer in one household
+                //
+                // Real evil twin attacks use DIFFERENT hardware than the target!
+                // An attacker wouldn't use the exact same manufacturer OUI.
+                if (uniqueOuis.size == 1 && apDetails.size >= 2) {
+                    Log.d(TAG, "SSID '$ssid' has ${apDetails.size} APs all with same OUI (${uniqueOuis.first()}) - clearly same household, not evil twin")
+                    continue
+                }
+
+                // High OUI diversity (many different manufacturers) = neighborhood, not attack
+                // A real evil twin would use the same or similar OUI to avoid detection
+                if (ouiDiversity > 0.7f && uniqueOuis.size >= 3) {
+                    Log.d(TAG, "SSID '$ssid' has high OUI diversity (${uniqueOuis.size} different vendors) - likely different homes, not evil twin")
+                    continue
+                }
+
+                // Group BSSIDs that likely belong to the same physical device
+                // (dual-band/tri-band routers broadcasting on 2.4GHz, 5GHz, and/or 6GHz)
+                val deviceGroups = groupBssidsByDevice(apDetails)
+
+                // If all BSSIDs belong to the same device group, this is likely a dual/tri-band router
+                if (deviceGroups.size <= 1) {
+                    Log.d(TAG, "SSID '$ssid' has ${apDetails.size} BSSIDs but they appear to be from same dual/tri-band device")
+                    continue
+                }
+
+                // ==================== SAME OUI CHECK FOR 2 APs ====================
+                // For exactly 2 APs with the same OUI prefix, this is almost certainly:
+                // 1. A dual-band router (2.4GHz + 5GHz) that wasn't grouped by device
+                // 2. A 2-node mesh network (e.g., main router + satellite)
+                // 3. Two APs from the same manufacturer in the same household
+                //
+                // Evil twins typically use DIFFERENT hardware than the target network.
+                // Same OUI with only 2 APs is very unlikely to be an attack.
+                if (apDetails.size == 2 && uniqueOuis.size == 1) {
+                    // Both APs have the same OUI - likely same manufacturer/household
+                    // Check if they've both been seen consistently (not new/suspicious)
+                    val bothEstablished = apDetails.all { ap ->
+                        val history = networkHistory[ap.bssid]
+                        (history?.seenCount ?: 0) >= 2
+                    }
+                    if (bothEstablished) {
+                        Log.d(TAG, "SSID '$ssid' has 2 APs with same OUI (${uniqueOuis.first()}) - likely dual-band or small mesh, not evil twin")
+                        continue
+                    }
+                }
+
+                // Check if this looks like a mesh network (multiple nodes from same ecosystem)
+                // Mesh networks have:
+                // 1. Similar OUI prefixes (often differ only slightly)
+                // 2. Multiple APs with consistent presence over time
+                // 3. All BSSIDs seen frequently (not a new/suspicious AP)
+                val isMeshNetwork = isLikelyMeshNetwork(ssid, apDetails)
+                if (isMeshNetwork) {
+                    Log.d(TAG, "SSID '$ssid' appears to be a mesh network with ${apDetails.size} nodes - not flagging as evil twin")
+                    continue
+                }
+
+                // ==================== BRIEF SIGHTING CHECK ====================
+                // If ALL the APs were only seen 1-2 times, we're likely walking past them
+                // Evil twin attacks require sustained presence to capture credentials
+                val allBriefSightings = apDetails.all { ap ->
+                    val history = networkHistory[ap.bssid]
+                    (history?.seenCount ?: 0) <= 2
+                }
+                if (allBriefSightings && apDetails.size >= 3) {
+                    Log.d(TAG, "SSID '$ssid' - all ${apDetails.size} APs seen briefly (<=2 times) - likely walking past different homes")
+                    continue
+                }
+
+                // We have multiple distinct devices that don't appear to be a mesh - check for evil twin
+                val signals = apDetails.map { it.rssi }
+                val maxDiff = (signals.maxOrNull() ?: 0) - (signals.minOrNull() ?: 0)
+
+                // Increase threshold to reduce false positives - multiple legitimate APs in a building
+                // can have 15-20 dBm variance. True evil twins typically have larger differences
+                // because they're trying to overpower the legitimate AP from a different location.
+                val adjustedThreshold = if (deviceGroups.size >= 3) {
+                    // 3+ device groups is likely a mesh or enterprise deployment
+                    EVIL_TWIN_SIGNAL_DIFF_THRESHOLD + 15 // 30 dBm
+                } else {
+                    EVIL_TWIN_SIGNAL_DIFF_THRESHOLD + 5 // 20 dBm
+                }
+
+                if (maxDiff > adjustedThreshold) {
+                    // Different signal strengths from different devices - possible evil twin
+                    val strongestAp = apDetails.maxByOrNull { it.rssi }
+
+                    // Check if the strongest AP is one we've seen many times (trusted)
+                    val strongestHistory = strongestAp?.bssid?.let { networkHistory[it] }
+                    val isStrongestTrusted = (strongestHistory?.seenCount ?: 0) >= 5
+
+                    // Only report if the suspicious AP is new/rarely seen
+                    if (!isStrongestTrusted) {
+                        reportAnomaly(
+                            type = WifiAnomalyType.EVIL_TWIN,
+                            description = "Multiple APs advertising same SSID with different signal strengths",
+                            technicalDetails = "SSID '$ssid' seen from ${deviceGroups.size} different devices " +
+                                "(${apDetails.size} total BSSIDs). Signal variance: ${maxDiff}dBm suggests " +
+                                "different physical locations/devices. Mesh networks and dual-band APs were excluded.",
+                            ssid = ssid,
+                            bssid = strongestAp?.bssid,
+                            rssi = strongestAp?.rssi,
+                            confidence = AnomalyConfidence.MEDIUM,
+                            contributingFactors = listOf(
+                                "${deviceGroups.size} distinct devices with same SSID",
+                                "Signal difference: ${maxDiff}dBm",
+                                "BSSIDs: ${bssids.take(3).joinToString(", ")}"
+                            ),
+                            relatedNetworks = bssids.toList()
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Determine if an SSID with multiple BSSIDs is likely a mesh network.
+     *
+     * Mesh networks are characterized by:
+     * 1. Multiple APs with the same SSID (by design)
+     * 2. APs that have been seen consistently over time (not new/suspicious)
+     * 3. OUIs that are similar or from known mesh router manufacturers
+     * 4. Presence on multiple frequency bands
+     */
+    private fun isLikelyMeshNetwork(ssid: String, apDetails: List<ApDetails>): Boolean {
+        if (apDetails.size < 3) return false  // Mesh typically has 3+ nodes
+
+        // Check if most APs have been seen multiple times (established network)
+        val allEstablished = apDetails.all { ap ->
+            val history = networkHistory[ap.bssid]
+            (history?.seenCount ?: 0) >= 3
+        }
+
+        // Check OUI similarity - mesh networks often have similar OUIs
+        val ouis = apDetails.map { it.bssid.take(8) }.toSet()
+        val uniqueOuiCount = ouis.size
+
+        // Check if OUIs are "related" (differ in specific ways that suggest same manufacturer line)
+        val hasRelatedOuis = areOuisRelated(ouis.toList())
+
+        // Check frequency band coverage - mesh networks typically cover multiple bands
+        val bands = apDetails.map { getFrequencyBand(it.frequency) }.toSet()
+        val hasMultipleBands = bands.size >= 2
+
+        // Heuristic: Likely mesh if:
+        // - All APs established (seen 3+ times each) OR
+        // - OUIs are related (from same manufacturer family) OR
+        // - Has multiple bands AND 3+ APs with related OUIs
+        return allEstablished ||
+               (hasRelatedOuis && apDetails.size >= 3) ||
+               (hasMultipleBands && uniqueOuiCount <= 2)
+    }
+
+    /**
+     * Check if a set of OUIs appear to be from related devices (same manufacturer family).
+     * Mesh router systems sometimes use slightly different OUI prefixes for different model years
+     * or different components, but they're all from the same vendor ecosystem.
+     */
+    private fun areOuisRelated(ouis: List<String>): Boolean {
+        if (ouis.size < 2) return true
+
+        // Extract the first 4 characters (vendor-like prefix)
+        val vendorPrefixes = ouis.map { it.take(5) }.toSet()
+
+        // If vendor prefixes are very similar (only 1-2 unique), likely same manufacturer
+        if (vendorPrefixes.size <= 2) return true
+
+        // Check for known mesh router OUI patterns
+        // Many mesh systems have OUIs that share the first 4-6 hex characters
+        val normalizedOuis = ouis.map { it.replace(":", "").uppercase() }
+
+        // Count how many OUIs share the first 4 hex digits
+        val firstFourGroups = normalizedOuis.groupBy { it.take(4) }
+        val largestGroup = firstFourGroups.values.maxOfOrNull { it.size } ?: 0
+
+        // If most OUIs share first 4 digits, they're likely related
+        return largestGroup >= (ouis.size * 0.6)
+    }
+
+    private data class ApDetails(
+        val bssid: String,
+        val rssi: Int,
+        val frequency: Int
+    )
+
+    /**
+     * Groups BSSIDs that likely belong to the same physical device.
+     * Dual-band and tri-band routers broadcast the same SSID on multiple frequencies
+     * (2.4GHz, 5GHz, 6GHz) with different BSSIDs that typically share the same OUI
+     * and have similar/sequential MAC addresses.
+     *
+     * @return List of device groups, where each group contains BSSIDs from the same physical device
+     */
+    private fun groupBssidsByDevice(apDetails: List<ApDetails>): List<List<ApDetails>> {
+        if (apDetails.isEmpty()) return emptyList()
+        if (apDetails.size == 1) return listOf(apDetails)
+
+        // Get the frequency bands for each AP
+        val withBands = apDetails.map { ap ->
+            ap to getFrequencyBand(ap.frequency)
+        }
+
+        // Group by OUI (first 8 characters of BSSID, e.g., "AA:BB:CC")
+        val ouiGroups = withBands.groupBy { it.first.bssid.take(8) }
+
+        val deviceGroups = mutableListOf<List<ApDetails>>()
+
+        for ((_, apsInOui) in ouiGroups) {
+            // Within the same OUI, check if BSSIDs are on different bands
+            // If they're on different bands, they're likely from the same dual/tri-band device
+            val bandsCovered = apsInOui.map { it.second }.toSet()
+
+            if (bandsCovered.size > 1 && areBssidsFromSameDevice(apsInOui.map { it.first })) {
+                // Multiple bands from same OUI with similar BSSIDs = same device
+                deviceGroups.add(apsInOui.map { it.first })
+            } else {
+                // Either single band or BSSIDs too different - treat each as separate
+                // But still group truly identical devices (same band could be mesh nodes)
+                val subGroups = groupBySimilarBssid(apsInOui.map { it.first })
+                deviceGroups.addAll(subGroups.map { group -> group })
+            }
+        }
+
+        return deviceGroups
+    }
+
+    private enum class FrequencyBand {
+        BAND_2_4GHZ,
+        BAND_5GHZ,
+        BAND_6GHZ,
+        UNKNOWN
+    }
+
+    private fun getFrequencyBand(frequency: Int): FrequencyBand {
+        return when {
+            frequency in 2400..2500 -> FrequencyBand.BAND_2_4GHZ
+            frequency in 5150..5900 -> FrequencyBand.BAND_5GHZ
+            frequency in 5925..7125 -> FrequencyBand.BAND_6GHZ
+            else -> FrequencyBand.UNKNOWN
+        }
+    }
+
+    /**
+     * Checks if BSSIDs are likely from the same physical device.
+     * Dual-band routers often have sequential or very similar MAC addresses
+     * that differ only in the last few characters.
+     */
+    private fun areBssidsFromSameDevice(aps: List<ApDetails>): Boolean {
+        if (aps.size < 2) return true
+
+        // Extract the MAC addresses without colons for easier comparison
+        val macs = aps.map { it.bssid.replace(":", "") }
+
+        // Check if MACs share the first 10 characters (differ only in last 2 hex digits)
+        // This is common for dual-band routers: AA:BB:CC:DD:EE:F0 and AA:BB:CC:DD:EE:F1
+        val prefixes10 = macs.map { it.take(10) }.toSet()
+        if (prefixes10.size == 1) return true
+
+        // Check if the numeric difference between MACs is small (e.g., <= 16)
+        // This handles cases where the last octet differs by a small amount
+        val macValues = macs.mapNotNull { mac ->
+            try {
+                mac.takeLast(4).toLong(16)
+            } catch (e: NumberFormatException) {
+                null
+            }
+        }
+
+        if (macValues.size == macs.size && macValues.isNotEmpty()) {
+            val minVal = macValues.minOrNull() ?: return false
+            val maxVal = macValues.maxOrNull() ?: return false
+            // If the last 2 bytes differ by 16 or less, likely same device
+            // (covers dual-band and tri-band with some margin)
+            if (maxVal - minVal <= 16) return true
+        }
+
+        return false
+    }
+
+    /**
+     * Groups APs by similar BSSID (for mesh networks or APs with very close MACs)
+     */
+    private fun groupBySimilarBssid(aps: List<ApDetails>): List<List<ApDetails>> {
+        if (aps.isEmpty()) return emptyList()
+        if (aps.size == 1) return listOf(aps)
+
+        val groups = mutableListOf<MutableList<ApDetails>>()
+        val assigned = mutableSetOf<String>()
+
+        for (ap in aps) {
+            if (ap.bssid in assigned) continue
+
+            val group = mutableListOf(ap)
+            assigned.add(ap.bssid)
+
+            for (other in aps) {
+                if (other.bssid in assigned) continue
+                if (areBssidsFromSameDevice(listOf(ap, other))) {
+                    group.add(other)
+                    assigned.add(other.bssid)
+                }
+            }
+
+            groups.add(group)
+        }
+
+        return groups
+    }
+
+    private fun checkForFollowingNetworks() {
+        val now = System.currentTimeMillis()
+
+        // Take a defensive copy of entries to avoid concurrent modification
+        // ConcurrentHashMap iteration is weakly consistent, but modifying values during
+        // iteration can cause issues, so we collect BSSIDs to clear afterwards
+        val bssidsToClear = mutableListOf<String>()
+
+        for ((bssid, sightings) in followingNetworks) {
+            // Take a defensive copy of sightings for analysis
+            val sightingsSnapshot = synchronized(sightings) { sightings.toList() }
+            if (sightingsSnapshot.size < 3) continue
+
+            // Build enriched following analysis using the snapshot
+            val analysis = buildFollowingAnalysis(bssid, sightingsSnapshot)
+
+            // ==================== REPORTING THRESHOLDS ====================
+            // TUNED: More conservative thresholds to reduce false positives
+            //
+            // Requirements to report:
+            // 1. Minimum distance threshold (default 1 mile)
+            // 2. Confidence above minimum threshold (accounting for FP likelihood)
+            // 3. NOT a clear false positive pattern
+            //
+            // The confidence score already incorporates FP likelihood subtraction,
+            // so we can use it directly for threshold decisions.
+
+            val meetsDistanceThreshold = analysis.totalDistanceTraveledMeters >= minTrackingDistanceMeters
+
+            // Require higher confidence threshold for reporting (raised from 50 to 60)
+            // With the new FP-aware scoring, legitimate threats should still exceed this
+            val meetsConfidenceThreshold = analysis.followingConfidence >= 60
+
+            // Additional check: if FP likelihood is very high (>70%), suppress entirely
+            // unless confidence is also very high (real surveillance would have strong indicators)
+            val suppressDueToFP = analysis.falsePositiveLikelihood > 70f &&
+                analysis.followingConfidence < 80f
+
+            // Location requirement: need at least 3 TRULY distinct locations (100m apart)
+            // to show actual following behavior vs. just being in the same area
+            val meetsLocationThreshold = analysis.distinctLocations >= 3
+
+            val shouldReport = meetsDistanceThreshold &&
+                meetsConfidenceThreshold &&
+                meetsLocationThreshold &&
+                !suppressDueToFP
+
+            if (shouldReport) {
+                val history = networkHistory[bssid]
+
+                // Determine confidence level based on enriched analysis
+                // TUNED: Raised thresholds - CRITICAL should be rare
+                val confidence = when {
+                    analysis.followingConfidence >= 85 -> AnomalyConfidence.CRITICAL  // Raised from 80
+                    analysis.followingConfidence >= 70 -> AnomalyConfidence.HIGH      // Raised from 60
+                    analysis.followingConfidence >= 55 -> AnomalyConfidence.MEDIUM    // Raised from 40
+                    else -> AnomalyConfidence.LOW
+                }
+
+                // Build enriched description including FP context if relevant
+                val distanceMiles = analysis.totalDistanceTraveledMeters / 1609.0
+                val description = buildString {
+                    append("Network appears to be following your movement")
+                    if (analysis.vehicleMounted) {
+                        append(" (vehicle-mounted)")
+                    } else if (analysis.possibleFootSurveillance) {
+                        append(" (possible foot surveillance)")
+                    }
+                    append(" for ${String.format("%.1f", distanceMiles)} mi")
+                    append(" - confidence: ${String.format("%.0f", analysis.followingConfidence)}%")
+
+                    // Add FP context for transparency
+                    if (analysis.falsePositiveLikelihood > 30f) {
+                        append(" (FP likelihood: ${String.format("%.0f", analysis.falsePositiveLikelihood)}%)")
+                    }
+                }
+
+                reportAnomaly(
+                    type = WifiAnomalyType.FOLLOWING_NETWORK,
+                    description = description,
+                    technicalDetails = buildFollowingTechnicalDetails(analysis),
+                    ssid = history?.ssid,
+                    bssid = bssid,
+                    rssi = sightingsSnapshot.lastOrNull()?.rssi,
+                    confidence = confidence,
+                    contributingFactors = buildFollowingContributingFactors(analysis)
+                )
+
+                // Mark for clearing after iteration
+                bssidsToClear.add(bssid)
+            } else if (analysis.falsePositiveLikelihood > 50f) {
+                explicitSuppressionCounter.incrementAndGet()
+                // Log suppressed detection for debugging
+                Log.d(TAG, "FOLLOWING_NETWORK suppressed for $bssid: " +
+                    "confidence=${analysis.followingConfidence}%, " +
+                    "fpLikelihood=${analysis.falsePositiveLikelihood}%, " +
+                    "indicators=${analysis.fpIndicators.joinToString()}")
+
+                // Mark for clearing after iteration
+                bssidsToClear.add(bssid)
+            }
+        }
+
+        // Clear sightings after iteration to avoid ConcurrentModificationException
+        for (bssid in bssidsToClear) {
+            followingNetworks[bssid]?.let { sightings ->
+                synchronized(sightings) {
+                    sightings.clear()
+                }
+            }
+        }
+    }
+
+    private fun checkDeauthIndicators() {
+        val now = System.currentTimeMillis()
+        disconnectHistory.removeAll { now - it > DEAUTH_WINDOW_MS }
+
+        if (disconnectHistory.size >= DEAUTH_THRESHOLD) {
+            reportAnomaly(
+                type = WifiAnomalyType.DEAUTH_ATTACK,
+                description = "Possible deauthentication attack detected",
+                technicalDetails = "${disconnectHistory.size} WiFi disconnects in the last minute. " +
+                    "This may indicate a deauth attack to force you onto a rogue AP.",
+                ssid = null,
+                bssid = null,
+                rssi = null,
+                confidence = AnomalyConfidence.MEDIUM,
+                contributingFactors = listOf(
+                    "${disconnectHistory.size} disconnects in 60 seconds",
+                    "Threshold: $DEAUTH_THRESHOLD disconnects"
+                )
+            )
+
+            // Clear to avoid spam
+            disconnectHistory.clear()
+        }
+    }
+
+    private fun detectDisappearedNetworks(currentBssids: Set<String>) {
+        val now = System.currentTimeMillis()
+        val recentThreshold = 30_000L // Network was seen in last 30 seconds
+
+        for ((bssid, history) in networkHistory) {
+            if (bssid !in currentBssids &&
+                now - history.lastSeen < recentThreshold &&
+                history.seenCount > 5) {
+                // Network suddenly disappeared
+                addTimelineEvent(
+                    type = WifiEventType.NETWORK_DISAPPEARED,
+                    title = "Network Disappeared",
+                    description = "Previously stable network '${history.ssid}' suddenly gone",
+                    ssid = history.ssid,
+                    bssid = bssid,
+                    rssi = history.signalHistory.lastOrNull()?.rssi
+                )
+            }
+        }
+    }
+
+    private fun countPotentialEvilTwins(): Int {
+        // Count actual evil twin anomalies that were reported after filtering out
+        // legitimate multi-AP scenarios (dual-band routers, mesh networks, etc.)
+        return detectedAnomalies.count { it.type == WifiAnomalyType.EVIL_TWIN }
+    }
+
+    private fun reportAnomaly(
+        type: WifiAnomalyType,
+        description: String,
+        technicalDetails: String,
+        ssid: String?,
+        bssid: String?,
+        rssi: Int?,
+        confidence: AnomalyConfidence,
+        contributingFactors: List<String>,
+        relatedNetworks: List<String> = emptyList(),
+        followingAnalysis: FollowingNetworkAnalysis? = null
+    ) {
+        val now = System.currentTimeMillis()
+        val lastTime = lastAnomalyTimes[type] ?: 0
+
+        if (now - lastTime < ANOMALY_COOLDOWN_MS) {
+            return
+        }
+        lastAnomalyTimes[type] = now
+
+        val severity = when (confidence) {
+            AnomalyConfidence.CRITICAL -> ThreatLevel.CRITICAL
+            AnomalyConfidence.HIGH -> ThreatLevel.HIGH
+            AnomalyConfidence.MEDIUM -> ThreatLevel.MEDIUM
+            AnomalyConfidence.LOW -> ThreatLevel.LOW
+        }
+
+        val anomaly = WifiAnomaly(
+            type = type,
+            severity = severity,
+            confidence = confidence,
+            description = description,
+            technicalDetails = technicalDetails,
+            ssid = ssid,
+            bssid = bssid,
+            rssi = rssi,
+            latitude = currentLatitude,
+            longitude = currentLongitude,
+            contributingFactors = contributingFactors,
+            relatedNetworks = relatedNetworks,
+            followingAnalysis = followingAnalysis
+        )
+
+        detectedAnomalies.add(anomaly)
+        _anomalies.value = detectedAnomalies.toList()
+
+        addTimelineEvent(
+            type = WifiEventType.ANOMALY_DETECTED,
+            title = "${type.emoji} ${type.displayName}",
+            description = description,
+            ssid = ssid,
+            bssid = bssid,
+            rssi = rssi,
+            isAnomaly = true,
+            threatLevel = severity
+        )
+
+        Log.w(TAG, "WIFI ANOMALY [${confidence.displayName}]: ${type.displayName} - $description")
+    }
+
+    private fun addTimelineEvent(
+        type: WifiEventType,
+        title: String,
+        description: String,
+        ssid: String? = null,
+        bssid: String? = null,
+        rssi: Int? = null,
+        isAnomaly: Boolean = false,
+        threatLevel: ThreatLevel = ThreatLevel.INFO
+    ) {
+        val event = WifiEvent(
+            type = type,
+            title = title,
+            description = description,
+            ssid = ssid,
+            bssid = bssid,
+            rssi = rssi,
+            isAnomaly = isAnomaly,
+            threatLevel = threatLevel,
+            latitude = currentLatitude,
+            longitude = currentLongitude
+        )
+
+        // CopyOnWriteArrayList operations are thread-safe individually but not atomic together
+        // Use synchronized block for the compound operation
+        synchronized(eventHistory) {
+            eventHistory.add(0, event)
+            while (eventHistory.size > maxEventHistory) {
+                eventHistory.removeAt(eventHistory.size - 1)
+            }
+        }
+        _wifiEvents.value = eventHistory.toList()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun registerReceivers() {
+        // Connection state receiver
+        connectionReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == WifiManager.NETWORK_STATE_CHANGED_ACTION) {
+                    // Check for disconnection
+                    val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO, android.net.NetworkInfo::class.java)
+                    } else {
+                        intent.getParcelableExtra<android.net.NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
+                    }
+                    if (info?.isConnected == false) {
+                        onDisconnect()
+                    }
+                }
+            }
+        }
+
+        context.registerReceiver(
+            connectionReceiver,
+            IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION)
+        )
+    }
+
+    private fun unregisterReceivers() {
+        try {
+            connectionReceiver?.let { context.unregisterReceiver(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering receiver", e)
+        }
+        connectionReceiver = null
+    }
+
+    private fun frequencyToChannel(frequency: Int): Int {
+        return when {
+            frequency in 2412..2484 -> (frequency - 2412) / 5 + 1
+            frequency in 5170..5825 -> (frequency - 5170) / 5 + 34
+            frequency in 5955..7115 -> (frequency - 5955) / 5 + 1 // 6GHz
+            else -> 0
+        }
+    }
+
+    private fun getManufacturerFromOui(oui: String): String {
+        return when (oui.uppercase()) {
+            // === Hikvision (Chinese state-linked, world's largest) ===
+            "B4:A3:82", "44:19:B6", "54:C4:15", "28:57:BE",
+            "C0:56:E3", "4C:BD:8F", "18:68:CB", "C4:2F:90" -> "Hikvision"
+
+            // === Dahua (Chinese state-linked, second largest) ===
+            "E0:50:8B", "3C:EF:8C", "4C:11:BF", "A0:BD:1D",
+            "90:02:A9", "B0:A7:32" -> "Dahua"
+
+            // === Known spy/covert camera manufacturers ===
+            "00:18:AE" -> "Shenzhen TVT (Hidden Cameras)"
+            "7C:DD:90" -> "Shenzhen Ogemray (Spy Cameras)"
+            "D4:D2:52" -> "Shenzhen Bilian (Mini Cameras)"
+            "E8:AB:FA" -> "Shenzhen Reecam (Nanny Cams)"
+            "AC:B7:4D" -> "LIFI Labs (Covert Cameras)"
+            "EC:71:DB" -> "Shenzhen iComm (IP Cameras)"
+            "48:02:2A" -> "Shenzhen B-Link (Mini Cameras)"
+
+            // === Espressif (IoT chipsets - common in cheap cameras) ===
+            "5C:CF:7F", "60:01:94", "A4:7B:9D", "24:0A:C4", "84:F3:EB" -> "Espressif (IoT Chip)"
+
+            // === Common consumer camera brands ===
+            "2C:AA:8E", "D0:3F:27" -> "Wyze Labs"
+            "78:8B:2A", "64:09:80", "F8:A4:5F" -> "Xiaomi/YI Camera"
+            "9C:8E:CD", "C0:25:67" -> "Amcrest/Foscam"
+            "00:62:6E" -> "Foscam"
+
+            // === Fleet/Surveillance vehicle equipment ===
+            "00:0E:8E", "00:11:75", "00:14:3E", "00:A0:D5" -> "Sierra Wireless (Fleet Router)"
+            "00:30:44", "00:10:8B", "EC:F4:51" -> "Cradlepoint (Fleet Router)"
+            "00:40:9D" -> "Digi International (Fleet)"
+            "00:07:F9" -> "CalAmp (Vehicle Tracking)"
+
+            // === LTE/Cellular modems (common in surveillance) ===
+            "50:29:4D", "86:25:19" -> "Quectel (LTE Modem)"
+            "00:14:2D", "D8:C7:71" -> "Telit (LTE Modem)"
+            "D4:CA:6E" -> "u-blox (GPS/Cellular)"
+
+            // === Nordic Semiconductor (used in body cameras, trackers) ===
+            "C0:A5:3E", "F0:5C:D5" -> "Nordic Semiconductor (BLE)"
+
+            // === Common consumer electronics ===
+            "B0:B9:8A" -> "Netgear"
+            "00:E0:64" -> "Samsung"
+            "00:12:17" -> "Cisco-Linksys"
+            "00:1C:B3" -> "Apple"
+
+            // === Raspberry Pi (DIY surveillance) ===
+            "B8:27:EB", "DC:A6:32", "E4:5F:01" -> "Raspberry Pi (DIY Device)"
+
+            else -> "Unknown"
+        }
+    }
+
+    fun clearAnomalies() {
+        detectedAnomalies.clear()
+        _anomalies.value = emptyList()
+    }
+
+    fun clearHistory() {
+        networkHistory.clear()
+        ssidToBssids.clear()
+        followingNetworks.clear()
+        eventHistory.clear()
+        _wifiEvents.value = emptyList()
+    }
+
+    fun destroy() {
+        stopMonitoring()
+    }
+
+    // ==================== ENRICHMENT ANALYSIS FUNCTIONS ====================
+
+    /**
+     * Calculate Haversine distance between two points in meters
+     */
+    private fun haversineDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val earthRadiusMeters = 6_371_000.0
+
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+                kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+                kotlin.math.sin(dLon / 2) * kotlin.math.sin(dLon / 2)
+
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+
+        return earthRadiusMeters * c
+    }
+
+    /**
+     * Detect time pattern in sightings
+     */
+    private fun detectTimePattern(sightings: List<NetworkSighting>): TimePattern {
+        if (sightings.size < 3) return TimePattern.UNKNOWN
+
+        val intervals = sightings.zipWithNext { a, b -> b.timestamp - a.timestamp }
+
+        if (intervals.isEmpty()) return TimePattern.UNKNOWN
+
+        val avgInterval = intervals.average()
+        val variance = intervals.map { (it - avgInterval) * (it - avgInterval) }.average()
+        val stdDev = kotlin.math.sqrt(variance)
+
+        // Check for periodicity (low variance relative to mean)
+        val coefficientOfVariation = if (avgInterval > 0) stdDev / avgInterval else 0.0
+
+        return when {
+            coefficientOfVariation < 0.3 -> TimePattern.PERIODIC
+            coefficientOfVariation > 1.0 -> TimePattern.RANDOM
+            else -> TimePattern.CORRELATED
+        }
+    }
+
+    /**
+     * Calculate path correlation - how closely network follows user path
+     */
+    private fun calculatePathCorrelation(sightings: List<NetworkSighting>): Float {
+        if (sightings.size < 3) return 0f
+
+        // Check if network location correlates with user location
+        val sightingsWithUserLoc = sightings.filter {
+            it.userLatitude != null && it.userLongitude != null
+        }
+
+        if (sightingsWithUserLoc.size < 2) return 0f
+
+        // Calculate average distance between network and user at each sighting
+        val distances = sightingsWithUserLoc.map { sighting ->
+            haversineDistanceMeters(
+                sighting.latitude, sighting.longitude,
+                sighting.userLatitude!!, sighting.userLongitude!!
+            )
+        }
+
+        // Lower distance variance = higher correlation
+        val avgDistance = distances.average()
+        val variance = distances.map { (it - avgDistance) * (it - avgDistance) }.average()
+
+        // Normalize: 0 = no correlation, 1 = perfect correlation
+        // If average distance is consistently within 200m, that's high correlation
+        val consistentRange = avgDistance < 200 && kotlin.math.sqrt(variance) < 100
+        val moderateRange = avgDistance < 500 && kotlin.math.sqrt(variance) < 200
+
+        return when {
+            consistentRange -> 0.9f
+            moderateRange -> 0.6f
+            avgDistance < 1000 -> 0.3f
+            else -> 0.1f
+        }
+    }
+
+    /**
+     * Analyze signal trend from sightings
+     */
+    private fun analyzeSignalTrend(sightings: List<NetworkSighting>): SignalTrend {
+        if (sightings.size < 3) return SignalTrend.STABLE
+
+        val signals = sightings.map { it.rssi }
+        val firstHalf = signals.take(signals.size / 2).average()
+        val secondHalf = signals.drop(signals.size / 2).average()
+
+        val variance = signals.map { (it - signals.average()) * (it - signals.average()) }.average()
+
+        return when {
+            variance > 100 -> SignalTrend.ERRATIC
+            secondHalf - firstHalf > 10 -> SignalTrend.APPROACHING
+            firstHalf - secondHalf > 10 -> SignalTrend.DEPARTING
+            else -> SignalTrend.STABLE
+        }
+    }
+
+    /**
+     * Determine if device is likely mobile based on signal patterns
+     */
+    private fun isLikelyMobile(sightings: List<NetworkSighting>): Boolean {
+        if (sightings.size < 3) return false
+
+        // Check if network location varies significantly
+        val locations = sightings.map { it.latitude to it.longitude }
+        val centerLat = locations.map { it.first }.average()
+        val centerLon = locations.map { it.second }.average()
+
+        val maxDistance = locations.maxOfOrNull { (lat, lon) ->
+            haversineDistanceMeters(lat, lon, centerLat, centerLon)
+        } ?: 0.0
+
+        // If network has moved more than 50 meters, it's likely mobile
+        return maxDistance > 50
+    }
+
+    /**
+     * Determine if likely vehicle-mounted surveillance
+     */
+    private fun isVehicleMounted(sightings: List<NetworkSighting>): Boolean {
+        if (sightings.size < 3) return false
+
+        // Calculate speeds between sightings
+        val speeds = sightings.zipWithNext { a, b ->
+            val distance = haversineDistanceMeters(a.latitude, a.longitude, b.latitude, b.longitude)
+            val timeHours = (b.timestamp - a.timestamp) / 3_600_000.0
+            if (timeHours > 0) distance / 1000.0 / timeHours else 0.0 // km/h
+        }
+
+        // If average speed suggests vehicle (> 20 km/h)
+        val avgSpeed = speeds.filter { it > 0 }.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        return avgSpeed > 20
+    }
+
+    /**
+     * Determine if likely foot surveillance (walking pace, close)
+     */
+    private fun isPossibleFootSurveillance(sightings: List<NetworkSighting>): Boolean {
+        if (sightings.size < 3) return false
+
+        // Check signal strength (foot surveillance = closer = stronger signal)
+        val avgSignal = sightings.map { it.rssi }.average()
+        val isClose = avgSignal > -60
+
+        // Check movement speed
+        val speeds = sightings.zipWithNext { a, b ->
+            val distance = haversineDistanceMeters(a.latitude, a.longitude, b.latitude, b.longitude)
+            val timeHours = (b.timestamp - a.timestamp) / 3_600_000.0
+            if (timeHours > 0) distance / 1000.0 / timeHours else 0.0
+        }
+        val avgSpeed = speeds.filter { it > 0 }.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        val isWalkingPace = avgSpeed > 0 && avgSpeed < 8 // 0-8 km/h
+
+        return isClose && isWalkingPace
+    }
+
+    /**
+     * Build comprehensive following network analysis
+     *
+     * CONFIDENCE SCORING METHODOLOGY (tuned to reduce false positives):
+     *
+     * The confidence score represents how likely this is REAL surveillance vs. benign.
+     * Reaching 80%+ (CRITICAL) should require STRONG evidence across multiple dimensions.
+     *
+     * SCORING BREAKDOWN:
+     * - Base indicators add points (max ~60 without mitigating factors)
+     * - False positive heuristics SUBTRACT points significantly
+     * - Final confidence is clamped to 0-100
+     *
+     * IMPORTANT: A neighbor's WiFi seen during daily commute should NOT reach CRITICAL.
+     * Real surveillance shows: sustained following over time, multiple locations, no benign pattern.
+     */
+    private fun buildFollowingAnalysis(bssid: String, sightings: List<NetworkSighting>): FollowingNetworkAnalysis {
+        val now = System.currentTimeMillis()
+
+        // Count distinct locations (using 100m threshold instead of 50m to reduce over-counting)
+        val distinctLocs = mutableListOf<Pair<Double, Double>>()
+        for (sighting in sightings) {
+            val isDistinct = distinctLocs.none { existing ->
+                haversineDistanceMeters(sighting.latitude, sighting.longitude, existing.first, existing.second) < 100
+            }
+            if (isDistinct) {
+                distinctLocs.add(sighting.latitude to sighting.longitude)
+            }
+        }
+
+        // Time analysis
+        val trackingDuration = if (sightings.isNotEmpty()) {
+            sightings.last().timestamp - sightings.first().timestamp
+        } else 0L
+
+        val avgTimeBetween = if (sightings.size > 1) {
+            trackingDuration / (sightings.size - 1)
+        } else 0L
+
+        val timePattern = detectTimePattern(sightings)
+
+        // Movement correlation
+        val pathCorrelation = calculatePathCorrelation(sightings)
+
+        // Calculate total distance traveled by user while being followed
+        val totalDistanceTraveled = sightings.zipWithNext { a, b ->
+            haversineDistanceMeters(a.latitude, a.longitude, b.latitude, b.longitude)
+        }.sum()
+
+        // Check if network leads or follows user
+        val leadsUser = false // Would need more sophisticated tracking
+        val lagTimeMs: Long? = null
+
+        // Signal analysis
+        val signals = sightings.map { it.rssi }
+        val avgSignal = signals.average().toInt()
+        val signalVariance = if (signals.isNotEmpty()) {
+            signals.map { (it - avgSignal) * (it - avgSignal) }.average().toFloat()
+        } else 0f
+
+        val signalConsistency = 1 - (kotlin.math.sqrt(signalVariance.toDouble()) / 30).coerceIn(0.0, 1.0).toFloat()
+        val signalTrend = analyzeSignalTrend(sightings)
+
+        // Device classification
+        val likelyMobile = isLikelyMobile(sightings)
+        val vehicleMounted = isVehicleMounted(sightings)
+        val footSurveillance = isPossibleFootSurveillance(sightings)
+
+        // ==================== FALSE POSITIVE HEURISTICS ====================
+        // These patterns suggest benign explanations, NOT surveillance
+
+        val fpIndicators = mutableListOf<String>()
+        var fpLikelihood = 0f
+
+        // 1. Check for neighbor/business WiFi pattern
+        // If we see this network ONLY at locations very close together (all within 200m),
+        // it's likely a neighbor's WiFi or a business we pass regularly
+        val isLikelyNeighborNetwork = if (distinctLocs.size >= 2) {
+            val maxDistanceBetweenSightings = distinctLocs.flatMap { loc1 ->
+                distinctLocs.map { loc2 ->
+                    haversineDistanceMeters(loc1.first, loc1.second, loc2.first, loc2.second)
+                }
+            }.maxOrNull() ?: 0.0
+            maxDistanceBetweenSightings < 200.0
+        } else true  // Single location = definitely not following
+
+        if (isLikelyNeighborNetwork) {
+            fpIndicators.add("All sightings within 200m - likely neighbor/local business WiFi")
+            fpLikelihood += 40f
+        }
+
+        // 2. Check for personal hotspot / mobile hotspot pattern
+        // Very strong signal (-30 to -50 dBm) that's consistent = likely in same vehicle or nearby person
+        val isLikelyMobileHotspot = avgSignal > -55 && signalConsistency > 0.8f
+        if (isLikelyMobileHotspot) {
+            fpIndicators.add("Very strong consistent signal - likely personal/family hotspot")
+            fpLikelihood += 30f
+        }
+
+        // 3. Check for commuter pattern
+        // If time pattern is PERIODIC (regular intervals), this is likely a regular commute
+        // passing the same WiFi repeatedly
+        val isLikelyCommuterDevice = timePattern == TimePattern.PERIODIC && distinctLocs.size <= 3
+        if (isLikelyCommuterDevice) {
+            fpIndicators.add("Periodic pattern with few locations - likely daily commute route")
+            fpLikelihood += 35f
+        }
+
+        // 4. Check for public transit pattern
+        // On buses/trains, we'd see the bus WiFi at regular intervals along a route
+        val isLikelyPublicTransit = vehicleMounted && timePattern == TimePattern.PERIODIC
+        if (isLikelyPublicTransit) {
+            fpIndicators.add("Vehicle-mounted with periodic pattern - possibly public transit WiFi")
+            fpLikelihood += 25f
+        }
+
+        // 5. Short tracking duration is less concerning
+        // Real surveillance typically persists for extended periods
+        val shortDuration = trackingDuration < 600_000L  // Less than 10 minutes
+        if (shortDuration) {
+            fpIndicators.add("Short tracking duration (< 10 minutes)")
+            fpLikelihood += 15f
+        }
+
+        // 6. Low sighting count relative to duration = intermittent, not persistent
+        val sightingsPerMinute = if (trackingDuration > 0) {
+            sightings.size.toFloat() / (trackingDuration / 60_000f)
+        } else 0f
+        val lowPersistence = sightingsPerMinute < 0.5f && sightings.size < 10
+        if (lowPersistence) {
+            fpIndicators.add("Low sighting frequency - intermittent rather than persistent")
+            fpLikelihood += 10f
+        }
+
+        // Clamp FP likelihood
+        fpLikelihood = fpLikelihood.coerceIn(0f, 85f)
+
+        // ==================== RISK INDICATORS ====================
+        val riskIndicators = mutableListOf<String>()
+        if (distinctLocs.size >= 3) riskIndicators.add("Seen at ${distinctLocs.size} distinct locations")
+        if (pathCorrelation > 0.7) riskIndicators.add("High path correlation (${String.format("%.0f", pathCorrelation * 100)}%)")
+        if (likelyMobile) riskIndicators.add("Device appears to be mobile")
+        if (vehicleMounted) riskIndicators.add("Movement pattern suggests vehicle")
+        if (footSurveillance) riskIndicators.add("Pattern suggests foot surveillance (close, walking pace)")
+        if (signalTrend == SignalTrend.APPROACHING) riskIndicators.add("Signal strength increasing (approaching)")
+        if (trackingDuration > 300_000) riskIndicators.add("Tracking for ${trackingDuration / 60_000}+ minutes")  // Raised to 5 min
+        if (timePattern == TimePattern.CORRELATED) riskIndicators.add("Appearance pattern correlated with user movement")
+
+        // ==================== CONFIDENCE CALCULATION ====================
+        // TUNED: More conservative scoring to prevent false CRITICAL alerts
+        //
+        // Old scoring easily reached 100% with:
+        //   5 locations (50) + path correlation (30) + mobile (15) + vehicle (10) = 105
+        //
+        // New scoring:
+        //   - Reduced per-factor weights
+        //   - Require sustained tracking (time-based boost)
+        //   - Subtract FP likelihood
+        //   - Maximum base score ~70 before FP subtraction
+
+        var confidence = 0f
+
+        // Location diversity (reduced from 10 per location to 5, capped)
+        confidence += minOf(distinctLocs.size * 5f, 25f)
+
+        // Path correlation (reduced from 30 to 20)
+        confidence += pathCorrelation * 20f
+
+        // Movement indicators (reduced individual weights)
+        if (likelyMobile) confidence += 10f
+        if (vehicleMounted) confidence += 5f  // Reduced from 10 - vehicles are common
+        if (footSurveillance) confidence += 15f  // Kept high - this is more concerning
+
+        // Time-based factors (require sustained tracking for high confidence)
+        if (trackingDuration > 600_000) confidence += 15f  // 10+ minutes = significant
+        else if (trackingDuration > 300_000) confidence += 8f  // 5-10 minutes = moderate
+        // Under 5 minutes gets no time bonus
+
+        // Pattern correlation
+        if (timePattern == TimePattern.CORRELATED) confidence += 10f
+
+        // Distance traveled boost (only add if significant distance)
+        val distanceMiles = totalDistanceTraveled / 1609.0
+        if (distanceMiles >= 3.0) confidence += 10f  // 3+ miles is significant
+        else if (distanceMiles >= 2.0) confidence += 5f
+
+        // ==================== APPLY FALSE POSITIVE REDUCTION ====================
+        // Subtract FP likelihood from confidence
+        // This ensures benign patterns significantly reduce the alert level
+        confidence -= fpLikelihood
+
+        // Ensure confidence stays in valid range
+        confidence = confidence.coerceIn(0f, 100f)
+
+        return FollowingNetworkAnalysis(
+            sightingCount = sightings.size,
+            distinctLocations = distinctLocs.size,
+            avgTimeBetweenSightingsMs = avgTimeBetween,
+            timePattern = timePattern,
+            trackingDurationMs = trackingDuration,
+            pathCorrelation = pathCorrelation,
+            leadsUser = leadsUser,
+            lagTimeMs = lagTimeMs,
+            totalDistanceTraveledMeters = totalDistanceTraveled,
+            signalConsistency = signalConsistency,
+            signalTrend = signalTrend,
+            avgSignalStrength = avgSignal,
+            signalVariance = signalVariance,
+            likelyMobile = likelyMobile,
+            vehicleMounted = vehicleMounted,
+            possibleFootSurveillance = footSurveillance,
+            followingConfidence = confidence,
+            followingDurationMs = trackingDuration,
+            riskIndicators = riskIndicators,
+            // NEW: Populate FP analysis fields
+            falsePositiveLikelihood = fpLikelihood,
+            fpIndicators = fpIndicators,
+            isLikelyNeighborNetwork = isLikelyNeighborNetwork,
+            isLikelyMobileHotspot = isLikelyMobileHotspot,
+            isLikelyCommuterDevice = isLikelyCommuterDevice,
+            isLikelyPublicTransit = isLikelyPublicTransit
+        )
+    }
+
+    /**
+     * Build enriched technical details from following analysis
+     */
+    private fun buildFollowingTechnicalDetails(analysis: FollowingNetworkAnalysis): String {
+        val parts = mutableListOf<String>()
+
+        parts.add("Following Confidence: ${String.format("%.0f", analysis.followingConfidence)}%")
+        parts.add("Sightings: ${analysis.sightingCount} at ${analysis.distinctLocations} distinct locations")
+        parts.add("Tracking Duration: ${analysis.trackingDurationMs / 1000}s")
+        parts.add("Distance Traveled: ${String.format("%.2f", analysis.totalDistanceTraveledMeters / 1609.0)} mi")
+
+        // Movement classification
+        val deviceType = when {
+            analysis.vehicleMounted -> "Vehicle-mounted"
+            analysis.possibleFootSurveillance -> "Foot surveillance"
+            analysis.likelyMobile -> "Mobile device"
+            else -> "Stationary/Unknown"
+        }
+        parts.add("Device Classification: $deviceType")
+
+        // Path correlation
+        parts.add("Path Correlation: ${String.format("%.0f", analysis.pathCorrelation * 100)}%")
+
+        // Signal info
+        parts.add("Avg Signal: ${analysis.avgSignalStrength} dBm (${analysis.signalTrend.displayName})")
+        parts.add("Signal Consistency: ${String.format("%.0f", analysis.signalConsistency * 100)}%")
+
+        // Time pattern
+        parts.add("Time Pattern: ${analysis.timePattern.displayName}")
+
+        // False positive analysis (for transparency)
+        if (analysis.falsePositiveLikelihood > 0f) {
+            parts.add("")
+            parts.add("=== False Positive Analysis ===")
+            parts.add("FP Likelihood: ${String.format("%.0f", analysis.falsePositiveLikelihood)}%")
+            if (analysis.fpIndicators.isNotEmpty()) {
+                parts.add("FP Indicators:")
+                analysis.fpIndicators.forEach { indicator ->
+                    parts.add("  - $indicator")
+                }
+            }
+            if (analysis.isLikelyNeighborNetwork) parts.add("Likely neighbor/local network: Yes")
+            if (analysis.isLikelyMobileHotspot) parts.add("Likely mobile hotspot: Yes")
+            if (analysis.isLikelyCommuterDevice) parts.add("Likely commuter pattern: Yes")
+            if (analysis.isLikelyPublicTransit) parts.add("Likely public transit: Yes")
+        }
+
+        return parts.joinToString("\n")
+    }
+
+    /**
+     * Build contributing factors from following analysis
+     */
+    private fun buildFollowingContributingFactors(analysis: FollowingNetworkAnalysis): List<String> {
+        return analysis.riskIndicators
+    }
+
+    /**
+     * Convert WiFi anomaly to Detection for storage
+     */
+    fun anomalyToDetection(anomaly: WifiAnomaly): Detection {
+        val detectionMethod = when (anomaly.type) {
+            WifiAnomalyType.EVIL_TWIN -> DetectionMethod.WIFI_EVIL_TWIN
+            WifiAnomalyType.DEAUTH_ATTACK -> DetectionMethod.WIFI_DEAUTH_ATTACK
+            WifiAnomalyType.HIDDEN_CAMERA -> DetectionMethod.WIFI_HIDDEN_CAMERA
+            WifiAnomalyType.SUSPICIOUS_OPEN_NETWORK -> DetectionMethod.WIFI_ROGUE_AP
+            WifiAnomalyType.SIGNAL_ANOMALY -> DetectionMethod.WIFI_SIGNAL_ANOMALY
+            WifiAnomalyType.FOLLOWING_NETWORK -> DetectionMethod.WIFI_FOLLOWING
+            WifiAnomalyType.SURVEILLANCE_VAN -> DetectionMethod.WIFI_SURVEILLANCE_VAN
+            WifiAnomalyType.ROGUE_AP -> DetectionMethod.WIFI_ROGUE_AP
+            WifiAnomalyType.KARMA_ATTACK -> DetectionMethod.WIFI_KARMA_ATTACK
+        }
+
+        val deviceType = when (anomaly.type) {
+            WifiAnomalyType.HIDDEN_CAMERA -> DeviceType.HIDDEN_CAMERA
+            WifiAnomalyType.SURVEILLANCE_VAN -> DeviceType.SURVEILLANCE_VAN
+            WifiAnomalyType.FOLLOWING_NETWORK -> DeviceType.TRACKING_DEVICE
+            else -> DeviceType.ROGUE_AP
+        }
+
+        return Detection(
+            deviceType = deviceType,
+            protocol = DetectionProtocol.WIFI,
+            detectionMethod = detectionMethod,
+            deviceName = "${anomaly.type.emoji} ${anomaly.type.displayName}",
+            macAddress = anomaly.bssid,
+            ssid = anomaly.ssid,
+            rssi = anomaly.rssi ?: -100,
+            signalStrength = rssiToSignalStrength(anomaly.rssi ?: -100),
+            latitude = anomaly.latitude,
+            longitude = anomaly.longitude,
+            threatLevel = anomaly.severity,
+            threatScore = anomaly.type.baseScore,
+            manufacturer = anomaly.bssid?.let { getManufacturerFromOui(it.take(8)) },
+            matchedPatterns = anomaly.contributingFactors.joinToString(", ")
+        )
+    }
+}

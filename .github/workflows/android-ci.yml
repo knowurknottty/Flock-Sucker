@@ -1,0 +1,1783 @@
+name: Android CI/CD
+
+on:
+  # Build on push to main branch
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/android-ci.yml'
+      - 'proguard-rules.pro'
+
+  # Build on pull requests
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/android-ci.yml'
+      - 'proguard-rules.pro'
+
+  # Manual trigger with release option
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub Release'
+        required: true
+        type: boolean
+        default: false
+      release_version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: false
+        type: string
+        default: ''
+      pre_release:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+  SKIP_FLIPPER_BUILD: 'true'  # ufbt not installed in CI
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================
+  # Build Jobs - Separate job for each flavor
+  # ===========================================
+  build-oem:
+    name: Build (oem)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    outputs:
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            app/build/intermediates
+            app/build/kotlin
+          key: ${{ runner.os }}-android-build-oem-${{ hashFiles('app/src/**', 'app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-oem-
+            ${{ runner.os }}-android-build-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Extract version info
+        id: version
+        run: |
+          # Extract version from build.gradle.kts
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo "1.0.0")
+          VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' app/build.gradle.kts || echo "1")
+
+          # Use input version if provided for release
+          if [ -n "${{ inputs.release_version }}" ]; then
+            VERSION_NAME="${{ inputs.release_version }}"
+          fi
+
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Build Debug APK (oem)
+        run: ./gradlew assembleoemDebug --stacktrace --build-cache
+
+      - name: Upload Debug APK (oem)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-oem-debug
+          path: app/build/outputs/apk/oem/debug/*.apk
+          retention-days: 14
+
+      - name: Attest Debug APK (oem)
+        id: attest-debug
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: app/build/outputs/apk/oem/debug/*.apk
+
+      - name: Build Summary
+        run: |
+          echo "## Debug Build Complete (oem)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flavor** | oem |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ steps.version.outputs.version_name }} (${{ steps.version.outputs.version_code }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runner** | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java** | ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Signing" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | Debug (Android debug keystore) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Key** | Default Android debug key |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Attested |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | [SLSA Build Provenance](https://slsa.dev/spec/v1.0/provenance) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle** | [\`${{ steps.attest-debug.outputs.bundle-path }}\`](${{ github.server_url }}/${{ github.repository }}/attestations) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Attestations](${{ github.server_url }}/${{ github.repository }}/attestations)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow File](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/.github/workflows/android-ci.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verify Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify app-oem-debug.apk --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  test-oem:
+    name: Unit Tests (oem)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests (oem)
+        run: ./gradlew testoemDebugUnitTest --stacktrace --build-cache
+
+      - name: Upload Test Results (oem)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-oem
+          path: app/build/reports/tests/
+          retention-days: 7
+
+  build-sideload:
+    name: Build (sideload)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    outputs:
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            app/build/intermediates
+            app/build/kotlin
+          key: ${{ runner.os }}-android-build-sideload-${{ hashFiles('app/src/**', 'app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-sideload-
+            ${{ runner.os }}-android-build-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Extract version info
+        id: version
+        run: |
+          # Extract version from build.gradle.kts
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo "1.0.0")
+          VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' app/build.gradle.kts || echo "1")
+
+          # Use input version if provided for release
+          if [ -n "${{ inputs.release_version }}" ]; then
+            VERSION_NAME="${{ inputs.release_version }}"
+          fi
+
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Build Debug APK (sideload)
+        run: ./gradlew assemblesideloadDebug --stacktrace --build-cache
+
+      - name: Upload Debug APK (sideload)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-sideload-debug
+          path: app/build/outputs/apk/sideload/debug/*.apk
+          retention-days: 14
+
+      - name: Attest Debug APK (sideload)
+        id: attest-debug
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: app/build/outputs/apk/sideload/debug/*.apk
+
+      - name: Build Summary
+        run: |
+          echo "## Debug Build Complete (sideload)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flavor** | sideload |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ steps.version.outputs.version_name }} (${{ steps.version.outputs.version_code }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runner** | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java** | ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Signing" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | Debug (Android debug keystore) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Key** | Default Android debug key |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Attested |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | [SLSA Build Provenance](https://slsa.dev/spec/v1.0/provenance) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle** | [\`${{ steps.attest-debug.outputs.bundle-path }}\`](${{ github.server_url }}/${{ github.repository }}/attestations) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Attestations](${{ github.server_url }}/${{ github.repository }}/attestations)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow File](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/.github/workflows/android-ci.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verify Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify app-sideload-debug.apk --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  test-sideload:
+    name: Unit Tests (sideload)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests (sideload)
+        run: ./gradlew testsideloadDebugUnitTest --stacktrace --build-cache
+
+      - name: Upload Test Results (sideload)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-sideload
+          path: app/build/reports/tests/
+          retention-days: 7
+
+  build-system:
+    name: Build (system)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    outputs:
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            app/build/intermediates
+            app/build/kotlin
+          key: ${{ runner.os }}-android-build-system-${{ hashFiles('app/src/**', 'app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-system-
+            ${{ runner.os }}-android-build-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Extract version info
+        id: version
+        run: |
+          # Extract version from build.gradle.kts
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo "1.0.0")
+          VERSION_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' app/build.gradle.kts || echo "1")
+
+          # Use input version if provided for release
+          if [ -n "${{ inputs.release_version }}" ]; then
+            VERSION_NAME="${{ inputs.release_version }}"
+          fi
+
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Build Debug APK (system)
+        run: ./gradlew assemblesystemDebug --stacktrace --build-cache
+
+      - name: Upload Debug APK (system)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-system-debug
+          path: app/build/outputs/apk/system/debug/*.apk
+          retention-days: 14
+
+      - name: Attest Debug APK (system)
+        id: attest-debug
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: app/build/outputs/apk/system/debug/*.apk
+
+      - name: Build Summary
+        run: |
+          echo "## Debug Build Complete (system)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flavor** | system |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ steps.version.outputs.version_name }} (${{ steps.version.outputs.version_code }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runner** | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java** | ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Signing" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | Debug (Android debug keystore) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Key** | Default Android debug key |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Attested |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | [SLSA Build Provenance](https://slsa.dev/spec/v1.0/provenance) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle** | [\`${{ steps.attest-debug.outputs.bundle-path }}\`](${{ github.server_url }}/${{ github.repository }}/attestations) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Attestations](${{ github.server_url }}/${{ github.repository }}/attestations)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow File](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/.github/workflows/android-ci.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verify Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify app-system-debug.apk --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  test-system:
+    name: Unit Tests (system)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests (system)
+        run: ./gradlew testsystemDebugUnitTest --stacktrace --build-cache
+
+      - name: Upload Test Results (system)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-system
+          path: app/build/reports/tests/
+          retention-days: 7
+
+  # ===========================================
+  # Release Build Jobs - Only when release is requested
+  # ===========================================
+  build-release-oem:
+    name: Build Release (oem)
+    runs-on: ubuntu-latest
+    needs: [build-oem, test-oem]
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release == true
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            app/build/intermediates
+            app/build/kotlin
+          key: ${{ runner.os }}-android-build-oem-release-${{ hashFiles('app/src/**', 'app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-oem-release-
+            ${{ runner.os }}-android-build-oem-
+            ${{ runner.os }}-android-build-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Determine signing method
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "method=keystore" >> $GITHUB_OUTPUT
+            echo "Using configured keystore for signing"
+          elif [ -n "$STEP_CA_URL" ]; then
+            echo "method=step-ca" >> $GITHUB_OUTPUT
+            echo "Using Step CA for signing"
+          else
+            echo "method=ephemeral" >> $GITHUB_OUTPUT
+            echo "Using ephemeral self-signed certificate for signing"
+          fi
+
+      - name: Decode Keystore
+        if: steps.signing.outputs.method == 'keystore'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
+          echo "Keystore decoded"
+
+      - name: Build Release APK (Signed)
+        if: steps.signing.outputs.method == 'keystore'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleoemRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/release-keystore.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
+            --stacktrace --build-cache
+
+      - name: Install step CLI
+        if: steps.signing.outputs.method != 'keystore'
+        run: |
+          wget -q https://dl.smallstep.com/cli/docs-cli-install/latest/step-cli_amd64.deb
+          sudo dpkg -i step-cli_amd64.deb
+          rm step-cli_amd64.deb
+          step version
+
+      - name: Configure Step CA
+        id: step-ca-config
+        if: steps.signing.outputs.method == 'step-ca'
+        env:
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_ROOT_CRT: ${{ secrets.STEP_CA_ROOT_CRT }}
+          STEP_CA_FINGERPRINT: ${{ secrets.STEP_CA_FINGERPRINT }}
+        run: |
+          echo "Configuring step CLI for CA: $STEP_CA_URL"
+
+          if [ -n "$STEP_CA_ROOT_CRT" ]; then
+            echo "$STEP_CA_ROOT_CRT" > /tmp/step-ca-root.crt
+            step ca bootstrap --ca-url "$STEP_CA_URL" --root /tmp/step-ca-root.crt --install
+          elif [ -n "$STEP_CA_FINGERPRINT" ]; then
+            step ca bootstrap --ca-url "$STEP_CA_URL" --fingerprint "$STEP_CA_FINGERPRINT" --install
+          else
+            echo "Either STEP_CA_ROOT_CRT or STEP_CA_FINGERPRINT must be provided"
+            exit 1
+          fi
+
+          echo "Step CA configured"
+          step ca health
+
+      - name: Request Certificate from Step CA (JWK Auth)
+        id: step-ca-cert
+        if: steps.signing.outputs.method == 'step-ca'
+        env:
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_JWK_PROVISIONER: ${{ secrets.STEP_CA_JWK_PROVISIONER }}
+          STEP_CA_JWK_KEY: ${{ secrets.STEP_CA_JWK_KEY }}
+          STEP_CA_JWK_PASSWORD: ${{ secrets.STEP_CA_JWK_PASSWORD }}
+        run: |
+          echo "Requesting certificate from Step CA using JWK provisioner..."
+
+          echo "$STEP_CA_JWK_KEY" > /tmp/jwk-key.json
+          chmod 600 /tmp/jwk-key.json
+
+          step crypto keypair ca-cert-pub.pem ca-cert-key.pem \
+            --kty RSA \
+            --size 2048 \
+            --no-password \
+            --insecure
+
+          if [ -n "$STEP_CA_JWK_PASSWORD" ]; then
+            echo "$STEP_CA_JWK_PASSWORD" | step ca certificate \
+              "CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+              ca-cert.pem \
+              ca-cert-key.pem \
+              --provisioner "$STEP_CA_JWK_PROVISIONER" \
+              --provisioner-password-file /dev/stdin \
+              --not-after 8760h \
+              --force
+          else
+            step ca certificate \
+              "CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+              ca-cert.pem \
+              ca-cert-key.pem \
+              --provisioner "$STEP_CA_JWK_PROVISIONER" \
+              --not-after 8760h \
+              --force
+          fi
+
+          step ca root ca-root.pem
+          cat ca-cert.pem ca-root.pem > ca-cert-chain.pem
+
+          openssl pkcs12 -export \
+            -in ca-cert-chain.pem \
+            -inkey ca-cert-key.pem \
+            -out app/ca-signed-keystore.p12 \
+            -name ca-signed \
+            -passout pass:ca-signed
+
+          keytool -list -keystore app/ca-signed-keystore.p12 -storepass ca-signed -storetype PKCS12
+
+          echo "CA-signed keystore created"
+          echo "Certificate details:"
+          step certificate inspect ca-cert.pem
+          echo "Certificate fingerprint:"
+          step certificate fingerprint ca-cert.pem
+
+          rm -f /tmp/jwk-key.json ca-cert.pem ca-cert-key.pem ca-cert-chain.pem ca-root.pem ca-cert-pub.pem /tmp/step-ca-root.crt
+
+      - name: Build Release APK (CA Signed)
+        if: steps.signing.outputs.method == 'step-ca'
+        run: |
+          echo "Building with CA-signed certificate from Step CA"
+          ./gradlew assembleoemRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/ca-signed-keystore.p12 \
+            -Pandroid.injected.signing.store.password=ca-signed \
+            -Pandroid.injected.signing.key.alias=ca-signed \
+            -Pandroid.injected.signing.key.password=ca-signed \
+            --stacktrace --build-cache
+
+      - name: Generate Ephemeral Self-Signed Certificate
+        if: steps.signing.outputs.method == 'ephemeral'
+        run: |
+          echo "Generating ephemeral self-signed certificate with step CLI..."
+
+          step certificate create \
+            "CN=Flock You Ephemeral,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+            ephemeral-cert.pem \
+            ephemeral-key.pem \
+            --profile self-signed \
+            --subtle \
+            --not-after 8760h \
+            --no-password \
+            --insecure \
+            --kty RSA \
+            --size 2048
+
+          openssl pkcs12 -export \
+            -in ephemeral-cert.pem \
+            -inkey ephemeral-key.pem \
+            -out app/ephemeral-keystore.p12 \
+            -name ephemeral \
+            -passout pass:ephemeral
+
+          keytool -list -keystore app/ephemeral-keystore.p12 -storepass ephemeral -storetype PKCS12
+
+          echo "Ephemeral keystore created"
+          echo "Certificate details:"
+          openssl x509 -in ephemeral-cert.pem -text -noout | head -30
+
+          rm -f ephemeral-cert.pem ephemeral-key.pem
+
+      - name: Build Release APK (Ephemeral Signed)
+        if: steps.signing.outputs.method == 'ephemeral'
+        run: |
+          echo "No keystore or CA configured, building with ephemeral self-signed certificate"
+          ./gradlew assembleoemRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/ephemeral-keystore.p12 \
+            -Pandroid.injected.signing.store.password=ephemeral \
+            -Pandroid.injected.signing.key.alias=ephemeral \
+            -Pandroid.injected.signing.key.password=ephemeral \
+            --stacktrace --build-cache
+
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ needs.build-oem.outputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.release_version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          mkdir -p app/build/outputs/apk/release-renamed
+
+          cp "app/build/outputs/apk/oem/release/"*.apk \
+            "app/build/outputs/apk/release-renamed/FlockYou-oem-v${VERSION}.apk"
+          echo "Renamed oem APK to FlockYou-oem-v${VERSION}.apk"
+
+      - name: Upload Release APK (oem)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-oem-release
+          path: app/build/outputs/apk/release-renamed/*.apk
+          retention-days: 90
+
+      - name: Attest Release APK (oem)
+        id: attest-release
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: app/build/outputs/apk/release-renamed/*.apk
+
+      - name: Release Build Summary
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_JWK_PROVISIONER: ${{ secrets.STEP_CA_JWK_PROVISIONER }}
+        run: |
+          VERSION="${{ needs.build-oem.outputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.release_version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          echo "## Release Build Complete (oem)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flavor** | oem |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runner** | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java** | ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Signing" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "| **Type** | Production (Configured Keystore) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Keystore** | Repository secret (\`KEYSTORE_BASE64\`) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Key Alias** | \`${{ secrets.KEY_ALIAS }}\` |" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "$STEP_CA_URL" ]; then
+            echo "| **Type** | CA-Signed ([Step CA](https://smallstep.com/docs/step-ca/)) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **CA URL** | \`$STEP_CA_URL\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Provisioner** | \`$STEP_CA_JWK_PROVISIONER\` (JWK) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Algorithm** | RSA 2048-bit |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Subject** | \`CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Note:** This APK is signed with a certificate issued by your Step CA using JWK provisioner authentication." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Type** | Ephemeral (Self-Signed Certificate) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Generated By** | [Smallstep CLI](https://smallstep.com/docs/step-cli/) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Algorithm** | RSA 2048-bit |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Validity** | 1 year (ephemeral, CI-only) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Subject** | \`CN=Flock You Ephemeral,O=FlockYou,L=CI,ST=GitHub Actions,C=US\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Note:** This APK is signed with an ephemeral self-signed certificate generated during CI." >> $GITHUB_STEP_SUMMARY
+            echo "> For production releases, configure one of:" >> $GITHUB_STEP_SUMMARY
+            echo "> - **Keystore:** \`KEYSTORE_BASE64\`, \`KEYSTORE_PASSWORD\`, \`KEY_ALIAS\`, \`KEY_PASSWORD\`" >> $GITHUB_STEP_SUMMARY
+            echo "> - **Step CA:** \`STEP_CA_URL\`, \`STEP_CA_ROOT_CRT\`/\`STEP_CA_FINGERPRINT\`, \`STEP_CA_JWK_PROVISIONER\`, \`STEP_CA_JWK_KEY\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Attested |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | [SLSA Build Provenance](https://slsa.dev/spec/v1.0/provenance) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle** | [\`${{ steps.attest-release.outputs.bundle-path }}\`](${{ github.server_url }}/${{ github.repository }}/attestations) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh app/build/outputs/apk/release-renamed/*.apk 2>/dev/null || echo "No APK found"
+          ls -lh app/build/outputs/apk/release-renamed/*.apk >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No APK found" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Attestations](${{ github.server_url }}/${{ github.repository }}/attestations)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow File](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/.github/workflows/android-ci.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Smallstep CLI Docs](https://smallstep.com/docs/step-cli/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [SLSA Provenance Spec](https://slsa.dev/spec/v1.0/provenance)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Verify Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Download and verify the APK attestation" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify FlockYou-oem-v${VERSION}.apk --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# View attestation details" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify FlockYou-oem-v${VERSION}.apk --owner ${{ github.repository_owner }} --format json | jq" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f app/release-keystore.jks
+          rm -f app/ephemeral-keystore.p12
+          rm -f app/ca-signed-keystore.p12
+          rm -rf app/build/outputs/apk/release-renamed
+
+  build-release-sideload:
+    name: Build Release (sideload)
+    runs-on: ubuntu-latest
+    needs: [build-sideload, test-sideload]
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release == true
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            app/build/intermediates
+            app/build/kotlin
+          key: ${{ runner.os }}-android-build-sideload-release-${{ hashFiles('app/src/**', 'app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-sideload-release-
+            ${{ runner.os }}-android-build-sideload-
+            ${{ runner.os }}-android-build-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Determine signing method
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "method=keystore" >> $GITHUB_OUTPUT
+            echo "Using configured keystore for signing"
+          elif [ -n "$STEP_CA_URL" ]; then
+            echo "method=step-ca" >> $GITHUB_OUTPUT
+            echo "Using Step CA for signing"
+          else
+            echo "method=ephemeral" >> $GITHUB_OUTPUT
+            echo "Using ephemeral self-signed certificate for signing"
+          fi
+
+      - name: Decode Keystore
+        if: steps.signing.outputs.method == 'keystore'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
+          echo "Keystore decoded"
+
+      - name: Build Release APK (Signed)
+        if: steps.signing.outputs.method == 'keystore'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assemblesideloadRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/release-keystore.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
+            --stacktrace --build-cache
+
+      - name: Install step CLI
+        if: steps.signing.outputs.method != 'keystore'
+        run: |
+          wget -q https://dl.smallstep.com/cli/docs-cli-install/latest/step-cli_amd64.deb
+          sudo dpkg -i step-cli_amd64.deb
+          rm step-cli_amd64.deb
+          step version
+
+      - name: Configure Step CA
+        id: step-ca-config
+        if: steps.signing.outputs.method == 'step-ca'
+        env:
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_ROOT_CRT: ${{ secrets.STEP_CA_ROOT_CRT }}
+          STEP_CA_FINGERPRINT: ${{ secrets.STEP_CA_FINGERPRINT }}
+        run: |
+          echo "Configuring step CLI for CA: $STEP_CA_URL"
+
+          if [ -n "$STEP_CA_ROOT_CRT" ]; then
+            echo "$STEP_CA_ROOT_CRT" > /tmp/step-ca-root.crt
+            step ca bootstrap --ca-url "$STEP_CA_URL" --root /tmp/step-ca-root.crt --install
+          elif [ -n "$STEP_CA_FINGERPRINT" ]; then
+            step ca bootstrap --ca-url "$STEP_CA_URL" --fingerprint "$STEP_CA_FINGERPRINT" --install
+          else
+            echo "Either STEP_CA_ROOT_CRT or STEP_CA_FINGERPRINT must be provided"
+            exit 1
+          fi
+
+          echo "Step CA configured"
+          step ca health
+
+      - name: Request Certificate from Step CA (JWK Auth)
+        id: step-ca-cert
+        if: steps.signing.outputs.method == 'step-ca'
+        env:
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_JWK_PROVISIONER: ${{ secrets.STEP_CA_JWK_PROVISIONER }}
+          STEP_CA_JWK_KEY: ${{ secrets.STEP_CA_JWK_KEY }}
+          STEP_CA_JWK_PASSWORD: ${{ secrets.STEP_CA_JWK_PASSWORD }}
+        run: |
+          echo "Requesting certificate from Step CA using JWK provisioner..."
+
+          echo "$STEP_CA_JWK_KEY" > /tmp/jwk-key.json
+          chmod 600 /tmp/jwk-key.json
+
+          step crypto keypair ca-cert-pub.pem ca-cert-key.pem \
+            --kty RSA \
+            --size 2048 \
+            --no-password \
+            --insecure
+
+          if [ -n "$STEP_CA_JWK_PASSWORD" ]; then
+            echo "$STEP_CA_JWK_PASSWORD" | step ca certificate \
+              "CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+              ca-cert.pem \
+              ca-cert-key.pem \
+              --provisioner "$STEP_CA_JWK_PROVISIONER" \
+              --provisioner-password-file /dev/stdin \
+              --not-after 8760h \
+              --force
+          else
+            step ca certificate \
+              "CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+              ca-cert.pem \
+              ca-cert-key.pem \
+              --provisioner "$STEP_CA_JWK_PROVISIONER" \
+              --not-after 8760h \
+              --force
+          fi
+
+          step ca root ca-root.pem
+          cat ca-cert.pem ca-root.pem > ca-cert-chain.pem
+
+          openssl pkcs12 -export \
+            -in ca-cert-chain.pem \
+            -inkey ca-cert-key.pem \
+            -out app/ca-signed-keystore.p12 \
+            -name ca-signed \
+            -passout pass:ca-signed
+
+          keytool -list -keystore app/ca-signed-keystore.p12 -storepass ca-signed -storetype PKCS12
+
+          echo "CA-signed keystore created"
+          echo "Certificate details:"
+          step certificate inspect ca-cert.pem
+          echo "Certificate fingerprint:"
+          step certificate fingerprint ca-cert.pem
+
+          rm -f /tmp/jwk-key.json ca-cert.pem ca-cert-key.pem ca-cert-chain.pem ca-root.pem ca-cert-pub.pem /tmp/step-ca-root.crt
+
+      - name: Build Release APK (CA Signed)
+        if: steps.signing.outputs.method == 'step-ca'
+        run: |
+          echo "Building with CA-signed certificate from Step CA"
+          ./gradlew assemblesideloadRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/ca-signed-keystore.p12 \
+            -Pandroid.injected.signing.store.password=ca-signed \
+            -Pandroid.injected.signing.key.alias=ca-signed \
+            -Pandroid.injected.signing.key.password=ca-signed \
+            --stacktrace --build-cache
+
+      - name: Generate Ephemeral Self-Signed Certificate
+        if: steps.signing.outputs.method == 'ephemeral'
+        run: |
+          echo "Generating ephemeral self-signed certificate with step CLI..."
+
+          step certificate create \
+            "CN=Flock You Ephemeral,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+            ephemeral-cert.pem \
+            ephemeral-key.pem \
+            --profile self-signed \
+            --subtle \
+            --not-after 8760h \
+            --no-password \
+            --insecure \
+            --kty RSA \
+            --size 2048
+
+          openssl pkcs12 -export \
+            -in ephemeral-cert.pem \
+            -inkey ephemeral-key.pem \
+            -out app/ephemeral-keystore.p12 \
+            -name ephemeral \
+            -passout pass:ephemeral
+
+          keytool -list -keystore app/ephemeral-keystore.p12 -storepass ephemeral -storetype PKCS12
+
+          echo "Ephemeral keystore created"
+          echo "Certificate details:"
+          openssl x509 -in ephemeral-cert.pem -text -noout | head -30
+
+          rm -f ephemeral-cert.pem ephemeral-key.pem
+
+      - name: Build Release APK (Ephemeral Signed)
+        if: steps.signing.outputs.method == 'ephemeral'
+        run: |
+          echo "No keystore or CA configured, building with ephemeral self-signed certificate"
+          ./gradlew assemblesideloadRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/ephemeral-keystore.p12 \
+            -Pandroid.injected.signing.store.password=ephemeral \
+            -Pandroid.injected.signing.key.alias=ephemeral \
+            -Pandroid.injected.signing.key.password=ephemeral \
+            --stacktrace --build-cache
+
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ needs.build-sideload.outputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.release_version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          mkdir -p app/build/outputs/apk/release-renamed
+
+          cp "app/build/outputs/apk/sideload/release/"*.apk \
+            "app/build/outputs/apk/release-renamed/FlockYou-sideload-v${VERSION}.apk"
+          echo "Renamed sideload APK to FlockYou-sideload-v${VERSION}.apk"
+
+      - name: Upload Release APK (sideload)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-sideload-release
+          path: app/build/outputs/apk/release-renamed/*.apk
+          retention-days: 90
+
+      - name: Attest Release APK (sideload)
+        id: attest-release
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: app/build/outputs/apk/release-renamed/*.apk
+
+      - name: Release Build Summary
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_JWK_PROVISIONER: ${{ secrets.STEP_CA_JWK_PROVISIONER }}
+        run: |
+          VERSION="${{ needs.build-sideload.outputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.release_version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          echo "## Release Build Complete (sideload)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flavor** | sideload |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runner** | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java** | ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Signing" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "| **Type** | Production (Configured Keystore) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Keystore** | Repository secret (\`KEYSTORE_BASE64\`) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Key Alias** | \`${{ secrets.KEY_ALIAS }}\` |" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "$STEP_CA_URL" ]; then
+            echo "| **Type** | CA-Signed ([Step CA](https://smallstep.com/docs/step-ca/)) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **CA URL** | \`$STEP_CA_URL\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Provisioner** | \`$STEP_CA_JWK_PROVISIONER\` (JWK) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Algorithm** | RSA 2048-bit |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Subject** | \`CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Note:** This APK is signed with a certificate issued by your Step CA using JWK provisioner authentication." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Type** | Ephemeral (Self-Signed Certificate) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Generated By** | [Smallstep CLI](https://smallstep.com/docs/step-cli/) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Algorithm** | RSA 2048-bit |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Validity** | 1 year (ephemeral, CI-only) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Subject** | \`CN=Flock You Ephemeral,O=FlockYou,L=CI,ST=GitHub Actions,C=US\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Note:** This APK is signed with an ephemeral self-signed certificate generated during CI." >> $GITHUB_STEP_SUMMARY
+            echo "> For production releases, configure one of:" >> $GITHUB_STEP_SUMMARY
+            echo "> - **Keystore:** \`KEYSTORE_BASE64\`, \`KEYSTORE_PASSWORD\`, \`KEY_ALIAS\`, \`KEY_PASSWORD\`" >> $GITHUB_STEP_SUMMARY
+            echo "> - **Step CA:** \`STEP_CA_URL\`, \`STEP_CA_ROOT_CRT\`/\`STEP_CA_FINGERPRINT\`, \`STEP_CA_JWK_PROVISIONER\`, \`STEP_CA_JWK_KEY\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Attested |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | [SLSA Build Provenance](https://slsa.dev/spec/v1.0/provenance) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle** | [\`${{ steps.attest-release.outputs.bundle-path }}\`](${{ github.server_url }}/${{ github.repository }}/attestations) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh app/build/outputs/apk/release-renamed/*.apk 2>/dev/null || echo "No APK found"
+          ls -lh app/build/outputs/apk/release-renamed/*.apk >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No APK found" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Attestations](${{ github.server_url }}/${{ github.repository }}/attestations)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow File](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/.github/workflows/android-ci.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Smallstep CLI Docs](https://smallstep.com/docs/step-cli/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [SLSA Provenance Spec](https://slsa.dev/spec/v1.0/provenance)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Verify Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Download and verify the APK attestation" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify FlockYou-sideload-v${VERSION}.apk --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# View attestation details" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify FlockYou-sideload-v${VERSION}.apk --owner ${{ github.repository_owner }} --format json | jq" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f app/release-keystore.jks
+          rm -f app/ephemeral-keystore.p12
+          rm -f app/ca-signed-keystore.p12
+          rm -rf app/build/outputs/apk/release-renamed
+
+  build-release-system:
+    name: Build Release (system)
+    runs-on: ubuntu-latest
+    needs: [build-system, test-system]
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release == true
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Android build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/build-cache
+            app/build/intermediates
+            app/build/kotlin
+          key: ${{ runner.os }}-android-build-system-release-${{ hashFiles('app/src/**', 'app/build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-system-release-
+            ${{ runner.os }}-android-build-system-
+            ${{ runner.os }}-android-build-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Determine signing method
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "method=keystore" >> $GITHUB_OUTPUT
+            echo "Using configured keystore for signing"
+          elif [ -n "$STEP_CA_URL" ]; then
+            echo "method=step-ca" >> $GITHUB_OUTPUT
+            echo "Using Step CA for signing"
+          else
+            echo "method=ephemeral" >> $GITHUB_OUTPUT
+            echo "Using ephemeral self-signed certificate for signing"
+          fi
+
+      - name: Decode Keystore
+        if: steps.signing.outputs.method == 'keystore'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
+          echo "Keystore decoded"
+
+      - name: Build Release APK (Signed)
+        if: steps.signing.outputs.method == 'keystore'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assemblesystemRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/release-keystore.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD \
+            --stacktrace --build-cache
+
+      - name: Install step CLI
+        if: steps.signing.outputs.method != 'keystore'
+        run: |
+          wget -q https://dl.smallstep.com/cli/docs-cli-install/latest/step-cli_amd64.deb
+          sudo dpkg -i step-cli_amd64.deb
+          rm step-cli_amd64.deb
+          step version
+
+      - name: Configure Step CA
+        id: step-ca-config
+        if: steps.signing.outputs.method == 'step-ca'
+        env:
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_ROOT_CRT: ${{ secrets.STEP_CA_ROOT_CRT }}
+          STEP_CA_FINGERPRINT: ${{ secrets.STEP_CA_FINGERPRINT }}
+        run: |
+          echo "Configuring step CLI for CA: $STEP_CA_URL"
+
+          if [ -n "$STEP_CA_ROOT_CRT" ]; then
+            echo "$STEP_CA_ROOT_CRT" > /tmp/step-ca-root.crt
+            step ca bootstrap --ca-url "$STEP_CA_URL" --root /tmp/step-ca-root.crt --install
+          elif [ -n "$STEP_CA_FINGERPRINT" ]; then
+            step ca bootstrap --ca-url "$STEP_CA_URL" --fingerprint "$STEP_CA_FINGERPRINT" --install
+          else
+            echo "Either STEP_CA_ROOT_CRT or STEP_CA_FINGERPRINT must be provided"
+            exit 1
+          fi
+
+          echo "Step CA configured"
+          step ca health
+
+      - name: Request Certificate from Step CA (JWK Auth)
+        id: step-ca-cert
+        if: steps.signing.outputs.method == 'step-ca'
+        env:
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_JWK_PROVISIONER: ${{ secrets.STEP_CA_JWK_PROVISIONER }}
+          STEP_CA_JWK_KEY: ${{ secrets.STEP_CA_JWK_KEY }}
+          STEP_CA_JWK_PASSWORD: ${{ secrets.STEP_CA_JWK_PASSWORD }}
+        run: |
+          echo "Requesting certificate from Step CA using JWK provisioner..."
+
+          echo "$STEP_CA_JWK_KEY" > /tmp/jwk-key.json
+          chmod 600 /tmp/jwk-key.json
+
+          step crypto keypair ca-cert-pub.pem ca-cert-key.pem \
+            --kty RSA \
+            --size 2048 \
+            --no-password \
+            --insecure
+
+          if [ -n "$STEP_CA_JWK_PASSWORD" ]; then
+            echo "$STEP_CA_JWK_PASSWORD" | step ca certificate \
+              "CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+              ca-cert.pem \
+              ca-cert-key.pem \
+              --provisioner "$STEP_CA_JWK_PROVISIONER" \
+              --provisioner-password-file /dev/stdin \
+              --not-after 8760h \
+              --force
+          else
+            step ca certificate \
+              "CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+              ca-cert.pem \
+              ca-cert-key.pem \
+              --provisioner "$STEP_CA_JWK_PROVISIONER" \
+              --not-after 8760h \
+              --force
+          fi
+
+          step ca root ca-root.pem
+          cat ca-cert.pem ca-root.pem > ca-cert-chain.pem
+
+          openssl pkcs12 -export \
+            -in ca-cert-chain.pem \
+            -inkey ca-cert-key.pem \
+            -out app/ca-signed-keystore.p12 \
+            -name ca-signed \
+            -passout pass:ca-signed
+
+          keytool -list -keystore app/ca-signed-keystore.p12 -storepass ca-signed -storetype PKCS12
+
+          echo "CA-signed keystore created"
+          echo "Certificate details:"
+          step certificate inspect ca-cert.pem
+          echo "Certificate fingerprint:"
+          step certificate fingerprint ca-cert.pem
+
+          rm -f /tmp/jwk-key.json ca-cert.pem ca-cert-key.pem ca-cert-chain.pem ca-root.pem ca-cert-pub.pem /tmp/step-ca-root.crt
+
+      - name: Build Release APK (CA Signed)
+        if: steps.signing.outputs.method == 'step-ca'
+        run: |
+          echo "Building with CA-signed certificate from Step CA"
+          ./gradlew assemblesystemRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/ca-signed-keystore.p12 \
+            -Pandroid.injected.signing.store.password=ca-signed \
+            -Pandroid.injected.signing.key.alias=ca-signed \
+            -Pandroid.injected.signing.key.password=ca-signed \
+            --stacktrace --build-cache
+
+      - name: Generate Ephemeral Self-Signed Certificate
+        if: steps.signing.outputs.method == 'ephemeral'
+        run: |
+          echo "Generating ephemeral self-signed certificate with step CLI..."
+
+          step certificate create \
+            "CN=Flock You Ephemeral,O=FlockYou,L=CI,ST=GitHub Actions,C=US" \
+            ephemeral-cert.pem \
+            ephemeral-key.pem \
+            --profile self-signed \
+            --subtle \
+            --not-after 8760h \
+            --no-password \
+            --insecure \
+            --kty RSA \
+            --size 2048
+
+          openssl pkcs12 -export \
+            -in ephemeral-cert.pem \
+            -inkey ephemeral-key.pem \
+            -out app/ephemeral-keystore.p12 \
+            -name ephemeral \
+            -passout pass:ephemeral
+
+          keytool -list -keystore app/ephemeral-keystore.p12 -storepass ephemeral -storetype PKCS12
+
+          echo "Ephemeral keystore created"
+          echo "Certificate details:"
+          openssl x509 -in ephemeral-cert.pem -text -noout | head -30
+
+          rm -f ephemeral-cert.pem ephemeral-key.pem
+
+      - name: Build Release APK (Ephemeral Signed)
+        if: steps.signing.outputs.method == 'ephemeral'
+        run: |
+          echo "No keystore or CA configured, building with ephemeral self-signed certificate"
+          ./gradlew assemblesystemRelease \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/ephemeral-keystore.p12 \
+            -Pandroid.injected.signing.store.password=ephemeral \
+            -Pandroid.injected.signing.key.alias=ephemeral \
+            -Pandroid.injected.signing.key.password=ephemeral \
+            --stacktrace --build-cache
+
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ needs.build-system.outputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.release_version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          mkdir -p app/build/outputs/apk/release-renamed
+
+          cp "app/build/outputs/apk/system/release/"*.apk \
+            "app/build/outputs/apk/release-renamed/FlockYou-system-v${VERSION}.apk"
+          echo "Renamed system APK to FlockYou-system-v${VERSION}.apk"
+
+      - name: Upload Release APK (system)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-system-release
+          path: app/build/outputs/apk/release-renamed/*.apk
+          retention-days: 90
+
+      - name: Attest Release APK (system)
+        id: attest-release
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: app/build/outputs/apk/release-renamed/*.apk
+
+      - name: Release Build Summary
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STEP_CA_URL: ${{ secrets.STEP_CA_URL }}
+          STEP_CA_JWK_PROVISIONER: ${{ secrets.STEP_CA_JWK_PROVISIONER }}
+        run: |
+          VERSION="${{ needs.build-system.outputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.release_version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          echo "## Release Build Complete (system)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Flavor** | system |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | v${VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [\`${GITHUB_SHA::7}\`](${{ github.server_url }}/${{ github.repository }}/commit/${GITHUB_SHA}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Runner** | \`${{ runner.os }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Java** | ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Signing" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "| **Type** | Production (Configured Keystore) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Keystore** | Repository secret (\`KEYSTORE_BASE64\`) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Key Alias** | \`${{ secrets.KEY_ALIAS }}\` |" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "$STEP_CA_URL" ]; then
+            echo "| **Type** | CA-Signed ([Step CA](https://smallstep.com/docs/step-ca/)) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **CA URL** | \`$STEP_CA_URL\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Provisioner** | \`$STEP_CA_JWK_PROVISIONER\` (JWK) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Algorithm** | RSA 2048-bit |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Subject** | \`CN=Flock You Release,O=FlockYou,L=CI,ST=GitHub Actions,C=US\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Note:** This APK is signed with a certificate issued by your Step CA using JWK provisioner authentication." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Type** | Ephemeral (Self-Signed Certificate) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Generated By** | [Smallstep CLI](https://smallstep.com/docs/step-cli/) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Algorithm** | RSA 2048-bit |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Validity** | 1 year (ephemeral, CI-only) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Subject** | \`CN=Flock You Ephemeral,O=FlockYou,L=CI,ST=GitHub Actions,C=US\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> **Note:** This APK is signed with an ephemeral self-signed certificate generated during CI." >> $GITHUB_STEP_SUMMARY
+            echo "> For production releases, configure one of:" >> $GITHUB_STEP_SUMMARY
+            echo "> - **Keystore:** \`KEYSTORE_BASE64\`, \`KEYSTORE_PASSWORD\`, \`KEY_ALIAS\`, \`KEY_PASSWORD\`" >> $GITHUB_STEP_SUMMARY
+            echo "> - **Step CA:** \`STEP_CA_URL\`, \`STEP_CA_ROOT_CRT\`/\`STEP_CA_FINGERPRINT\`, \`STEP_CA_JWK_PROVISIONER\`, \`STEP_CA_JWK_KEY\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | Attested |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | [SLSA Build Provenance](https://slsa.dev/spec/v1.0/provenance) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle** | [\`${{ steps.attest-release.outputs.bundle-path }}\`](${{ github.server_url }}/${{ github.repository }}/attestations) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh app/build/outputs/apk/release-renamed/*.apk 2>/dev/null || echo "No APK found"
+          ls -lh app/build/outputs/apk/release-renamed/*.apk >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No APK found" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download Artifact](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Attestations](${{ github.server_url }}/${{ github.repository }}/attestations)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Workflow File](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/.github/workflows/android-ci.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Smallstep CLI Docs](https://smallstep.com/docs/step-cli/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [SLSA Provenance Spec](https://slsa.dev/spec/v1.0/provenance)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Verify Attestation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Download and verify the APK attestation" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify FlockYou-system-v${VERSION}.apk --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# View attestation details" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation verify FlockYou-system-v${VERSION}.apk --owner ${{ github.repository_owner }} --format json | jq" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f app/release-keystore.jks
+          rm -f app/ephemeral-keystore.p12
+          rm -f app/ca-signed-keystore.p12
+          rm -rf app/build/outputs/apk/release-renamed
+
+  # ===========================================
+  # Create GitHub Release
+  # ===========================================
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-oem, build-release-oem, build-release-sideload, build-release-system]
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release == true
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Release APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: app-*-release
+          path: release-apk
+          merge-multiple: true
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.release_version }}" ]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            VERSION="${{ needs.build-oem.outputs.version_name }}"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Generate Release Notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Start with custom notes if provided
+          if [ -n "${{ inputs.release_notes }}" ]; then
+            NOTES="${{ inputs.release_notes }}"
+            NOTES="$NOTES"$'\n\n'
+          else
+            NOTES=""
+          fi
+
+          # Add standard release info
+          NOTES="$NOTES## Flock You v$VERSION"$'\n\n'
+          NOTES="$NOTES### Features"$'\n'
+          NOTES="$NOTES- WiFi and Bluetooth LE surveillance device detection"$'\n'
+          NOTES="$NOTES- Flock Safety, Penguin, Pigvision, and Raven device detection"$'\n'
+          NOTES="$NOTES- Map view with detection locations"$'\n'
+          NOTES="$NOTES- Real-time alerts with vibration"$'\n'
+          NOTES="$NOTES- Detection history and filtering"$'\n\n'
+          NOTES="$NOTES### Installation"$'\n'
+          NOTES="$NOTES1. Download the APK file below"$'\n'
+          NOTES="$NOTES2. Enable \"Install from unknown sources\" in Android settings"$'\n'
+          NOTES="$NOTES3. Open the APK to install"$'\n\n'
+          NOTES="$NOTES### Requirements"$'\n'
+          NOTES="$NOTES- Android 8.0 (API 26) or higher"$'\n'
+          NOTES="$NOTES- Location permissions for scanning"$'\n'
+          NOTES="$NOTES- Bluetooth permissions for BLE detection"$'\n\n'
+          NOTES="$NOTES---"$'\n'
+          NOTES="$NOTES*Based on [colonelpanichacks/flock-you](https://github.com/colonelpanichacks/flock-you)*"
+
+          # Save to file to handle multiline
+          echo "$NOTES" > release_notes.md
+          echo "Generated release notes"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Flock You ${{ steps.version.outputs.tag }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ inputs.pre_release }}
+          files: |
+            release-apk/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release Summary
+        run: |
+          echo "## Release Created!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** ${{ inputs.pre_release }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          ls -la release-apk/ >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================
+  # Lint Job (runs in parallel)
+  # ===========================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Lint
+        run: ./gradlew lint --stacktrace --build-cache
+        continue-on-error: true
+
+      - name: Upload Lint Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-results
+          path: app/build/reports/lint-results-*.html
+          retention-days: 7
