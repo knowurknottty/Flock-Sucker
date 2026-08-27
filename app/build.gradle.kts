@@ -277,7 +277,7 @@ dependencies {
     implementation("androidx.sqlite:sqlite-ktx:2.4.0")
     
     // Location
-    implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation("com.google.android.gms:play-services-location:21.4.0")
     
     // Maps - OpenStreetMap (no API key required)
     implementation("org.osmdroid:osmdroid-android:6.1.18")
