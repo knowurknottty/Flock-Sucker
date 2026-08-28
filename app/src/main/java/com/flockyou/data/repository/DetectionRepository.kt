@@ -12,6 +12,7 @@ import javax.inject.Singleton
 @Singleton
 class DetectionRepository @Inject constructor(
     private val detectionDao: DetectionDao,
+    private val sightingDao: SightingDao,
     private val deduplicator: DetectionDeduplicator
 ) {
     companion object {
@@ -170,13 +171,81 @@ class DetectionRepository @Inject constructor(
                     )
                 }
             }
+            // Record the accepted repeat in the append-only sighting ledger
+            // (evidence row; failure here must not fail the canonical update).
+            try {
+                recordSighting(
+                    detectionId = existing.id,
+                    detection = detection,
+                    disposition = SightingDisposition.ACCEPTED_REPEAT
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Sighting ledger append failed for ${existing.id}: ${e.message}")
+            }
             false // Not a new detection
         } else {
             // Insert new
             insertDetection(detection)
+            // Record the founding sighting for the new device
+            try {
+                recordSighting(
+                    detectionId = detection.id,
+                    detection = detection,
+                    disposition = SightingDisposition.NEW_DEVICE
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Sighting ledger append failed for ${detection.id}: ${e.message}")
+            }
             true // New detection
         }
     }
+
+    /**
+     * Append one sighting row for an accepted observation. Sequence is
+     * monotonic per detection. Location columns carry only what the
+     * observation itself had (privacy filtering happens upstream at capture).
+     */
+    private suspend fun recordSighting(
+        detectionId: String,
+        detection: Detection,
+        disposition: SightingDisposition
+    ) {
+        val sequence = sightingDao.maxSequenceFor(detectionId) + 1
+        sightingDao.insert(
+            Sighting(
+                id = java.util.UUID.randomUUID().toString(),
+                detectionId = detectionId,
+                timestamp = detection.timestamp,
+                sequence = sequence,
+                protocol = detection.protocol.name,
+                sourceScanner = detection.detectionSource?.name
+                    ?: detection.protocol.name,
+                detectorHealthGeneration = 0,
+                rssi = detection.rssi,
+                latitude = detection.latitude,
+                longitude = detection.longitude,
+                accuracyMeters = null,
+                matchedRuleIds = detection.matchedPatterns,
+                confidence = detection.threatScore.toFloat() / 100f,
+                rawMetadata = null,
+                disposition = disposition.value(),
+                provenance = null
+            )
+        )
+    }
+
+    // ==================== Sighting ledger accessors ====================
+
+    fun sightingsForDetection(detectionId: String): Flow<List<com.flockyou.data.model.Sighting>> =
+        sightingDao.forDetection(detectionId)
+
+    fun locatedSightingsForDetection(detectionId: String): Flow<List<com.flockyou.data.model.Sighting>> =
+        sightingDao.locatedForDetection(detectionId)
+
+    val totalSightingCount: Flow<Long> = sightingDao.countAll()
+
+    suspend fun recentSightings(detectionId: String, limit: Int = 50): List<com.flockyou.data.model.Sighting> =
+        sightingDao.recentForDetection(detectionId, limit)
 
     /**
      * Find a matching detection using composite key matching.

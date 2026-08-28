@@ -13,6 +13,7 @@ import com.flockyou.data.repository.DetectionDeduplicator
 import com.flockyou.data.repository.DetectionRepository
 import com.flockyou.data.repository.FlockYouDatabase
 import com.flockyou.data.repository.OuiDao
+import com.flockyou.data.repository.SightingDao
 import com.flockyou.data.repository.OuiRepository
 import com.flockyou.network.OrbotHelper
 import com.flockyou.network.TorAwareHttpClient
@@ -119,9 +120,16 @@ object AppModule {
     @Singleton
     fun provideDetectionRepository(
         detectionDao: DetectionDao,
+        sightingDao: SightingDao,
         deduplicator: DetectionDeduplicator
     ): DetectionRepository {
-        return DetectionRepository(detectionDao, deduplicator)
+        return DetectionRepository(detectionDao, sightingDao, deduplicator)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSightingDao(database: FlockYouDatabase): SightingDao {
+        return database.sightingDao()
     }
 
     @Provides
