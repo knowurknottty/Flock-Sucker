@@ -430,7 +430,66 @@ object DetectionPatterns {
 
         // Dialog Semiconductor - BLE chips in wearables/cameras
         MacPrefix("80:EA:CA", DeviceType.BODY_CAMERA, "Dialog Semiconductor", 60,
-            "Dialog Semiconductor - BLE wearable/camera")
+            "Dialog Semiconductor - BLE wearable/camera"),
+
+        // ==================== Known IP/Smart Camera Vendor OUIs ====================
+        // Sourced from CameraSignatures (IEEE OUI registry + vendor docs).
+        MacPrefix("44:47:CC", DeviceType.HIDDEN_CAMERA, "Hikvision", 80,
+            "Hikvision IP camera - default ports 80/554/8000"),
+        MacPrefix("B8:A4:4F", DeviceType.CCTV_CAMERA, "Axis Communications", 75,
+            "Axis IP camera - VAPIX API on 80/443"),
+        MacPrefix("EC:A2:64", DeviceType.CCTV_CAMERA, "Bosch Security", 75,
+            "Bosch Security IP camera"),
+        MacPrefix("00:09:18", DeviceType.CCTV_CAMERA, "Hanwha Vision (Wisenet)", 75,
+            "Hanwha/Samsung Techwin camera - Sunapi on 4520"),
+        MacPrefix("00:16:6C", DeviceType.CCTV_CAMERA, "Hanwha Vision (Wisenet)", 75,
+            "Hanwha/Samsung Techwin camera"),
+        MacPrefix("E8:B0:69", DeviceType.CCTV_CAMERA, "Hanwha Vision (Wisenet)", 75,
+            "Hanwha Wisenet camera"),
+        MacPrefix("B0:B5:49", DeviceType.WYZE_CAMERA, "Reolink", 70,
+            "Reolink camera - common in covert AirBnB/hotel placements"),
+        MacPrefix("38:C1:CD", DeviceType.WYZE_CAMERA, "Ezviz (Hikvision consumer)", 65,
+            "Ezviz consumer camera (Hikvision)"),
+        MacPrefix("D4:81:D7", DeviceType.WYZE_CAMERA, "Ezviz (Hikvision consumer)", 65,
+            "Ezviz consumer camera (Hikvision)"),
+        MacPrefix("50:C7:BF", DeviceType.WYZE_CAMERA, "TP-Link (Tapo/VIGI)", 60,
+            "TP-Link Tapo/VIGI camera"),
+        MacPrefix("AC:84:C6", DeviceType.WYZE_CAMERA, "TP-Link (Tapo/VIGI)", 60,
+            "TP-Link Tapo/VIGI camera"),
+        MacPrefix("78:8A:20", DeviceType.WYZE_CAMERA, "Ubiquiti UniFi Protect", 65,
+            "UniFi Protect camera - RTSPS 7442/7443"),
+        MacPrefix("F0:9F:C2", DeviceType.WYZE_CAMERA, "Ubiquiti UniFi Protect", 65,
+            "UniFi Protect camera"),
+        MacPrefix("24:5A:4C", DeviceType.WYZE_CAMERA, "Ubiquiti UniFi Protect", 65,
+            "UniFi Protect camera"),
+        MacPrefix("64:16:F0", DeviceType.CCTV_CAMERA, "Verkada", 80,
+            "Verkada cloud-managed enterprise camera"),
+        MacPrefix("00:03:C5", DeviceType.CCTV_CAMERA, "Mobotix", 70,
+            "Mobotix industrial IP camera"),
+        MacPrefix("00:05:C6", DeviceType.CCTV_CAMERA, "Mobotix", 70,
+            "Mobotix industrial IP camera"),
+        MacPrefix("00:0B:41", DeviceType.CCTV_CAMERA, "Pelco", 70,
+            "Pelco commercial CCTV"),
+        MacPrefix("0C:80:63", DeviceType.RING_DOORBELL, "Ring (Amazon)", 55,
+            "Ring doorbell/camera setup"),
+        MacPrefix("34:2C:C2", DeviceType.RING_DOORBELL, "Ring (Amazon)", 55,
+            "Ring doorbell/camera"),
+        MacPrefix("9C:FC:01", DeviceType.RING_DOORBELL, "Ring (Amazon)", 55,
+            "Ring doorbell/camera"),
+        MacPrefix("24:4B:03", DeviceType.EUFY_CAMERA, "Eufy (Anker)", 50,
+            "Eufy camera (Anker)"),
+        MacPrefix("AC:30:44", DeviceType.EUFY_CAMERA, "Eufy (Anker)", 50,
+            "Eufy camera (Anker)"),
+        MacPrefix("C8:C9:A3", DeviceType.EUFY_CAMERA, "Eufy (Anker)", 50,
+            "Eufy camera (Anker)"),
+        MacPrefix("58:2D:34", DeviceType.BLINK_CAMERA, "Blink (Amazon)", 50,
+            "Blink camera/sync module"),
+        MacPrefix("74:C9:25", DeviceType.BLINK_CAMERA, "Blink (Amazon)", 50,
+            "Blink camera/sync module"),
+        MacPrefix("28:6C:07", DeviceType.WYZE_CAMERA, "Xiaomi/Imilab", 55,
+            "Xiaomi/Imilab camera"),
+        MacPrefix("64:16:66", DeviceType.NEST_CAMERA, "Nest (Google)", 45,
+            "Nest camera/doorbell")
     )
     
     data class MacPrefix(
@@ -594,6 +653,16 @@ object DetectionPatterns {
             normalizedOui.startsWith(it.prefix.uppercase())
         }?.manufacturer
     }
+
+    /**
+     * Known camera default ports reference, sourced from CameraSignatures.
+     * Used for evidence annotations on camera detections; no port scanning is
+     * performed by this class.
+     */
+    fun cameraDefaultPortsForVendor(vendor: String): List<Int> =
+        com.flockyou.data.model.CameraSignatures.vendors
+            .find { it.vendor.equals(vendor, ignoreCase = true) }
+            ?.defaultPorts ?: emptyList()
 
     // ==================== UNKNOWN DEVICE ANALYSIS ====================
 

@@ -661,9 +661,10 @@ object DatabaseKeyManager {
         OuiEntry::class,
         SeenCellTowerEntity::class,
         TrustedCellEntity::class,
-        CellularEventEntity::class
+        CellularEventEntity::class,
+        com.flockyou.data.model.Sighting::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -671,6 +672,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
     abstract fun detectionDao(): DetectionDao
     abstract fun ouiDao(): OuiDao
     abstract fun cellularDao(): CellularDao
+    abstract fun sightingDao(): SightingDao
 
     companion object {
         private const val TAG = "FlockYouDatabase"
@@ -804,6 +806,37 @@ abstract class FlockYouDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 10 to 11 - adds append-only sightings ledger
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create sightings table. Existing installs keep aggregate
+                // seenCount without fabricating historical sighting rows.
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sightings (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        detectionId TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        sequence INTEGER NOT NULL,
+                        protocol TEXT NOT NULL,
+                        sourceScanner TEXT NOT NULL,
+                        detectorHealthGeneration INTEGER NOT NULL DEFAULT 0,
+                        rssi INTEGER,
+                        latitude REAL,
+                        longitude REAL,
+                        accuracyMeters REAL,
+                        matchedRuleIds TEXT,
+                        confidence REAL,
+                        rawMetadata TEXT,
+                        disposition TEXT NOT NULL,
+                        provenance TEXT
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sightings_detectionId ON sightings(detectionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sightings_timestamp ON sightings(timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sightings_detectionId_timestamp ON sightings(detectionId, timestamp)")
+            }
+        }
+
         fun getDatabase(context: Context): FlockYouDatabase {
             return INSTANCE ?: synchronized(this) {
                 // Load SQLCipher native library
@@ -828,7 +861,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
                     // ScanningService runs in :scanning while the UI reads Room in the main process.
                     // Without multi-instance invalidation, UI Flows can remain stale until service reconnect/stop.
                     .enableMultiInstanceInvalidation()
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     // Fail loudly on an unhandled UPGRADE (so we never silently destroy a user's
                     // encrypted history because a future migration was forgotten). Only a genuine
                     // DOWNGRADE (installing an older APK) falls back to destructive recreation.

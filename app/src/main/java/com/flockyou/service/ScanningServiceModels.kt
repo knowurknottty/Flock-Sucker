@@ -164,8 +164,44 @@ data class DetectorHealthStatus(
     val lastError: String? = null,
     val lastErrorTime: Long? = null,
     val restartCount: Int = 0,
-    val isHealthy: Boolean = true
+    val isHealthy: Boolean = true,
+    // ==================== Proof-of-life contract (r1) ====================
+    // Extended fields: additive only, safe defaults keep old JSON payloads
+    // deserializable (Gson IPC compatibility).
+    /** Permission state: granted / denied / unknown. */
+    val permissionState: String = "unknown",
+    /** Hardware/API availability probe passed. */
+    val hardwareAvailable: Boolean = false,
+    /** Last start reason/timestamp (ms epoch, null = never started). */
+    val lastStartTime: Long? = null,
+    /** Last stop reason/timestamp (ms epoch, null = never stopped). */
+    val lastStopTime: Long? = null,
+    /** Last stop reason string (user, watchdog, error, ...). */
+    val lastStopReason: String? = null,
+    /** Raw observations seen at callback entry, before classification. */
+    val rawObservationCount: Long = 0,
+    /** Observations that became classification candidates. */
+    val candidateCount: Long = 0,
+    /** Accepted sighting rows persisted (repeats + new devices). */
+    val acceptedSightingCount: Long = 0,
+    /** Observations explicitly suppressed by rules. */
+    val suppressedCount: Long = 0,
+    /** Observations dropped by throttling. */
+    val throttleDropCount: Long = 0,
+    /** Persistence failures (sighting/DB write failures). */
+    val persistenceFailureCount: Long = 0,
+    /** Observations older than [staleThresholdMs] imply a stale scanner. */
+    val staleThresholdMs: Long = 120_000L,
+    /** Watchdog armed state. */
+    val watchdogActive: Boolean = false
 ) {
+    /** True when the scanner shows visible proof of life: running, healthy,
+     *  hardware available, and an observation inside the stale window. */
+    val hasProofOfLife: Boolean
+        get() = isRunning && isHealthy && hardwareAvailable &&
+            lastSuccessfulScan != null &&
+            (System.currentTimeMillis() - lastSuccessfulScan) <= staleThresholdMs
+
     companion object {
         const val DETECTOR_ULTRASONIC = "Ultrasonic"
         const val DETECTOR_ROGUE_WIFI = "RogueWiFi"
@@ -175,6 +211,12 @@ data class DetectorHealthStatus(
         const val DETECTOR_SATELLITE = "Satellite"
         const val DETECTOR_BLE = "BLE"
         const val DETECTOR_WIFI = "WiFi"
+
+        /** All required proof-of-life lanes per the r1 scanner contract. */
+        val REQUIRED_LANES = listOf(
+            DETECTOR_BLE, DETECTOR_WIFI, DETECTOR_CELLULAR, DETECTOR_SATELLITE,
+            DETECTOR_GNSS, DETECTOR_RF_SIGNAL, DETECTOR_ULTRASONIC, DETECTOR_ROGUE_WIFI
+        )
     }
 }
 
