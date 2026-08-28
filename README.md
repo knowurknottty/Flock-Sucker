@@ -1,4 +1,4 @@
-# Flock-You
+# Flock-Sucker
 
 **Open-Source Counter-Surveillance for Android**
 
@@ -8,7 +8,7 @@
 
 > **"Watch the Watchers"** - Know when surveillance equipment is nearby so you can protect your privacy, document police presence, or simply understand the surveillance landscape around you.
 
-Flock-You is a privacy-first surveillance detection application that empowers individuals to identify surveillance devices, trackers, IMSI catchers, and other monitoring equipment in their environment. All processing happens **entirely on-device** with zero cloud connectivity.
+Flock-Suckeris a privacy-first surveillance detection application that empowers individuals to identify surveillance devices, trackers, IMSI catchers, and other monitoring equipment in their environment. All processing happens **entirely on-device** with zero cloud connectivity.
 
 ---
 
@@ -224,7 +224,7 @@ Flock-You is a privacy-first surveillance detection application that empowers in
 
 ## Flipper Zero Integration
 
-Flock-You includes **Flock Bridge**, a Flipper Zero FAP (Flipper Application Package) that extends detection capabilities with dedicated hardware.
+Flock-Suckerincludes **Flock Bridge**, a Flipper Zero FAP (Flipper Application Package) that extends detection capabilities with dedicated hardware.
 
 ### Flock Bridge Features
 
@@ -305,7 +305,7 @@ cd Flock-You-Android
 
 ## Build Variants
 
-Flock-You supports three build flavors for different deployment scenarios:
+Flock-Suckersupports three build flavors for different deployment scenarios:
 
 | Variant | Use Case | Permissions |
 |---------|----------|-------------|
@@ -340,7 +340,7 @@ Flock-You supports three build flavors for different deployment scenarios:
 
 ## OEM Integration
 
-Flock-You is designed for OEM white-labeling and custom ROM integration.
+Flock-Suckeris designed for OEM white-labeling and custom ROM integration.
 
 ### Quick Integration (GrapheneOS/CalyxOS/LineageOS)
 
@@ -497,7 +497,7 @@ gh attestation verify app-release.apk --owner FlockYou
 
 ## Threat Scoring
 
-Flock-You uses an enterprise-grade threat scoring formula:
+Flock-Sucker uses an enterprise-grade threat scoring formula:
 
 ```
 threat_score = base_likelihood × impact_factor × confidence
@@ -547,7 +547,7 @@ MIT License - See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <b>Flock-You: Watch the Watchers</b>
+  <b>Flock-Sucker: Watch the Watchers</b>
   <br/>
   <i>Privacy-first surveillance detection for Android</i>
   <br/><br/>
