@@ -871,6 +871,12 @@ CAMERA SSID PATTERNS:
 - Many cheap cameras use default SSIDs
 - Often 2.4GHz only with open network for initial setup
 
+KNOWN CAMERA VENDOR DEFAULT PORTS (evidence reference - no probing performed):
+- RTSP: 554 (near-universal)
+- Hikvision SDK: 8000 | Dahua private: 37777/37778 | Foscam media: 8004/8005
+- ONVIF: 8899/80 | UniFi Protect RTSPS: 7442/7443 | XiongMai DVR: 34567
+- White-label OEM modules: 80/81/8080/8553
+
 MANUFACTURERS TO FLAG:
 - Wyze, Ring, Nest in inappropriate locations (hotel rooms, Airbnbs)
 - Generic Chinese cameras (Hikvision, Dahua, Reolink OEM)

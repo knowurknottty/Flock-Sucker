@@ -612,6 +612,84 @@ internal object SsidPatterns {
             manufacturer = null,
             threatScore = 80,
             description = "Disguised camera (clock, smoke detector, USB charger, etc.)"
+        ),
+
+        // ==================== Known Camera Vendor Default SSIDs ====================
+        // Sourced from CameraSignatures vendor documentation. These match the
+        // setup APs / default SSIDs that cameras broadcast before (or instead of)
+        // joining the owner's network — prime covert-surveillance signals.
+
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(hik|hikvision)[_-]?.*",
+            deviceType = DeviceType.HIDDEN_CAMERA,
+            manufacturer = "Hikvision",
+            threatScore = 75,
+            description = "Hikvision camera default/setup SSID - default ports 80/554/8000"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(dahua|dh)[_-]?.*",
+            deviceType = DeviceType.HIDDEN_CAMERA,
+            manufacturer = "Dahua",
+            threatScore = 75,
+            description = "Dahua camera default/setup SSID - private protocol 37777/37778"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^reolink[_-]?.*",
+            deviceType = DeviceType.HIDDEN_CAMERA,
+            manufacturer = "Reolink",
+            threatScore = 75,
+            description = "Reolink camera SSID - commonly reported in covert AirBnB/hotel placements"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^ezviz[_-]?.*",
+            deviceType = DeviceType.HIDDEN_CAMERA,
+            manufacturer = "Ezviz (Hikvision consumer)",
+            threatScore = 70,
+            description = "Ezviz camera SSID (Hikvision consumer brand)"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(tapo|vigi|tp[_-]?link[_-]?cam).*",
+            deviceType = DeviceType.WYZE_CAMERA,
+            manufacturer = "TP-Link (Tapo/VIGI)",
+            threatScore = 55,
+            description = "Tapo/VIGI camera SSID"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^unifi[_-]?(protect|cam).*",
+            deviceType = DeviceType.WYZE_CAMERA,
+            manufacturer = "Ubiquiti",
+            threatScore = 55,
+            description = "UniFi Protect camera SSID"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(wansview|tenvis|sricam|escam|vstarcam|zosi|annke|lorex|swann|night ?owl|luma)[_-]?.*",
+            deviceType = DeviceType.HIDDEN_CAMERA,
+            manufacturer = null,
+            threatScore = 70,
+            description = "Consumer security-camera brand default SSID"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(esp|esp32|esp8266)[-_]?.*(cam).*",
+            deviceType = DeviceType.HIDDEN_CAMERA,
+            manufacturer = "Espressif (DIY module)",
+            threatScore = 65,
+            description = "ESP32-CAM class DIY camera module SSID"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(gopro|insta360|dji)[_-]?.*",
+            deviceType = DeviceType.WYZE_CAMERA,
+            manufacturer = null,
+            threatScore = 40,
+            description = "Action camera SSID - may be used for covert recording"
         )
     )
 }

@@ -55,7 +55,16 @@ class RogueWifiMonitor(
 
         // Hidden camera OUI prefixes (common IoT camera manufacturers)
         // Based on FCC filings, security research, and real-world detections
-        private val HIDDEN_CAMERA_OUIS = setOf(
+        // MERGED with the shared CameraSignatures vendor registry (OUIs +
+        // default ports) so WiFi-scan analysis and detection metadata stay in sync.
+        private val HIDDEN_CAMERA_OUIS: Set<String> by lazy {
+            buildSet {
+                addAll(com.flockyou.data.model.CameraSignatures.allOuiPrefixes)
+                addAll(legacyHiddenCameraOuis)
+            }
+        }
+
+        private val legacyHiddenCameraOuis = setOf(
             // === Hikvision (world's largest surveillance camera maker) ===
             "B4:A3:82", // Hangzhou Hikvision
             "44:19:B6", // Hangzhou Hikvision
@@ -120,7 +129,13 @@ class RogueWifiMonitor(
 
         // Suspicious SSID patterns for hidden cameras/surveillance
         // Based on real-world camera default SSIDs and common naming conventions
-        private val HIDDEN_CAMERA_SSID_PATTERNS = listOf(
+        // MERGED with CameraSignatures vendor SSID patterns for full coverage.
+        private val HIDDEN_CAMERA_SSID_PATTERNS: List<Regex> by lazy {
+            legacyHiddenCameraSsidPatterns +
+                com.flockyou.data.model.CameraSignatures.vendorSsidPatterns.map { it.first }
+        }
+
+        private val legacyHiddenCameraSsidPatterns = listOf(
             // === Generic camera naming patterns ===
             Regex("(?i)^(hd|ip|wifi)?[-_]?cam(era)?[-_]?[0-9a-f]*$"),
             Regex("(?i)^(spy|nanny|hidden|covert|mini|pinhole)[-_]?cam.*"),
