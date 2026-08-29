@@ -119,7 +119,7 @@ interface DetectionDao {
     @Query("SELECT * FROM detections WHERE isActive = 1 ORDER BY lastSeenTimestamp DESC")
     fun getActiveDetections(): Flow<List<Detection>>
     
-    @Query("SELECT * FROM detections WHERE timestamp > :since ORDER BY lastSeenTimestamp DESC")
+    @Query("SELECT * FROM detections WHERE lastSeenTimestamp > :since ORDER BY lastSeenTimestamp DESC")
     fun getRecentDetections(since: Long): Flow<List<Detection>>
     
     @Query("SELECT * FROM detections WHERE threatLevel = :threatLevel ORDER BY lastSeenTimestamp DESC")
@@ -164,7 +164,7 @@ interface DetectionDao {
     @Query("DELETE FROM detections")
     suspend fun deleteAllDetections()
     
-    @Query("DELETE FROM detections WHERE timestamp < :before")
+    @Query("DELETE FROM detections WHERE lastSeenTimestamp < :before")
     suspend fun deleteOldDetections(before: Long)
     
     @Query("UPDATE detections SET isActive = 0 WHERE macAddress = :macAddress")

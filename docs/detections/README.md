@@ -202,7 +202,7 @@ flowchart LR
 **Privacy / network boundary:**
 - Core scan classification, threat scoring and supported local-model inference run on-device.
 - Persistent detection history is stored locally in SQLCipher; database pages use AES-256-CBC with per-page HMAC, while the passphrase wrapper uses Android Keystore AES/GCM.
-- The app has explicit network-capable surfaces: OSM map tiles, scheduled IEEE OUI refresh, model acquisition, Tor/IP/DNS diagnostics and user-initiated Shodan browser searches.
+- The app has explicit network-capable surfaces: OSM map tiles, explicit maintainer-triggered IEEE OUI refresh, model acquisition, Tor/IP/DNS diagnostics and user-initiated Shodan browser searches.
 - There is no required cloud LLM backend for detection analysis; Gemini Nano components may be provisioned by the Android/Google service stack where supported.
 - See the root README for the complete network disclosure and Tor fallback boundary.
 
@@ -921,7 +921,7 @@ Detection evidence is primarily local; network-enabled features are disclosed se
 | Detection history / sightings | Room + SQLCipher | SQLCipher AES-256-CBC + per-page HMAC |
 | Stored location data | Room + SQLCipher | Same database protection; storage can be disabled |
 | Cellular history | Local app storage / SQLCipher-backed paths where persisted | Availability and persistence vary by monitor/mode |
-| Detection signatures | Bundled/local app data | Some reference data such as IEEE OUI can be refreshed |
+| Detection signatures | Bundled/local app data | Some reference data such as IEEE OUI can be deliberately refreshed and re-hashed by maintainers |
 | Preferences | Android app storage / DataStore or encrypted preferences depending on subsystem | Not equivalent to the SQLCipher evidence database |
 
 **Key boundary:** the SQLCipher passphrase is separately wrapped with an Android Keystore AES/GCM key. Database pages themselves are CBC+HMAC, not GCM.

@@ -238,12 +238,12 @@ class TorAwareHttpClient @Inject constructor(
     }
 
     /**
-     * Get country information for an IP address using ip-api.com.
+     * Get country information for an IP address using the configured HTTPS endpoint.
      */
     private fun getIpCountry(client: OkHttpClient, ip: String): Pair<String?, String?> {
         return try {
             val request = Request.Builder()
-                .url("${NetworkConfig.IP_LOOKUP_URL}/$ip?fields=country,countryCode")
+                .url("${NetworkConfig.IP_LOOKUP_URL.trimEnd('/')}/$ip?fields=success,country,country_code")
                 .build()
 
             val response = client.newCall(request).execute()
@@ -253,7 +253,11 @@ class TorAwareHttpClient @Inject constructor(
                     val json = JSONObject(body)
                     Pair(
                         if (json.has("country")) json.getString("country") else null,
-                        if (json.has("countryCode")) json.getString("countryCode") else null
+                        when {
+                            json.has("country_code") -> json.getString("country_code")
+                            json.has("countryCode") -> json.getString("countryCode")
+                            else -> null
+                        }
                     )
                 } else {
                     Pair(null, null)

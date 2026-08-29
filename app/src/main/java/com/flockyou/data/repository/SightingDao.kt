@@ -1,21 +1,17 @@
 package com.flockyou.data.repository
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.flockyou.data.model.Sighting
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Append-only DAO for the sighting ledger. Insert-only by design: sightings
- * are immutable evidence rows and are never updated or upserted in place.
+ * Append-only DAO for the sighting ledger. The only write path allocates the
+ * per-detection sequence inside the INSERT statement; callers cannot split
+ * sequence allocation from insertion. Sightings are never updated/upserted.
  */
 @Dao
 interface SightingDao {
-
-    @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insert(sighting: Sighting)
 
     @Query("SELECT * FROM sightings WHERE detectionId = :detectionId ORDER BY timestamp ASC, sequence ASC")
     fun forDetection(detectionId: String): Flow<List<Sighting>>
@@ -31,9 +27,6 @@ interface SightingDao {
 
     @Query("SELECT COUNT(*) FROM sightings WHERE detectionId = :detectionId")
     suspend fun countForDetectionSync(detectionId: String): Long
-
-    @Query("SELECT COALESCE(MAX(sequence), 0) FROM sightings WHERE detectionId = :detectionId")
-    suspend fun maxSequenceFor(detectionId: String): Long
 
     /**
      * Atomically append a sighting with the next monotonic per-detection

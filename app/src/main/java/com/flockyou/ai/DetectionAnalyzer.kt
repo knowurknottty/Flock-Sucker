@@ -35,6 +35,8 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.ArrayDeque
 import java.util.Collections
 import java.util.concurrent.TimeUnit
@@ -283,11 +285,21 @@ class DetectionAnalyzer @Inject constructor(
      * 2. MediaPipe LLM (Gemma models) - Stable API, works on most devices
      * 3. Rule-based analysis - Always available fallback
      */
-    suspend fun initializeModel(): Boolean = modelStateMutex.withLock {
+    suspend fun initializeModel(): Boolean = initializeModelWithSettings()
+
+    /**
+     * Initialize against an optional in-memory candidate. If an exact candidate is required,
+     * readiness verification and the settings commit occur under this same model-state lock.
+     */
+    private suspend fun initializeModelWithSettings(
+        settingsOverride: AiSettings? = null,
+        requiredModel: AiModel? = null,
+        persistReadySizeMb: Long? = null
+    ): Boolean = modelStateMutex.withLock {
         Log.i(TAG, "=== initializeModel START ===")
         withContext(Dispatchers.IO) {
             try {
-                val settings = aiSettingsRepository.settingsSnapshot()
+                val settings = settingsOverride ?: aiSettingsRepository.settingsSnapshot()
                 Log.d(TAG, "initializeModel settings: enabled=${settings.enabled}, selectedModel=${settings.selectedModel}")
 
                 if (!settings.enabled) {
@@ -376,6 +388,18 @@ class DetectionAnalyzer @Inject constructor(
                         }
                     } else {
                         _modelStatus.value = AiModelStatus.Ready
+                    }
+                    if (requiredModel != null) {
+                        if (!isModelLoaded || currentModel != requiredModel) {
+                            _modelStatus.value = AiModelStatus.Error(
+                                "Verified ${requiredModel.displayName} artifact is valid, but that exact model did not become runtime-ready"
+                            )
+                            return@withContext false
+                        }
+                        val sizeMb = requireNotNull(persistReadySizeMb) {
+                            "Runtime-ready candidate persistence requires an exact model size"
+                        }
+                        aiSettingsRepository.commitRuntimeReadyModel(requiredModel.id, sizeMb)
                     }
                     Log.i(TAG, "Model initialized successfully via LlmEngineManager: $activeEngine, model=${currentModel.displayName}")
                     return@withContext true
@@ -1228,6 +1252,8 @@ class DetectionAnalyzer @Inject constructor(
 
     // ==================== MODEL DOWNLOAD & MANAGEMENT ====================
 
+    private class ModelIntegrityException(message: String) : IOException(message)
+
     /**
      * Download selected model with retry logic and resumable download support.
      * Progress callbacks are dispatched to the Main thread for UI safety.
@@ -1302,16 +1328,32 @@ class DetectionAnalyzer @Inject constructor(
             var lastException: Exception? = null
             repeat(MAX_DOWNLOAD_RETRIES) { attempt ->
                 try {
-                    val success = downloadWithResume(downloadUrl, tempFile, modelFile, model.sizeMb * 1024 * 1024, safeProgress, hfToken)
+                    val contract = AiModel.getArtifactContract(model)
+                        ?: throw IOException("No artifact identity contract configured for ${model.id}")
+                    val success = downloadWithResume(downloadUrl, tempFile, modelFile, contract, safeProgress, hfToken)
                     if (success) {
-                        // Update settings - enable AI and set model
-                        aiSettingsRepository.setEnabled(true)  // Enable AI so initializeModel() works
-                        aiSettingsRepository.setSelectedModel(model.id)
-                        aiSettingsRepository.setModelDownloaded(true, modelFile.length() / (1024 * 1024))
+                        val modelSizeMb = modelFile.length() / (1024 * 1024)
+                        val candidateSettings = aiSettingsRepository.settingsSnapshot().copy(
+                            enabled = true,
+                            modelDownloaded = true,
+                            selectedModel = model.id,
+                            modelSizeMb = modelSizeMb
+                        )
                         currentModel = model
-                        Log.i(TAG, "Model download completed, selected model: ${model.displayName}")
+                        _modelStatus.value = AiModelStatus.Initializing
+                        safeProgress(100)
+                        val exactModelReady = initializeModelWithSettings(
+                            settingsOverride = candidateSettings,
+                            requiredModel = model,
+                            persistReadySizeMb = modelSizeMb
+                        )
+                        if (!exactModelReady) return@withContext false
+                        Log.i(TAG, "Verified model downloaded and runtime-ready: ${model.displayName}")
                         return@withContext true
                     }
+                } catch (e: ModelIntegrityException) {
+                    // Hash/size mismatch is deterministic for these bytes; retrying multi-GB downloads cannot heal it.
+                    throw e
                 } catch (e: IOException) {
                     lastException = e
                     Log.w(TAG, "Download attempt ${attempt + 1} failed: ${e.message}")
@@ -1340,7 +1382,7 @@ class DetectionAnalyzer @Inject constructor(
         downloadUrl: String,
         tempFile: File,
         finalFile: File,
-        expectedSize: Long,
+        contract: AiModel.Companion.ArtifactContract,
         onProgress: suspend (Int) -> Unit,
         hfToken: String? = null
     ): Boolean {
@@ -1357,7 +1399,7 @@ class DetectionAnalyzer @Inject constructor(
         }
 
         // Add Range header for resume if we have partial data
-        if (existingBytes > 0 && existingBytes < expectedSize) {
+        if (existingBytes > 0 && existingBytes < contract.sizeBytes) {
             requestBuilder.addHeader("Range", "bytes=$existingBytes-")
             Log.d(TAG, "Resuming download from byte $existingBytes")
         }
@@ -1370,7 +1412,7 @@ class DetectionAnalyzer @Inject constructor(
                 // If resume fails with 416 (Range Not Satisfiable), start fresh
                 if (response.code == 416) {
                     tempFile.delete()
-                    return downloadWithResume(downloadUrl, tempFile, finalFile, expectedSize, onProgress)
+                    return downloadWithResume(downloadUrl, tempFile, finalFile, contract, onProgress, hfToken)
                 }
                 // Handle authentication errors (shouldn't happen with public repos)
                 if (response.code == 401 || response.code == 403) {
@@ -1380,26 +1422,37 @@ class DetectionAnalyzer @Inject constructor(
             }
 
             val body = response.body ?: throw IOException("Empty response")
-            val contentLength = body.contentLength()
-            val totalSize = if (response.code == 206) existingBytes + contentLength else contentLength
-
-            // Use append mode for resume, otherwise create fresh
             val appendMode = response.code == 206
+            if (appendMode) {
+                val contentRange = response.header("Content-Range")
+                val expectedPrefix = "bytes $existingBytes-"
+                if (contentRange == null || !contentRange.startsWith(expectedPrefix)) {
+                    tempFile.delete()
+                    throw IOException("Invalid resume Content-Range: $contentRange")
+                }
+            }
+            val contentLength = body.contentLength()
+            val totalSize = if (appendMode && contentLength >= 0L) existingBytes + contentLength else contentLength
+
+            // Append only for a validated 206 response. A Range-ignoring 200 response starts clean.
             var lastProgressUpdate = 0L
             FileOutputStream(tempFile, appendMode).use { output ->
                 body.byteStream().use { input ->
                     val buffer = ByteArray(8192)
-                    var downloadedBytes = existingBytes
+                    var downloadedBytes = if (appendMode) existingBytes else 0L
                     var read: Int
 
                     while (input.read(buffer).also { read = it } != -1) {
+                        if (downloadedBytes + read > contract.sizeBytes) {
+                            throw ModelIntegrityException("Model download exceeded expected size ${contract.sizeBytes} bytes")
+                        }
                         output.write(buffer, 0, read)
                         downloadedBytes += read
 
                         val progress = if (totalSize > 0) {
                             ((downloadedBytes * 100) / totalSize).toInt().coerceIn(0, 99)
                         } else {
-                            ((downloadedBytes / (expectedSize.toDouble())) * 100).toInt().coerceIn(0, 99)
+                            ((downloadedBytes / contract.sizeBytes.toDouble()) * 100).toInt().coerceIn(0, 99)
                         }
 
                         // Throttle progress updates to avoid overwhelming the UI (max once per 100ms)
@@ -1413,15 +1466,31 @@ class DetectionAnalyzer @Inject constructor(
                 }
             }
 
-            // Rename temp file to final file atomically
-            if (tempFile.renameTo(finalFile)) {
-                _modelStatus.value = AiModelStatus.Ready
-                onProgress(100)
-                Log.i(TAG, "Model downloaded: ${finalFile.name} (${finalFile.length() / 1024 / 1024} MB)")
-                return true
-            } else {
-                throw IOException("Failed to rename temp file to final file")
+            when (val verification = ModelArtifactVerifier.verify(tempFile, contract.sizeBytes, contract.sha256)) {
+                ModelArtifactVerification.Verified -> Unit
+                is ModelArtifactVerification.Rejected -> {
+                    tempFile.delete()
+                    throw ModelIntegrityException("Model integrity verification failed: ${verification.reason}")
+                }
             }
+
+            promoteVerifiedArtifact(tempFile, finalFile)
+            Log.i(TAG, "Verified model downloaded: ${finalFile.name} (${finalFile.length() / 1024 / 1024} MB)")
+            return true
+        }
+    }
+
+    private fun promoteVerifiedArtifact(source: File, destination: File) {
+        try {
+            Files.move(
+                source.toPath(),
+                destination.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE
+            )
+        } catch (atomicMoveFailure: Exception) {
+            Log.w(TAG, "Atomic model promotion unavailable; using replace move", atomicMoveFailure)
+            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
 
@@ -1447,19 +1516,29 @@ class DetectionAnalyzer @Inject constructor(
             val modelDir = context.getDir("ai_models", Context.MODE_PRIVATE)
             val fileExtension = AiModel.getFileExtension(model)
             val modelFile = File(modelDir, "${model.id}$fileExtension")
+            val importFile = File(modelDir, "${model.id}$fileExtension.importing")
+            importFile.delete()
+            val contract = AiModel.getArtifactContract(model)
+                ?: throw IOException("No artifact identity contract configured for ${model.id}")
 
-            // Copy from Uri to internal storage
+            // Copy into a temporary file; only verified bytes may replace an active model.
+            val descriptorLength = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+                ?.takeIf { it > 0L }
             context.contentResolver.openInputStream(uri)?.use { input ->
-                val fileSize = input.available().toLong().coerceAtLeast(1L)
-                FileOutputStream(modelFile).use { output ->
+                FileOutputStream(importFile).use { output ->
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
                     var totalRead = 0L
 
                     while (input.read(buffer).also { bytesRead = it } != -1) {
+                        if (totalRead + bytesRead > contract.sizeBytes) {
+                            throw ModelIntegrityException("Imported model exceeded expected size ${contract.sizeBytes} bytes")
+                        }
                         output.write(buffer, 0, bytesRead)
                         totalRead += bytesRead
-                        val progress = ((totalRead * 100) / fileSize).toInt().coerceIn(0, 99)
+                        val progress = descriptorLength?.let { size ->
+                            ((totalRead * 100) / size).toInt().coerceIn(0, 99)
+                        } ?: 0
                         _modelStatus.value = AiModelStatus.Downloading(progress)
                         onProgress(progress)
                     }
@@ -1469,24 +1548,33 @@ class DetectionAnalyzer @Inject constructor(
                 return@withContext false
             }
 
-            // Verify the file was copied successfully
-            if (!modelFile.exists() || modelFile.length() < 1000) {
-                _modelStatus.value = AiModelStatus.Error("File copy failed or file too small")
-                return@withContext false
+            when (val verification = ModelArtifactVerifier.verify(importFile, contract.sizeBytes, contract.sha256)) {
+                ModelArtifactVerification.Verified -> Unit
+                is ModelArtifactVerification.Rejected -> {
+                    importFile.delete()
+                    _modelStatus.value = AiModelStatus.Error("Import integrity verification failed: ${verification.reason}")
+                    return@withContext false
+                }
             }
+            promoteVerifiedArtifact(importFile, modelFile)
+            Log.i(TAG, "Verified model imported: ${modelFile.name} (${modelFile.length() / 1024 / 1024} MB)")
 
-            Log.i(TAG, "Model imported: ${modelFile.name} (${modelFile.length() / 1024 / 1024} MB)")
-
-            // Update settings - enable AI and set model
-            aiSettingsRepository.setEnabled(true)  // Enable AI so initializeModel() works
-            aiSettingsRepository.setModelDownloaded(true, modelFile.length() / (1024 * 1024))
-            aiSettingsRepository.setSelectedModel(modelId)
+            val modelSizeMb = modelFile.length() / (1024 * 1024)
+            val candidateSettings = aiSettingsRepository.settingsSnapshot().copy(
+                enabled = true,
+                modelDownloaded = true,
+                selectedModel = modelId,
+                modelSizeMb = modelSizeMb
+            )
             currentModel = model
-            _modelStatus.value = AiModelStatus.Ready
+            _modelStatus.value = AiModelStatus.Initializing
             onProgress(100)
 
-            // Initialize the model (AI is now enabled)
-            initializeModel()
+            initializeModelWithSettings(
+                settingsOverride = candidateSettings,
+                requiredModel = model,
+                persistReadySizeMb = modelSizeMb
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error importing model", e)
             _modelStatus.value = AiModelStatus.Error("Import failed: ${e.message}")

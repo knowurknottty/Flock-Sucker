@@ -71,6 +71,10 @@ data class Detection(
     val confirmedThreat: Boolean = false     // User confirmed this as a real threat
 )
 
+/** Most recent trustworthy observation timestamp for recency UI/query semantics. */
+val Detection.effectiveLastSeenTimestamp: Long
+    get() = maxOf(timestamp, lastSeenTimestamp)
+
 enum class DetectionProtocol(val displayName: String, val icon: String) {
     WIFI("WiFi", "📡"),
     BLUETOOTH_LE("Bluetooth LE", "📶"),

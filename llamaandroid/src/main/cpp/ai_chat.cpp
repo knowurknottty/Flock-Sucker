@@ -33,11 +33,11 @@ static int g_ubatch_size   = 32;
 static int g_threads       = 4;
 static int g_threads_batch = 4;
 
-static llama_model                      * g_model;
-static llama_context                    * g_context;
-static llama_batch                        g_batch;
+static llama_model                      * g_model = nullptr;
+static llama_context                    * g_context = nullptr;
+static llama_batch                        g_batch = {};
 static common_chat_templates_ptr          g_chat_templates;
-static common_sampler                   * g_sampler;
+static common_sampler                   * g_sampler = nullptr;
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -132,6 +132,10 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_prepare(JNIEnv * /*env*/, jobje
     g_batch = llama_batch_init(g_batch_size, 0, 1);
     g_chat_templates = common_chat_templates_init(g_model, "");
     g_sampler = new_sampler(DEFAULT_SAMPLER_TEMP);
+    if (g_batch.token == nullptr || !g_chat_templates || g_sampler == nullptr) {
+        LOGe("%s: failed to prepare batch/chat/sampler resources", __func__);
+        return 1;
+    }
     return 0;
 }
 
@@ -278,8 +282,9 @@ static void reset_long_term_states(const bool clear_kv_cache = true) {
     system_prompt_position = 0;
     current_position = 0;
 
-    if (clear_kv_cache)
+    if (clear_kv_cache && g_context != nullptr) {
         llama_memory_clear(llama_get_memory(g_context), false);
+    }
 }
 
 /**
@@ -563,12 +568,20 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_unload(JNIEnv * /*unused*/, job
     reset_long_term_states();
     reset_short_term_states();
 
-    // Free up resources
+    // Free only resources that were actually allocated and clear every global so unload is idempotent.
     common_sampler_free(g_sampler);
+    g_sampler = nullptr;
     g_chat_templates.reset();
     llama_batch_free(g_batch);
-    llama_free(g_context);
-    llama_model_free(g_model);
+    g_batch = {};
+    if (g_context != nullptr) {
+        llama_free(g_context);
+        g_context = nullptr;
+    }
+    if (g_model != nullptr) {
+        llama_model_free(g_model);
+        g_model = nullptr;
+    }
 }
 
 extern "C"

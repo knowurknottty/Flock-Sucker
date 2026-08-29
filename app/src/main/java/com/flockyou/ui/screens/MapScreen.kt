@@ -111,7 +111,7 @@ fun MapScreen(
             isScanning = isScanning
         )
         userLocation = filteredDetections
-            .maxByOrNull { it.timestamp }
+            .maxByOrNull { it.effectiveLastSeenTimestamp }
             ?.let { latest -> GeoPoint(latest.latitude!!, latest.longitude!!) }
     }
     
@@ -283,7 +283,7 @@ fun MapScreen(
                     IconButton(onClick = {
                         mapView?.let { map ->
                             val latest = filteredDetections
-                                .maxByOrNull { it.timestamp }
+                                .maxByOrNull { it.effectiveLastSeenTimestamp }
 
                             if (latest != null) {
                                 map.controller.animateTo(

@@ -55,6 +55,15 @@ object NetworkConfig {
     val AI_MODEL_GEMMA_2B_GPU_URL: String
         get() = BuildConfig.URL_AI_MODEL_GEMMA_2B_GPU
 
+    val AI_MODEL_GEMMA3_1B_SHA256: String get() = BuildConfig.SHA256_AI_MODEL_GEMMA3_1B
+    val AI_MODEL_GEMMA3_1B_SIZE_BYTES: Long get() = BuildConfig.SIZE_AI_MODEL_GEMMA3_1B
+    val AI_MODEL_GEMMA_2B_CPU_SHA256: String get() = BuildConfig.SHA256_AI_MODEL_GEMMA_2B_CPU
+    val AI_MODEL_GEMMA_2B_CPU_SIZE_BYTES: Long get() = BuildConfig.SIZE_AI_MODEL_GEMMA_2B_CPU
+    val AI_MODEL_GEMMA_2B_GPU_SHA256: String get() = BuildConfig.SHA256_AI_MODEL_GEMMA_2B_GPU
+    val AI_MODEL_GEMMA_2B_GPU_SIZE_BYTES: Long get() = BuildConfig.SIZE_AI_MODEL_GEMMA_2B_GPU
+    val AI_MODEL_FLOCK_GGUF_SHA256: String get() = BuildConfig.SHA256_AI_MODEL_FLOCK_GGUF
+    val AI_MODEL_FLOCK_GGUF_SIZE_BYTES: Long get() = BuildConfig.SIZE_AI_MODEL_FLOCK_GGUF
+
     // ================================================================
     // Map Tile Server URLs
     // ================================================================
@@ -99,8 +108,8 @@ object NetworkConfig {
         get() = BuildConfig.URL_TOR_CHECK
 
     /**
-     * IP geolocation API for looking up exit node location.
-     * Note: Uses HTTP (not HTTPS) as required by ip-api.com free tier.
+     * HTTPS IP geolocation API for looking up exit node location.
+     * Custom OEM endpoints must preserve TLS and the country/country_code response contract.
      */
     val IP_LOOKUP_URL: String
         get() = BuildConfig.URL_IP_LOOKUP

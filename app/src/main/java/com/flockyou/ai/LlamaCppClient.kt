@@ -61,7 +61,7 @@ class LlamaCppClient @Inject constructor(
         }
 
         return@withLock try {
-            waitUntilInitialized()
+            waitUntilInitialized(throwOnError = false)
             if (engine.state.value !is InferenceEngine.State.Initialized) {
                 engine.cleanUp()
                 waitUntilInitialized()
@@ -89,7 +89,7 @@ class LlamaCppClient @Inject constructor(
         }
     }
 
-    private suspend fun waitUntilInitialized() {
+    private suspend fun waitUntilInitialized(throwOnError: Boolean = true) {
         withTimeout(INIT_TIMEOUT_MS) {
             when (engine.state.value) {
                 is InferenceEngine.State.Uninitialized,
@@ -100,7 +100,7 @@ class LlamaCppClient @Inject constructor(
             }
         }
         val error = engine.state.value as? InferenceEngine.State.Error
-        if (error != null) throw error.exception
+        if (throwOnError && error != null) throw error.exception
     }
     suspend fun generateResponse(
         prompt: String,
@@ -117,6 +117,7 @@ class LlamaCppClient @Inject constructor(
             }
         } catch (t: Throwable) {
             lastError = t.message ?: t.javaClass.simpleName
+            ready = false
             Log.e(TAG, "llama.cpp generation failed", t)
             null
         }

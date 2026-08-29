@@ -212,7 +212,7 @@ private fun CompactDetectionCard(
     modifier: Modifier = Modifier
 ) {
     val threatColor = detection.threatLevel.toColor()
-    val timeAgo = formatTimeAgo(detection.timestamp)
+    val timeAgo = formatTimeAgo(detection.effectiveLastSeenTimestamp)
 
     Card(
         modifier = modifier

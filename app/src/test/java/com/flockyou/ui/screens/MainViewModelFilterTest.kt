@@ -27,6 +27,7 @@ class MainViewModelFilterTest {
     private val criticalBleDetection = Detection(
         id = "critical-ble-1",
         timestamp = now - 1_000_000, // ~17 minutes ago
+        lastSeenTimestamp = now - 1_000_000,
         protocol = DetectionProtocol.BLUETOOTH_LE,
         detectionMethod = DetectionMethod.BLE_DEVICE_NAME,
         deviceType = DeviceType.STINGRAY_IMSI,
@@ -41,6 +42,7 @@ class MainViewModelFilterTest {
     private val highWifiDetection = Detection(
         id = "high-wifi-1",
         timestamp = now - 3_600_000, // 1 hour ago
+        lastSeenTimestamp = now - 3_600_000,
         protocol = DetectionProtocol.WIFI,
         detectionMethod = DetectionMethod.SSID_PATTERN,
         deviceType = DeviceType.FLOCK_SAFETY_CAMERA,
@@ -55,6 +57,7 @@ class MainViewModelFilterTest {
     private val mediumCellularDetection = Detection(
         id = "medium-cellular-1",
         timestamp = now - 86_400_000, // 1 day ago
+        lastSeenTimestamp = now - 86_400_000,
         protocol = DetectionProtocol.CELLULAR,
         detectionMethod = DetectionMethod.CELL_SIGNAL_ANOMALY,
         deviceType = DeviceType.BODY_CAMERA,
@@ -69,6 +72,7 @@ class MainViewModelFilterTest {
     private val lowInfoDetection = Detection(
         id = "low-info-1",
         timestamp = now - 604_800_000, // 7 days ago
+        lastSeenTimestamp = now - 604_800_000,
         protocol = DetectionProtocol.BLUETOOTH_LE,
         detectionMethod = DetectionMethod.BLE_SERVICE_UUID,
         deviceType = DeviceType.RING_DOORBELL,
@@ -83,6 +87,7 @@ class MainViewModelFilterTest {
     private val falsePositiveDetection = Detection(
         id = "fp-detection-1",
         timestamp = now - 500_000,
+        lastSeenTimestamp = now - 500_000,
         protocol = DetectionProtocol.WIFI,
         detectionMethod = DetectionMethod.SSID_PATTERN,
         deviceType = DeviceType.NEST_CAMERA,
@@ -97,6 +102,7 @@ class MainViewModelFilterTest {
     private val rfDetection = Detection(
         id = "rf-1",
         timestamp = now - 2_000_000,
+        lastSeenTimestamp = now - 2_000_000,
         protocol = DetectionProtocol.RF,
         detectionMethod = DetectionMethod.RF_DRONE,
         deviceType = DeviceType.DRONE,
@@ -111,6 +117,7 @@ class MainViewModelFilterTest {
     private val audioDetection = Detection(
         id = "audio-1",
         timestamp = now - 100_000,
+        lastSeenTimestamp = now - 100_000,
         protocol = DetectionProtocol.AUDIO,
         detectionMethod = DetectionMethod.ULTRASONIC_TRACKING_BEACON,
         deviceType = DeviceType.ULTRASONIC_BEACON,
@@ -401,7 +408,7 @@ class MainViewModelFilterTest {
         )
         val result = viewModel.getFilteredDetections()
         assertTrue("All results should be within custom range",
-            result.all { it.timestamp in start..end })
+            result.all { it.effectiveLastSeenTimestamp in start..end })
         // criticalBle(now-1M), falsePositive(now-500K), rf(now-2M) are in range
         assertEquals(3, result.size)
     }
@@ -417,7 +424,7 @@ class MainViewModelFilterTest {
         val result = viewModel.getFilteredDetections()
         // Only lowInfoDetection at now - 604_800_000 is before the end time
         assertTrue("Results should be before end time",
-            result.all { it.timestamp <= now - 600_000_000 })
+            result.all { it.effectiveLastSeenTimestamp <= now - 600_000_000 })
     }
 
     @Test
@@ -430,7 +437,24 @@ class MainViewModelFilterTest {
         )
         val result = viewModel.getFilteredDetections()
         assertTrue("All results should be after start time",
-            result.all { it.timestamp >= now - 500_001 })
+            result.all { it.effectiveLastSeenTimestamp >= now - 500_001 })
+    }
+
+    @Test
+    fun `LAST_HOUR uses last observation for repeated detections`() {
+        val clockNow = System.currentTimeMillis()
+        val repeated = criticalBleDetection.copy(
+            id = "repeated-recent",
+            timestamp = clockNow - 2 * 60 * 60 * 1000L,
+            lastSeenTimestamp = clockNow - 1_000L
+        )
+        uiState.value = MainUiState(
+            detections = listOf(repeated),
+            hideFalsePositives = false,
+            filterTimeRange = TimeRange.LAST_HOUR
+        )
+
+        assertEquals(listOf("repeated-recent"), viewModel.getFilteredDetections().map { it.id })
     }
 
     @Test

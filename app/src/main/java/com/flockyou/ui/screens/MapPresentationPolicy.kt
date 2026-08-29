@@ -2,6 +2,7 @@ package com.flockyou.ui.screens
 
 import com.flockyou.data.model.Detection
 import com.flockyou.data.model.ThreatLevel
+import com.flockyou.data.model.effectiveLastSeenTimestamp
 import kotlin.math.floor
 
 /**
@@ -121,8 +122,8 @@ object MapPresentationPolicy {
             val protocolPass = state.filterProtocols.isEmpty() || detection.protocol in state.filterProtocols
             val timePass = when (state.filterTimeRange) {
                 TimeRange.ALL_TIME -> true
-                TimeRange.CUSTOM -> detection.timestamp in customStart..customEnd
-                else -> detection.timestamp >= (cutoff ?: Long.MIN_VALUE)
+                TimeRange.CUSTOM -> detection.effectiveLastSeenTimestamp in customStart..customEnd
+                else -> detection.effectiveLastSeenTimestamp >= (cutoff ?: Long.MIN_VALUE)
             }
             val signalPass = state.filterSignalStrength.isEmpty() ||
                 detection.signalStrength in state.filterSignalStrength

@@ -75,6 +75,20 @@ class DetectionPatternsTest {
     }
 
     @Test
+    fun `Dahua SSID requires camera or recorder token`() {
+        assertNull(DetectionPatterns.matchSsidPattern("DHL-Express"))
+        assertNull(DetectionPatterns.matchSsidPattern("DHgate"))
+        assertEquals(
+            DeviceType.HIDDEN_CAMERA,
+            DetectionPatterns.matchSsidPattern("DH-IPC-4K")?.deviceType
+        )
+        assertEquals(
+            DeviceType.HIDDEN_CAMERA,
+            DetectionPatterns.matchSsidPattern("Dahua_NVR_Office")?.deviceType
+        )
+    }
+
+    @Test
     fun `matchSsidPattern detects Cellebrite forensics`() {
         val result = DetectionPatterns.matchSsidPattern("Cellebrite_UFED")
         assertNotNull("Should detect Cellebrite", result)

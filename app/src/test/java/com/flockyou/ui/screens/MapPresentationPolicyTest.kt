@@ -90,6 +90,25 @@ class MapPresentationPolicyTest {
     }
 
     @Test
+    fun filterDetections_usesLatestObservationForRepeatedDetectionRecency() {
+        val now = 1_800_000_000_000L
+        val state = MapUiState(filterTimeRange = TimeRange.LAST_HOUR)
+        val repeated = detection(
+            id = "repeat",
+            latitude = 34.0,
+            longitude = 1.0,
+            threatLevel = ThreatLevel.LOW,
+            timestamp = now - 86_400_000L,
+            lastSeenTimestamp = now - 1_000L
+        )
+
+        assertEquals(
+            listOf("repeat"),
+            MapPresentationPolicy.filterDetections(listOf(repeated), state, now).map { it.id }
+        )
+    }
+
+    @Test
     fun gpsStatus_isIdleWhenScannerIsNotRunningAndNoDetectionsExist() {
         assertEquals(
             MapGpsStatus.IDLE,
@@ -154,6 +173,7 @@ class MapPresentationPolicyTest {
         longitude: Double,
         threatLevel: ThreatLevel,
         timestamp: Long = 1_800_000_000_000L,
+        lastSeenTimestamp: Long = timestamp,
         active: Boolean = true,
         protocol: DetectionProtocol = DetectionProtocol.BLUETOOTH_LE
     ) = Detection(
@@ -168,6 +188,6 @@ class MapPresentationPolicyTest {
         longitude = longitude,
         threatLevel = threatLevel,
         isActive = active,
-        lastSeenTimestamp = timestamp
+        lastSeenTimestamp = lastSeenTimestamp
     )
 }

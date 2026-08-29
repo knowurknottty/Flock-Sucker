@@ -211,6 +211,20 @@ enum class AiModel(
             }
         }
 
+        data class ArtifactContract(val sizeBytes: Long, val sha256: String)
+
+        /** Exact bytes accepted for a named file-backed model. */
+        fun getArtifactContract(model: AiModel): ArtifactContract? = when (model) {
+            GEMMA3_1B -> ArtifactContract(NetworkConfig.AI_MODEL_GEMMA3_1B_SIZE_BYTES, NetworkConfig.AI_MODEL_GEMMA3_1B_SHA256)
+            GEMMA_2B_CPU -> ArtifactContract(NetworkConfig.AI_MODEL_GEMMA_2B_CPU_SIZE_BYTES, NetworkConfig.AI_MODEL_GEMMA_2B_CPU_SHA256)
+            GEMMA_2B_GPU -> ArtifactContract(NetworkConfig.AI_MODEL_GEMMA_2B_GPU_SIZE_BYTES, NetworkConfig.AI_MODEL_GEMMA_2B_GPU_SHA256)
+            FLOCK_GEMMA_Q8_0 -> ArtifactContract(
+                NetworkConfig.AI_MODEL_FLOCK_GGUF_SIZE_BYTES,
+                NetworkConfig.AI_MODEL_FLOCK_GGUF_SHA256
+            )
+            RULE_BASED, GEMINI_NANO -> null
+        }
+
         /**
          * Get models suitable for the current device
          */
@@ -600,6 +614,17 @@ class AiSettingsRepository @Inject constructor(
 
     suspend fun setSelectedModel(modelId: String) {
         edit { it[Keys.SELECTED_MODEL] = modelId }
+    }
+
+    /** Persist model activation only after the exact requested runtime has passed readiness. */
+    suspend fun commitRuntimeReadyModel(modelId: String, sizeMb: Long) {
+        edit { prefs ->
+            prefs[Keys.ENABLED] = true
+            prefs[Keys.MODEL_DOWNLOADED] = true
+            prefs[Keys.SELECTED_MODEL] = modelId
+            prefs[Keys.MODEL_SIZE_MB] = sizeMb
+            prefs[Keys.LAST_MODEL_UPDATE] = System.currentTimeMillis()
+        }
     }
 
     suspend fun setPreferredEngine(engineId: String) {

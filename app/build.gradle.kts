@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -62,11 +64,28 @@ android {
 
         // AI Model Download URLs (Hugging Face)
         buildConfigField("String", "URL_AI_MODEL_GEMMA3_1B",
-            "\"${project.findProperty("URL_AI_MODEL_GEMMA3_1B") ?: "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task"}\"")
+            "\"${project.findProperty("URL_AI_MODEL_GEMMA3_1B") ?: "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/6d54daa71cfbffba6b2843c08eeb1a27e7430bf0/gemma3-1b-it-int4.task"}\"")
         buildConfigField("String", "URL_AI_MODEL_GEMMA_2B_CPU",
-            "\"${project.findProperty("URL_AI_MODEL_GEMMA_2B_CPU") ?: "https://huggingface.co/t-ghosh/gemma-tflite/resolve/main/gemma-1.1-2b-it-cpu-int4.bin"}\"")
+            "\"${project.findProperty("URL_AI_MODEL_GEMMA_2B_CPU") ?: "https://huggingface.co/t-ghosh/gemma-tflite/resolve/587f05c7d482210db5806f57593df62b0cf24194/gemma-1.1-2b-it-cpu-int4.bin"}\"")
         buildConfigField("String", "URL_AI_MODEL_GEMMA_2B_GPU",
-            "\"${project.findProperty("URL_AI_MODEL_GEMMA_2B_GPU") ?: "https://huggingface.co/t-ghosh/gemma-tflite/resolve/main/gemma2-2b-it-cpu-int8.task"}\"")
+            "\"${project.findProperty("URL_AI_MODEL_GEMMA_2B_GPU") ?: "https://huggingface.co/t-ghosh/gemma-tflite/resolve/587f05c7d482210db5806f57593df62b0cf24194/gemma2-2b-it-cpu-int8.task"}\"")
+        // Artifact identity must be overridden together with a custom model URL.
+        buildConfigField("String", "SHA256_AI_MODEL_GEMMA3_1B",
+            "\"${project.findProperty("SHA256_AI_MODEL_GEMMA3_1B") ?: "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee"}\"")
+        buildConfigField("long", "SIZE_AI_MODEL_GEMMA3_1B",
+            "${project.findProperty("SIZE_AI_MODEL_GEMMA3_1B") ?: "554661243"}L")
+        buildConfigField("String", "SHA256_AI_MODEL_GEMMA_2B_CPU",
+            "\"${project.findProperty("SHA256_AI_MODEL_GEMMA_2B_CPU") ?: "ba103a4c9a7d0fc9d71015836e4c2412867db716e411000cc8573e882dce44cd"}\"")
+        buildConfigField("long", "SIZE_AI_MODEL_GEMMA_2B_CPU",
+            "${project.findProperty("SIZE_AI_MODEL_GEMMA_2B_CPU") ?: "1346427328"}L")
+        buildConfigField("String", "SHA256_AI_MODEL_GEMMA_2B_GPU",
+            "\"${project.findProperty("SHA256_AI_MODEL_GEMMA_2B_GPU") ?: "8976f3bcf46fdfcce430a71f9bfd4453bb1eab6fabd8927614fd2ff8e192460c"}\"")
+        buildConfigField("long", "SIZE_AI_MODEL_GEMMA_2B_GPU",
+            "${project.findProperty("SIZE_AI_MODEL_GEMMA_2B_GPU") ?: "3201880210"}L")
+        buildConfigField("String", "SHA256_AI_MODEL_FLOCK_GGUF",
+            "\"${project.findProperty("SHA256_AI_MODEL_FLOCK_GGUF") ?: "82b323bf05eba698b87a39d1eca8ea31506222aff25b415f6388135069725b57"}\"")
+        buildConfigField("long", "SIZE_AI_MODEL_FLOCK_GGUF",
+            "${project.findProperty("SIZE_AI_MODEL_FLOCK_GGUF") ?: "291545376"}L")
 
         // Map Tile Server URLs (OpenStreetMap)
         buildConfigField("String", "URL_MAP_TILE_A",
@@ -80,7 +99,7 @@ android {
         buildConfigField("String", "URL_TOR_CHECK",
             "\"${project.findProperty("URL_TOR_CHECK") ?: "https://check.torproject.org/api/ip"}\"")
         buildConfigField("String", "URL_IP_LOOKUP",
-            "\"${project.findProperty("URL_IP_LOOKUP") ?: "http://ip-api.com/json"}\"")
+            "\"${project.findProperty("URL_IP_LOOKUP") ?: "https://ipwho.is"}\"")
 
         // DNS Check URLs (for network RTT measurement)
         buildConfigField("String", "URL_DNS_CHECK_CLOUDFLARE",
@@ -361,70 +380,86 @@ dependencies {
 }
 
 // ================================================================
-// OUI Database Update Task
+// OUI Database Provenance Tasks
 // ================================================================
 
+fun sha256(file: java.io.File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().buffered().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read > 0) digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
 /**
- * Task to download/refresh the IEEE OUI database CSV for bundled assets.
- * This ensures the app ships with an up-to-date manufacturer database.
- *
- * Run manually: ./gradlew updateOuiDatabase
- * Runs automatically before release builds.
+ * Explicit maintainer action: refresh the IEEE OUI snapshot and its digest.
+ * Release builds never perform a network refresh; they verify the committed snapshot.
  */
 tasks.register("updateOuiDatabase") {
     group = "assets"
-    description = "Downloads the latest IEEE OUI database for bundled assets"
+    description = "Refreshes the IEEE OUI snapshot and records its SHA-256"
 
     val ouiUrl = "https://standards-oui.ieee.org/oui/oui.csv"
     val assetsDir = file("src/main/assets")
     val ouiFile = file("src/main/assets/oui.csv")
+    val digestFile = file("src/main/assets/oui.sha256")
 
     doLast {
-        // Create assets directory if it doesn't exist
-        if (!assetsDir.exists()) {
-            assetsDir.mkdirs()
-            println("Created assets directory: ${assetsDir.absolutePath}")
+        assetsDir.mkdirs()
+        val tempFile = layout.buildDirectory.file("tmp/oui.csv.download").get().asFile
+        tempFile.parentFile.mkdirs()
+        val connection = uri(ouiUrl).toURL().openConnection() as javax.net.ssl.HttpsURLConnection
+        connection.requestMethod = "GET"
+        connection.setRequestProperty("Accept", "text/csv")
+        connection.setRequestProperty("User-Agent", "Flock-Sucker-Build/1.0")
+        connection.connectTimeout = 30000
+        connection.readTimeout = 60000
+        if (connection.responseCode != 200) {
+            throw GradleException("IEEE OUI refresh failed: HTTP ${connection.responseCode}")
         }
-
-        println("Downloading OUI database from IEEE...")
-        try {
-            val url = uri(ouiUrl).toURL()
-            val connection = url.openConnection() as javax.net.ssl.HttpsURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Accept", "text/csv")
-            connection.setRequestProperty("User-Agent", "FlockYou-Build/1.0")
-            connection.connectTimeout = 30000
-            connection.readTimeout = 60000
-
-            if (connection.responseCode == 200) {
-                connection.inputStream.use { input ->
-                    ouiFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-
-                val lineCount = ouiFile.readLines().size
-                println("Successfully downloaded OUI database: ${ouiFile.length() / 1024} KB, $lineCount entries")
-            } else {
-                println("Warning: Failed to download OUI database (HTTP ${connection.responseCode})")
-                println("Using existing bundled database if available")
-                if (!ouiFile.exists()) {
-                    throw GradleException("No OUI database available and download failed")
-                }
-            }
-        } catch (e: Exception) {
-            println("Warning: Could not download OUI database: ${e.message}")
-            if (!ouiFile.exists()) {
-                throw GradleException("No OUI database available: ${e.message}")
-            }
-            println("Using existing bundled database")
+        connection.inputStream.use { input -> tempFile.outputStream().use(input::copyTo) }
+        if (tempFile.length() < 1_000_000L) {
+            throw GradleException("IEEE OUI refresh produced implausibly small file: ${tempFile.length()} bytes")
         }
+        tempFile.copyTo(ouiFile, overwrite = true)
+        tempFile.delete()
+        val digest = sha256(ouiFile)
+        digestFile.writeText("$digest  oui.csv\n")
+        println("Refreshed OUI snapshot: ${ouiFile.length()} bytes, SHA-256 $digest")
     }
 }
 
-// Hook OUI update into release builds
-tasks.matching { it.name.contains("Release") && it.name.startsWith("assemble") }.configureEach {
-    dependsOn("updateOuiDatabase")
+/** Fail closed if the committed OUI snapshot is missing or has drifted. */
+tasks.register("verifyOuiDatabase") {
+    group = "verification"
+    description = "Verifies the committed IEEE OUI snapshot against oui.sha256"
+    val ouiFile = file("src/main/assets/oui.csv")
+    val digestFile = file("src/main/assets/oui.sha256")
+    inputs.files(ouiFile, digestFile)
+    doLast {
+        if (!ouiFile.isFile || !digestFile.isFile) {
+            throw GradleException("OUI snapshot or digest file is missing")
+        }
+        val expected = digestFile.readText().trim().substringBefore(' ').lowercase()
+        if (!expected.matches(Regex("[0-9a-f]{64}"))) {
+            throw GradleException("Invalid OUI SHA-256 manifest")
+        }
+        val actual = sha256(ouiFile)
+        if (actual != expected) {
+            throw GradleException("OUI snapshot digest mismatch: expected $expected, found $actual")
+        }
+        println("Verified OUI snapshot SHA-256: $actual")
+    }
+}
+
+// Every release variant crosses this gate before compilation/packaging, including APK and AAB paths.
+tasks.matching { it.name.startsWith("pre") && it.name.endsWith("ReleaseBuild") }.configureEach {
+    dependsOn("verifyOuiDatabase")
 }
 
 // ================================================================

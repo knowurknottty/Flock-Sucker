@@ -6,6 +6,7 @@ import com.flockyou.data.model.DetectionProtocol
 import com.flockyou.data.model.DeviceType
 import com.flockyou.data.model.SignalStrength
 import com.flockyou.data.model.ThreatLevel
+import com.flockyou.data.model.effectiveLastSeenTimestamp
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import kotlin.random.Random
@@ -13,7 +14,7 @@ import kotlin.random.Random
 class DetectionHistoryPresentationPolicyTest {
 
     @Test
-    fun filterAndSort_matchesLegacySemanticsAcrossMixedDataset() {
+    fun filterAndSort_matchesReferenceSemanticsAcrossMixedDataset() {
         val now = 1_800_000_000_000L
         val random = Random(0xCA7)
         val detections = List(300) { index ->
@@ -53,7 +54,7 @@ class DetectionHistoryPresentationPolicyTest {
         )
 
         assertEquals(
-            legacyFilterAndSort(detections, query, now).map { it.id },
+            referenceFilterAndSort(detections, query, now).map { it.id },
             DetectionHistoryPresentationPolicy.filterAndSort(detections, query, now).map { it.id }
         )
     }
@@ -80,7 +81,35 @@ class DetectionHistoryPresentationPolicyTest {
         )
     }
 
-    private fun legacyFilterAndSort(
+    @Test
+    fun recentFilter_usesLastSeenTimestampForRepeatedDetection() {
+        val now = 1_800_000_000_000L
+        val repeated = detection(
+            id = "repeated",
+            timestamp = now - 2 * 60 * 60 * 1000L,
+            lastSeenTimestamp = now - 5 * 60 * 1000L
+        )
+        val query = DetectionHistoryQuery(filterTimeRange = TimeRange.LAST_HOUR)
+
+        assertEquals(
+            listOf("repeated"),
+            DetectionHistoryPresentationPolicy.filterAndSort(listOf(repeated), query, now).map { it.id }
+        )
+    }
+
+    @Test
+    fun newestSort_ordersByLastSeenTimestamp() {
+        val query = DetectionHistoryQuery(sortOrder = SortOrder.NEWEST_FIRST)
+        val repeated = detection("repeated", timestamp = 100L, lastSeenTimestamp = 300L)
+        val firstSeenLater = detection("first", timestamp = 200L, lastSeenTimestamp = 200L)
+
+        assertEquals(
+            listOf("repeated", "first"),
+            DetectionHistoryPresentationPolicy.filterAndSort(listOf(firstSeenLater, repeated), query, 999L).map { it.id }
+        )
+    }
+
+    private fun referenceFilterAndSort(
         detections: List<Detection>,
         state: DetectionHistoryQuery,
         nowMillis: Long
@@ -94,9 +123,9 @@ class DetectionHistoryPresentationPolicyTest {
             val protocolPass = state.filterProtocols.isEmpty() || detection.protocol in state.filterProtocols
             val timePass = when (state.filterTimeRange) {
                 TimeRange.ALL_TIME -> true
-                TimeRange.CUSTOM -> detection.timestamp in
+                TimeRange.CUSTOM -> detection.effectiveLastSeenTimestamp in
                     (state.filterCustomStartTime ?: 0L)..(state.filterCustomEndTime ?: Long.MAX_VALUE)
-                else -> detection.timestamp >= nowMillis - (state.filterTimeRange.durationMs ?: 0L)
+                else -> detection.effectiveLastSeenTimestamp >= nowMillis - (state.filterTimeRange.durationMs ?: 0L)
             }
             val signalPass = state.filterSignalStrength.isEmpty() || detection.signalStrength in state.filterSignalStrength
             val activePass = !state.filterActiveOnly || detection.isActive
@@ -119,15 +148,19 @@ class DetectionHistoryPresentationPolicyTest {
             fpPass && threatTypePass && protocolPass && timePass && signalPass && activePass && searchPass
         }
         return when (state.sortOrder) {
-            SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.timestamp }
-            SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.timestamp }
+            SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.effectiveLastSeenTimestamp }
+            SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.effectiveLastSeenTimestamp }
             SortOrder.THREAT_SCORE_DESC -> filtered.sortedByDescending { it.threatScore }
             SortOrder.SIGNAL_STRENGTH_DESC -> filtered.sortedByDescending { it.rssi }
             SortOrder.SEEN_COUNT_DESC -> filtered.sortedByDescending { it.seenCount }
         }
     }
 
-    private fun detection(id: String, timestamp: Long) = Detection(
+    private fun detection(
+        id: String,
+        timestamp: Long,
+        lastSeenTimestamp: Long = timestamp
+    ) = Detection(
         id = id,
         timestamp = timestamp,
         protocol = DetectionProtocol.BLUETOOTH_LE,
@@ -136,6 +169,6 @@ class DetectionHistoryPresentationPolicyTest {
         rssi = -55,
         signalStrength = SignalStrength.GOOD,
         threatLevel = ThreatLevel.LOW,
-        lastSeenTimestamp = timestamp
+        lastSeenTimestamp = lastSeenTimestamp
     )
 }

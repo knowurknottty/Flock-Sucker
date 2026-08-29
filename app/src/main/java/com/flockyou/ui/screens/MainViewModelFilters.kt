@@ -200,11 +200,11 @@ fun MainViewModel.getFilteredDetections(): List<Detection> {
             TimeRange.CUSTOM -> {
                 val start = state.filterCustomStartTime ?: 0L
                 val end = state.filterCustomEndTime ?: Long.MAX_VALUE
-                detection.timestamp in start..end
+                detection.effectiveLastSeenTimestamp in start..end
             }
             else -> {
                 val cutoff = System.currentTimeMillis() - (state.filterTimeRange.durationMs ?: 0L)
-                detection.timestamp >= cutoff
+                detection.effectiveLastSeenTimestamp >= cutoff
             }
         }
 
@@ -251,8 +251,8 @@ fun MainViewModel.getFilteredDetections(): List<Detection> {
 
     // Apply sorting
     return when (state.sortOrder) {
-        SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.timestamp }
-        SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.timestamp }
+        SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.effectiveLastSeenTimestamp }
+        SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.effectiveLastSeenTimestamp }
         SortOrder.THREAT_SCORE_DESC -> filtered.sortedByDescending { it.threatScore }
         SortOrder.SIGNAL_STRENGTH_DESC -> filtered.sortedByDescending { it.rssi }
         SortOrder.SEEN_COUNT_DESC -> filtered.sortedByDescending { it.seenCount }
