@@ -34,7 +34,7 @@ jobs:
           echo "📌 Building release for $TAG (version $VERSION)"
       
       - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
@@ -105,7 +105,7 @@ jobs:
           mv "$APK_PATH" "app/build/outputs/apk/sideload/release/FlockYou-${{ steps.version.outputs.tag }}.apk"
       
       - name: 🚀 Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           name: "Flock You ${{ steps.version.outputs.tag }}"
           draft: false
