@@ -8,6 +8,7 @@ import com.flockyou.BuildConfig
 import com.flockyou.data.NukeSettingsRepository
 import com.flockyou.security.NukeManager
 import com.flockyou.security.NukeTriggerSource
+import com.flockyou.service.BootActionPolicy
 import com.flockyou.worker.NukeWorker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -75,21 +76,20 @@ class BootWatcher : BroadcastReceiver() {
     lateinit var nukeManager: NukeManager
 
     override fun onReceive(context: Context, intent: Intent) {
-        when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_LOCKED_BOOT_COMPLETED,
-            "android.intent.action.QUICKBOOT_POWERON",
-            "com.htc.intent.action.QUICKBOOT_POWERON" -> {
-                Log.d(TAG, "Boot event received: ${intent.action}")
-                // Use goAsync() for proper async handling in BroadcastReceiver
-                val pendingResult = goAsync()
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        handleBootEvent(context)
-                    } finally {
-                        pendingResult.finish()
-                    }
-                }
+        val action = intent.action
+        if (!BootActionPolicy.isTrustedBootAction(action)) {
+            Log.w(TAG, "Ignoring untrusted boot-like broadcast: $action")
+            return
+        }
+
+        Log.d(TAG, "Boot event received: $action")
+        // Use goAsync() for proper async handling in BroadcastReceiver
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                handleBootEvent(context)
+            } finally {
+                pendingResult.finish()
             }
         }
     }

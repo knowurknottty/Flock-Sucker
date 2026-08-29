@@ -68,14 +68,12 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
         Log.d(TAG, "Received broadcast: $action")
         
-        when (action) {
-            Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_LOCKED_BOOT_COMPLETED,
-            "android.intent.action.QUICKBOOT_POWERON",
-            "com.htc.intent.action.QUICKBOOT_POWERON" -> {
-                handleBootCompleted(context)
-            }
+        if (!BootActionPolicy.isTrustedBootAction(action)) {
+            Log.w(TAG, "Ignoring untrusted boot-like broadcast: $action")
+            return
         }
+
+        handleBootCompleted(context)
     }
     
     private fun handleBootCompleted(context: Context) {

@@ -221,7 +221,7 @@ Flock-Sucker requests `INTERNET` because some features use external services. Co
 | Surface | Typical trigger | What leaves the device |
 |---|---|---|
 | OpenStreetMap tiles | Opening/rendering online map views | Tile coordinates/HTTP metadata to configured OSM tile servers |
-| IEEE OUI database | Scheduled/setting-controlled refresh; bundled data is fallback | OUI CSV request to IEEE |
+| IEEE OUI database | Bundled, SHA-256-verified snapshot; refresh is an explicit maintainer action | OUI CSV request to IEEE only when a maintainer deliberately refreshes the snapshot |
 | Local model acquisition | User/model workflow when a downloadable artifact is configured | Model download request |
 | Gemini Nano managed components | Platform/Google provisioning where supported | Managed by Android/Google service stack, not a Flock-Sucker cloud LLM API |
 | Tor status / exit-IP test | User/network privacy diagnostics | Request to configured Tor-check endpoint |

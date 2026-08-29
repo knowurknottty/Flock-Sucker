@@ -233,12 +233,12 @@ fun DetectionCard(
     // Calculate relative time (not memoized so it updates on recomposition)
     val relativeTime = run {
         val now = System.currentTimeMillis()
-        val diff = now - detection.timestamp
+        val diff = now - detection.effectiveLastSeenTimestamp
         when {
             diff < 60_000 -> "Just now"
             diff < 3600_000 -> "${diff / 60_000}m ago"
             diff < 86400_000 -> "${diff / 3600_000}h ago"
-            else -> dateFormat.format(Date(detection.timestamp))
+            else -> dateFormat.format(Date(detection.effectiveLastSeenTimestamp))
         }
     }
 

@@ -1412,12 +1412,13 @@ internal fun groupDetectionsByTime(detections: List<Detection>): List<Pair<Strin
 
     val groups = linkedMapOf<String, MutableList<Detection>>()
     for (detection in detections) {
+        val recency = detection.effectiveLastSeenTimestamp
         val key = when {
-            detection.timestamp >= fiveMinAgo -> "Just Now"
-            detection.timestamp >= oneHourAgo -> "Last Hour"
-            detection.timestamp >= todayStart -> "Today"
-            detection.timestamp >= yesterdayStart -> "Yesterday"
-            else -> dateFormat.format(Date(detection.timestamp))
+            recency >= fiveMinAgo -> "Just Now"
+            recency >= oneHourAgo -> "Last Hour"
+            recency >= todayStart -> "Today"
+            recency >= yesterdayStart -> "Yesterday"
+            else -> dateFormat.format(Date(recency))
         }
         groups.getOrPut(key) { mutableListOf() }.add(detection)
     }

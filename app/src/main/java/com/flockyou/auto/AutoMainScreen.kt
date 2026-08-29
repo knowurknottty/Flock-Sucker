@@ -18,6 +18,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.flockyou.R
 import com.flockyou.data.model.Detection
 import com.flockyou.data.model.ThreatLevel
+import com.flockyou.data.model.effectiveLastSeenTimestamp
 import com.flockyou.service.ScanningServiceConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -176,7 +177,7 @@ class AutoMainScreen(carContext: CarContext) : Screen(carContext) {
                 serviceConnection.activeDetections.collectLatest { active ->
                     Log.d(TAG, "Received ${active.size} active detections via IPC")
 
-                    val sortedDetections = active.sortedByDescending { it.timestamp }
+                    val sortedDetections = active.sortedByDescending { it.effectiveLastSeenTimestamp }
                     val counts = active.groupBy { it.threatLevel }.mapValues { it.value.size }
 
                     updateData(sortedDetections, counts)

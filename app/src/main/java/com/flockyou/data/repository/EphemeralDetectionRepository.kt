@@ -4,6 +4,7 @@ import android.util.Log
 import com.flockyou.data.model.Detection
 import com.flockyou.data.model.DeviceType
 import com.flockyou.data.model.ThreatLevel
+import com.flockyou.data.model.effectiveLastSeenTimestamp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -56,7 +57,7 @@ class EphemeralDetectionRepository @Inject constructor(
 
     fun getRecentDetections(sinceMillis: Long): Flow<List<Detection>> {
         return _detections.map { list ->
-            list.filter { it.timestamp >= sinceMillis }
+            list.filter { it.effectiveLastSeenTimestamp >= sinceMillis }
         }
     }
 
@@ -153,7 +154,7 @@ class EphemeralDetectionRepository @Inject constructor(
 
     suspend fun deleteOldDetections(beforeMillis: Long) = mutex.withLock {
         val current = _detections.value.toMutableList()
-        current.removeAll { it.timestamp < beforeMillis }
+        current.removeAll { it.effectiveLastSeenTimestamp < beforeMillis }
         _detections.value = current
     }
 

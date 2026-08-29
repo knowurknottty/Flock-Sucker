@@ -5,6 +5,7 @@ import com.flockyou.data.model.DetectionProtocol
 import com.flockyou.data.model.DeviceType
 import com.flockyou.data.model.SignalStrength
 import com.flockyou.data.model.ThreatLevel
+import com.flockyou.data.model.effectiveLastSeenTimestamp
 
 /**
  * Narrow, immutable projection of the MainUiState fields that can actually change detection-history
@@ -67,8 +68,8 @@ object DetectionHistoryPresentationPolicy {
             val protocolPass = query.filterProtocols.isEmpty() || detection.protocol in query.filterProtocols
             val timePass = when (query.filterTimeRange) {
                 TimeRange.ALL_TIME -> true
-                TimeRange.CUSTOM -> detection.timestamp in customStart..customEnd
-                else -> detection.timestamp >= (cutoff ?: Long.MIN_VALUE)
+                TimeRange.CUSTOM -> detection.effectiveLastSeenTimestamp in customStart..customEnd
+                else -> detection.effectiveLastSeenTimestamp >= (cutoff ?: Long.MIN_VALUE)
             }
             val signalPass = query.filterSignalStrength.isEmpty() ||
                 detection.signalStrength in query.filterSignalStrength
@@ -93,8 +94,8 @@ object DetectionHistoryPresentationPolicy {
         }
 
         return when (query.sortOrder) {
-            SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.timestamp }
-            SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.timestamp }
+            SortOrder.NEWEST_FIRST -> filtered.sortedByDescending { it.effectiveLastSeenTimestamp }
+            SortOrder.OLDEST_FIRST -> filtered.sortedBy { it.effectiveLastSeenTimestamp }
             SortOrder.THREAT_SCORE_DESC -> filtered.sortedByDescending { it.threatScore }
             SortOrder.SIGNAL_STRENGTH_DESC -> filtered.sortedByDescending { it.rssi }
             SortOrder.SEEN_COUNT_DESC -> filtered.sortedByDescending { it.seenCount }

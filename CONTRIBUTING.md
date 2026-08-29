@@ -82,7 +82,7 @@ Scanner-performance claims should use the proof-of-life/ingress telemetry when a
 
 ## Privacy and network changes
 
-Core detection and supported local-AI analysis are on-device, but the application intentionally has network-capable surfaces (for example OSM tiles, scheduled IEEE OUI refresh, model acquisition, Tor/IP/DNS diagnostics and explicit Shodan browser searches).
+Core detection and supported local-AI analysis are on-device, but the application intentionally has network-capable surfaces (for example OSM tiles, explicit maintainer-triggered IEEE OUI refresh, model acquisition, Tor/IP/DNS diagnostics and explicit Shodan browser searches).
 
 Any PR adding or changing networking must document:
 

@@ -125,6 +125,8 @@ internal class InferenceEngineImpl private constructor(
     private var _readyForSystemPrompt = false
     @Volatile
     private var _cancelGeneration = false
+    @Volatile
+    private var nativeBackendReady = false
 
     /**
      * Single-threaded coroutine dispatcher & scope for LLama asynchronous operations
@@ -143,14 +145,16 @@ internal class InferenceEngineImpl private constructor(
                 Log.i(TAG, "Loading native library...")
                 System.loadLibrary("ai-chat")
                 init(nativeLibDir)
+                nativeBackendReady = true
                 _state.value = InferenceEngine.State.Initialized
                 Log.i(TAG, "Native library loaded! System info: \n${systemInfo()}")
 
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load native library", e)
-                throw e
-            }
-        }
+            } catch (t: Throwable) {
+                val failure = t as? Exception ?: RuntimeException("Failed to initialize native backend", t)
+                nativeBackendReady = false
+                _state.value = InferenceEngine.State.Error(failure)
+                Log.e(TAG, "Failed to load native library", t)
+            }        }
     }
 
     override suspend fun configure(
@@ -256,8 +260,7 @@ internal class InferenceEngineImpl private constructor(
 
             processUserPrompt(message, predictLength).let { result ->
                 if (result != 0) {
-                    Log.e(TAG, "Failed to process user prompt: $result")
-                    return@flow
+                    throw IOException("Failed to process user prompt: $result")
                 }
             }
 
@@ -321,9 +324,14 @@ internal class InferenceEngineImpl private constructor(
                 }
 
                 is InferenceEngine.State.Error -> {
-                    Log.i(TAG, "Resetting error states...")
+                    if (!nativeBackendReady) {
+                        throw state.exception
+                    }
+                    Log.i(TAG, "Recovering from error and freeing partial model resources...")
+                    _readyForSystemPrompt = false
+                    unload()
                     _state.value = InferenceEngine.State.Initialized
-                    Log.i(TAG, "States reset!")
+                    Log.i(TAG, "Error resources released; runtime reset to Initialized")
                     Unit
                 }
 
@@ -339,10 +347,13 @@ internal class InferenceEngineImpl private constructor(
         _cancelGeneration = true
         runBlocking(llamaDispatcher) {
             _readyForSystemPrompt = false
-            when(_state.value) {
-                is InferenceEngine.State.Uninitialized -> {}
-                is InferenceEngine.State.Initialized -> shutdown()
-                else -> { unload(); shutdown() }
+            if (nativeBackendReady) {
+                when (_state.value) {
+                    is InferenceEngine.State.Uninitialized -> Unit
+                    is InferenceEngine.State.Initialized -> shutdown()
+                    else -> { unload(); shutdown() }
+                }
+                nativeBackendReady = false
             }
         }
         llamaScope.cancel()
