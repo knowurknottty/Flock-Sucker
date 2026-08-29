@@ -34,6 +34,9 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+internal fun compactNearbyCount(count: Int): String =
+    if (count > 99) "99+" else count.coerceAtLeast(0).toString()
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NearbyDevicesScreen(
@@ -149,11 +152,11 @@ fun NearbyDevicesScreen(
                                 when (index) {
                                     0 -> if (seenBleDevices.isNotEmpty()) {
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Badge { Text(seenBleDevices.size.toString()) }
+                                        Badge { Text(compactNearbyCount(seenBleDevices.size)) }
                                     }
                                     1 -> if (seenWifiNetworks.isNotEmpty()) {
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Badge { Text(seenWifiNetworks.size.toString()) }
+                                        Badge { Text(compactNearbyCount(seenWifiNetworks.size)) }
                                     }
                                     3 -> if (gnssSatellites.isNotEmpty()) {
                                         Spacer(modifier = Modifier.width(4.dp))
