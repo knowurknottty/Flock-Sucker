@@ -4,9 +4,8 @@
 
 ![Version](https://img.shields.io/badge/version-1.2-blue)
 ![Platform](https://img.shields.io/badge/platform-Flipper%20Zero-orange)
-![License](https://img.shields.io/badge/license-MIT-green)
 
-Flock Bridge is a sophisticated Flipper Zero FAP (Flipper Application Package) that bridges the gap between the device's internal radio capabilities and external hardware modules. It provides comprehensive multi-spectrum wireless threat detection, analysis, and active probing capabilities, serving as the Flipper Zero component of the "Flock You" security research ecosystem.
+Flock Bridge is the Flipper Zero companion for Flock-Sucker. It bridges the device's internal radio capabilities and optional external hardware modules, with passive scanners plus authorization-required active security-research/probing tools.
 
 ## Table of Contents
 
@@ -83,8 +82,8 @@ Flock Bridge is a sophisticated Flipper Zero FAP (Flipper Application Package) t
 ### From Source
 ```bash
 # Clone the repository
-git clone https://github.com/FlockYou/Flock-You-Android.git
-cd Flock-You-Android/flipper_app/flock_bridge
+git clone --recurse-submodules https://github.com/knowurknottty/Flock-Sucker.git
+cd Flock-Sucker/flipper_app/flock_bridge
 
 # Build with ufbt
 make build
@@ -98,7 +97,7 @@ make install
 ## Quick Start
 
 1. **Launch the app** on your Flipper Zero
-2. **Connect via USB** to your computer or Android device running the Flock You app
+2. **Connect via USB** to your computer or Android device running Flock-Sucker
 3. **Navigate** using the Flipper's controls:
    - Main menu shows scanner status
    - Press OK to toggle scanners on/off
@@ -889,7 +888,7 @@ flock_bridge/
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+License terms for redistribution must follow the verified root-project provenance. The current tree does not contain a standalone root or Flock Bridge `LICENSE` file; do not infer MIT solely from historical README badges/text.
 
 ---
 
@@ -901,4 +900,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-**Flock Bridge** - Part of the Flock You Security Research Ecosystem
+**Flock Bridge** — Flipper Zero companion for Flock-Sucker

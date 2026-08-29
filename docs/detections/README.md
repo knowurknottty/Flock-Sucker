@@ -1,4 +1,4 @@
-# Flock-You Detection System Documentation
+# Flock-Sucker Detection System Documentation
 
 ## Master Index
 
@@ -54,7 +54,7 @@ flowchart TB
 
 ```mermaid
 mindmap
-    root((Flock-You<br/>Detection))
+    root((Flock-Sucker<br/>Detection))
         BLUETOOTH_LE
             Trackers
                 AirTag
@@ -186,12 +186,12 @@ flowchart LR
         DB --> UI
     end
 
-    Cloud[Cloud Services]
+    External[Optional External Services]
 
-    Device x--x|NO CONNECTION| Cloud
+    Device -.->|OSM tiles / OUI refresh / model acquisition / diagnostics / explicit Shodan browser action| External
 
     style Device fill:#0f3460,stroke:#00ff88,color:#fff
-    style Cloud fill:#dc2626,stroke:#fff,color:#fff
+    style External fill:#4b5563,stroke:#fff,color:#fff
     style Scanner fill:#1a1a2e,stroke:#00d4ff,color:#fff
     style Process fill:#1a1a2e,stroke:#00d4ff,color:#fff
     style LLM fill:#1a1a2e,stroke:#00d4ff,color:#fff
@@ -199,12 +199,12 @@ flowchart LR
     style UI fill:#1a1a2e,stroke:#00d4ff,color:#fff
 ```
 
-**Privacy Guarantees:**
-- All processing happens ON-DEVICE
-- NO cloud transmission of any data
-- Local LLM only (no OpenAI/Google/etc)
-- Data NEVER leaves your phone
-- AES-256-GCM encrypted storage
+**Privacy / network boundary:**
+- Core scan classification, threat scoring and supported local-model inference run on-device.
+- Persistent detection history is stored locally in SQLCipher; database pages use AES-256-CBC with per-page HMAC, while the passphrase wrapper uses Android Keystore AES/GCM.
+- The app has explicit network-capable surfaces: OSM map tiles, scheduled IEEE OUI refresh, model acquisition, Tor/IP/DNS diagnostics and user-initiated Shodan browser searches.
+- There is no required cloud LLM backend for detection analysis; Gemini Nano components may be provisioned by the Android/Google service stack where supported.
+- See the root README for the complete network disclosure and Tor fallback boundary.
 
 ### Device Type Categories
 
@@ -332,17 +332,17 @@ flowchart TD
 
 ---
 
-## 1. Flock-You Detection System Overview
+## 1. Flock-Sucker Detection System Overview
 
 ### Mission Statement
 
-Flock-You is an open-source surveillance detection application that empowers individuals to identify and understand surveillance devices in their environment. By detecting police surveillance technology, hidden trackers, IMSI catchers, and other monitoring devices, Flock-You helps people make informed decisions about their privacy and safety.
+Flock-Sucker is an open-source surveillance detection application that empowers individuals to identify and understand surveillance devices in their environment. By detecting police surveillance technology, hidden trackers, IMSI catchers, and other monitoring devices, Flock-You helps people make informed decisions about their privacy and safety.
 
 **"Watch the Watchers"** - Know when surveillance equipment is nearby so you can protect your privacy, document police presence, or simply understand the surveillance landscape around you.
 
 ### What the App Detects
 
-Flock-You provides comprehensive detection across seven major categories:
+Flock-Sucker provides comprehensive detection across seven major categories:
 
 - **Cellular Surveillance**: IMSI catchers (StingRay/Hailstorm), cell site simulators, encryption downgrades
 - **GNSS/GPS Attacks**: GPS spoofing, jamming, signal manipulation
@@ -355,11 +355,11 @@ Flock-You provides comprehensive detection across seven major categories:
 
 ### Privacy-First Design Principles
 
-1. **No Cloud Processing**: All detection algorithms run entirely on-device
-2. **No Data Exfiltration**: Detection data never leaves your device
-3. **Local Storage Only**: All data stored in encrypted local database (SQLCipher AES-256-GCM)
-4. **No Telemetry**: Zero analytics, crash reporting, or usage tracking
-5. **Open Source**: Full code transparency for audit and verification
+1. **Local detection core**: Scan classification and threat scoring run on-device.
+2. **Local persistent evidence**: Detection history is stored in the local SQLCipher database unless ephemeral mode is enabled.
+3. **Explicit network surfaces**: Maps, OUI refresh, model acquisition, diagnostics and explicit Shodan browsing can use the network; they must not be hidden behind a “zero network” claim.
+4. **No required cloud LLM analysis API**: Supported analysis engines are local/on-device; platform-managed Gemini Nano provisioning is device/Google-service dependent.
+5. **Open source**: Code and evidence boundaries are inspectable and should be independently verified.
 
 ### On-Device Processing Commitment
 
@@ -391,7 +391,7 @@ Quick reference table for all detection categories:
 
 ## 3. Threat Level Reference
 
-Flock-You uses a five-tier threat severity system based on enterprise-grade threat scoring:
+Flock-Sucker uses a five-tier threat severity system based on enterprise-grade threat scoring:
 
 ### CRITICAL (Score 90-100)
 
@@ -457,7 +457,7 @@ Flock-You uses a five-tier threat severity system based on enterprise-grade thre
 
 ## 4. Detection Protocols
 
-Flock-You monitors seven distinct detection protocols:
+Flock-Sucker monitors seven distinct detection protocols:
 
 ### BLUETOOTH_LE
 - **Display Name:** Bluetooth LE
@@ -507,7 +507,7 @@ Flock-You monitors seven distinct detection protocols:
 
 ### Understanding Notifications
 
-When Flock-You detects a surveillance device, you receive a notification containing:
+When Flock-Sucker records a matching detection candidate, you receive a notification containing:
 
 1. **Device Type**: What was detected (e.g., "Flock Safety ALPR", "Cell Site Simulator")
 2. **Threat Level**: Color-coded severity (Red=Critical, Orange=High, Yellow=Medium, etc.)
@@ -558,7 +558,7 @@ When Flock-You detects a surveillance device, you receive a notification contain
 
 ### Detection Handler Pattern
 
-Flock-You uses a modular handler architecture where each detection protocol has a dedicated handler:
+Flock-Sucker uses a modular handler architecture where each detection protocol has a dedicated handler:
 
 ```
 DetectionHandler<T : DetectionContext>
@@ -891,12 +891,12 @@ All detection methods implemented in the system:
 
 ## 9. Privacy Commitment
 
-### No Cloud Processing
+### Local analysis core
 
-- All detection algorithms execute locally on your device
-- Pattern matching databases stored locally
-- Threat scoring calculations performed on-device
-- No network calls to cloud services for analysis
+- Detection classification and threat scoring execute on-device.
+- Signature/pattern data used by the detectors is local (the IEEE OUI database can be refreshed over the network).
+- Supported LLM inference is on-device; there is no required remote LLM analysis API.
+- Other app features can still make disclosed network requests; see the root README.
 
 ### No Data Collection
 
@@ -905,26 +905,26 @@ All detection methods implemented in the system:
 - No usage statistics collected
 - No advertising or tracking SDKs
 
-### Local LLM Only
+### Local AI analysis
 
-- Optional AI analysis uses on-device models only
-- No data sent to OpenAI, Google, or other cloud AI
-- LLM prompts and responses stay on device
-- User controls whether LLM is enabled
+- Optional analysis uses the supported on-device engines: rule-based fallback, MediaPipe, native llama.cpp GGUF, and Gemini Nano where supported.
+- Flock-Sucker does not require a remote OpenAI/Google-style LLM API for detection analysis.
+- Gemini Nano managed components may be provisioned by Android/Google services on supported devices; that platform provisioning is distinct from sending detections to a cloud LLM.
+- Users control AI/model selection and local model acquisition/import workflows.
 
 ### What Data Stays on Device
 
-All the following data is stored locally and never transmitted:
+Detection evidence is primarily local; network-enabled features are disclosed separately and should not be described as “never transmitted.” Persistent Room data is protected by SQLCipher:
 
-| Data Type | Storage | Encryption |
-|-----------|---------|------------|
-| Detection history | SQLite/Room | AES-256-GCM |
-| Location data | SQLite/Room | AES-256-GCM |
-| Cell tower history | SQLite/Room | AES-256-GCM |
-| Device signatures | SQLite/Room | AES-256-GCM |
-| User preferences | SharedPreferences | Android Keystore |
+| Data Type | Primary storage | Protection / boundary |
+|-----------|-----------------|-----------------------|
+| Detection history / sightings | Room + SQLCipher | SQLCipher AES-256-CBC + per-page HMAC |
+| Stored location data | Room + SQLCipher | Same database protection; storage can be disabled |
+| Cellular history | Local app storage / SQLCipher-backed paths where persisted | Availability and persistence vary by monitor/mode |
+| Detection signatures | Bundled/local app data | Some reference data such as IEEE OUI can be refreshed |
+| Preferences | Android app storage / DataStore or encrypted preferences depending on subsystem | Not equivalent to the SQLCipher evidence database |
 
-**Database Encryption:** SQLCipher with key stored in Android Keystore
+**Key boundary:** the SQLCipher passphrase is separately wrapped with an Android Keystore AES/GCM key. Database pages themselves are CBC+HMAC, not GCM.
 
 ---
 
@@ -1050,7 +1050,7 @@ If you are concerned about being tracked or surveilled, these organizations can 
 2. **Code Style**: Follow existing Kotlin conventions
 3. **Tests**: Add tests for new detection patterns
 4. **Documentation**: Update relevant docs (including this index)
-5. **Privacy Review**: Ensure no data leaves the device
+5. **Privacy/Network Review**: Document any external destination, trigger, payload and proxy/fallback behavior
 6. **Pull Request**: Open PR with clear description
 
 ### Commit Message Format
@@ -1096,7 +1096,7 @@ docs(detection): update threat scoring documentation
 ## Quick Navigation
 
 - [Visual Overview](#visual-overview)
-- [Overview](#1-flock-you-detection-system-overview)
+- [Overview](#1-flock-sucker-detection-system-overview)
 - [Detection Categories](#2-detection-categories)
 - [Threat Levels](#3-threat-level-reference)
 - [Protocols](#4-detection-protocols)
@@ -1113,7 +1113,7 @@ docs(detection): update threat scoring documentation
 ---
 
 <p align="center">
-  <b>Flock-You: Watch the Watchers</b>
+  <b>Flock-Sucker: Watch the Watchers</b>
   <br/>
   <i>Privacy-first surveillance detection for Android</i>
 </p>
