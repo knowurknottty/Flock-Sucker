@@ -61,6 +61,10 @@ internal fun ScanningService.applyPrivacySettings(detection: Detection): Detecti
 }
 
 internal suspend fun ScanningService.handleDetection(detection: Detection) {
+    // Proof-of-life: raw observation counted at pipeline entry, before
+    // classification, per the scanner correctness contract.
+    recordRawObservation(mapProtocolToDetector(detection.protocol))
+
     // Check if database is available (might be unavailable during nuke)
     if (!ScanningServiceState.isDatabaseAvailable.value) {
         Log.w(TAG, "Database unavailable - skipping detection save")
@@ -95,6 +99,11 @@ internal suspend fun ScanningService.handleDetection(detection: Detection) {
             repository.upsertDetection(detectionWithFp)
         }
 
+        recordFunnelOutcome(
+            detectorName = mapProtocolToDetector(detectionWithFp.protocol),
+            accepted = true,
+            persistenceFailed = false
+        )
         ScanningServiceState.scanStats.update { stats ->
             stats.recordPersistenceOutcome(detectionWithFp.protocol, isNew)
         }
@@ -737,4 +746,15 @@ internal fun ScanningService.alertUserOfCorrelation(correlation: com.flockyou.ai
     } catch (e: Exception) {
         Log.e(TAG, "Failed to send correlation alert: ${e.message}", e)
     }
+}
+
+/** Map a detection protocol to its proof-of-life detector lane. */
+private fun mapProtocolToDetector(protocol: DetectionProtocol): String = when (protocol) {
+    DetectionProtocol.WIFI -> DetectorHealthStatus.DETECTOR_WIFI
+    DetectionProtocol.BLUETOOTH_LE -> DetectorHealthStatus.DETECTOR_BLE
+    DetectionProtocol.CELLULAR -> DetectorHealthStatus.DETECTOR_CELLULAR
+    DetectionProtocol.SATELLITE -> DetectorHealthStatus.DETECTOR_SATELLITE
+    DetectionProtocol.GNSS -> DetectorHealthStatus.DETECTOR_GNSS
+    DetectionProtocol.RF -> DetectorHealthStatus.DETECTOR_RF_SIGNAL
+    DetectionProtocol.AUDIO -> DetectorHealthStatus.DETECTOR_ULTRASONIC
 }

@@ -629,7 +629,7 @@ internal object SsidPatterns {
         ),
         DetectionPattern(
             type = PatternType.SSID_REGEX,
-            pattern = "(?i)^(dahua|dh)[_-]?.*",
+            pattern = "(?i)^(dahua|dh)[_-]?.*(cam|ipc|ipcams|camera|dvr|nvr)[0-9a-f]*$",
             deviceType = DeviceType.HIDDEN_CAMERA,
             manufacturer = "Dahua",
             threatScore = 75,

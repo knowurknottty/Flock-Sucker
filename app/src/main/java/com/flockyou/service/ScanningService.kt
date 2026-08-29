@@ -2473,6 +2473,34 @@ class ScanningService : Service() {
         broadcastDetectorHealth()
     }
 
+    // ==================== Proof-of-life counters (r1 contract) ====================
+
+    /** Record one raw observation at scanner-callback entry, before classification. */
+    fun recordRawObservation(detectorName: String) {
+        updateDetectorHealth(detectorName) { current ->
+            current.copy(rawObservationCount = current.rawObservationCount + 1)
+        }
+        broadcastDetectorHealth()
+    }
+
+    /** Record the funnel outcome of one processed observation. */
+    fun recordFunnelOutcome(
+        detectorName: String,
+        accepted: Boolean,
+        persistenceFailed: Boolean = false
+    ) {
+        updateDetectorHealth(detectorName) { current ->
+            current.copy(
+                candidateCount = current.candidateCount + 1,
+                acceptedSightingCount = if (accepted) current.acceptedSightingCount + 1
+                                        else current.acceptedSightingCount,
+                persistenceFailureCount = if (persistenceFailed) current.persistenceFailureCount + 1
+                                          else current.persistenceFailureCount
+            )
+        }
+        broadcastDetectorHealth()
+    }
+
     private fun updateDetectorHealth(detectorName: String, transform: (DetectorHealthStatus) -> DetectorHealthStatus) {
         val current = detectorHealth.value.toMutableMap()
         val existing = current[detectorName] ?: DetectorHealthStatus(name = detectorName)

@@ -3,7 +3,7 @@ name: Android CI/CD
 on:
   # Build on push to main branch
   push:
-    branches: [ main, master ]
+    branches: [ main, master, '**' ]
     paths:
       - 'app/**'
       - 'build.gradle.kts'
