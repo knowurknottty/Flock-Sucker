@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "FlockYou"
 include(":app")
+include(":llamaandroid")

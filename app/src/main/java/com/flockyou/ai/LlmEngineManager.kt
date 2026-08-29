@@ -42,7 +42,8 @@ import javax.inject.Singleton
 class LlmEngineManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val geminiNanoClient: GeminiNanoClient,
-    private val mediaPipeLlmClient: MediaPipeLlmClient
+    private val mediaPipeLlmClient: MediaPipeLlmClient,
+    private val llamaCppClient: LlamaCppClient
 ) {
     companion object {
         private const val TAG = "LlmEngineManager"
@@ -118,6 +119,10 @@ class LlmEngineManager @Inject constructor(
                 Log.i(TAG, "User selected Gemini Nano engine")
                 tryInitializeGeminiNano()
             }
+            LlmEnginePreference.LLAMA_CPP -> {
+                Log.i(TAG, "User selected llama.cpp engine")
+                tryInitializeLlamaCpp(preferredModel)
+            }
             LlmEnginePreference.MEDIAPIPE -> {
                 // User explicitly wants MediaPipe
                 Log.i(TAG, "User selected MediaPipe engine")
@@ -134,9 +139,14 @@ class LlmEngineManager @Inject constructor(
                 Log.i(TAG, "Auto mode: trying best available LLM engine")
                 when (preferredModel.modelFormat) {
                     ModelFormat.MLKIT_GENAI, ModelFormat.AICORE -> {
-                        // User selected Gemini Nano model - try that first
-                        tryInitializeGeminiNano() ?: tryInitializeMediaPipe(settings)
+                        // User explicitly selected Gemini Nano - honor it first.
+                        tryInitializeGeminiNano()
+                            ?: tryInitializeLlamaCpp(AiModel.FLOCK_GEMMA_Q8_0)
+                            ?: tryInitializeMediaPipe(settings)
                     }
+                    ModelFormat.GGUF -> tryInitializeLlamaCpp(preferredModel)
+                        ?: tryInitializeMediaPipe(settings)
+                        ?: tryInitializeGeminiNano()
                     ModelFormat.TASK -> {
                         // User explicitly selected a MediaPipe model - try that first
                         tryInitializeMediaPipe(settings, preferredModel) ?: tryInitializeGeminiNano()
@@ -145,7 +155,9 @@ class LlmEngineManager @Inject constructor(
                         // No specific model selected - try all engines in preference order
                         // This is the key fix: AUTO mode should try LLMs before rule-based
                         Log.i(TAG, "Auto mode with no model preference - trying all LLM engines")
-                        tryInitializeGeminiNano() ?: tryInitializeMediaPipe(settings)
+                        tryInitializeLlamaCpp(AiModel.FLOCK_GEMMA_Q8_0)
+                            ?: tryInitializeGeminiNano()
+                            ?: tryInitializeMediaPipe(settings)
                     }
                 }
             }
@@ -164,9 +176,13 @@ class LlmEngineManager @Inject constructor(
                 Log.w(TAG, "Requested engine ${enginePreference.displayName} failed to initialize, trying other LLM engines")
                 // Try other LLM engines before giving up - user likely wants ANY LLM, not just rule-based
                 when (enginePreference) {
-                    LlmEnginePreference.GEMINI_NANO -> tryInitializeMediaPipe(settings)
-                    LlmEnginePreference.MEDIAPIPE -> tryInitializeGeminiNano()
-                    else -> null
+                    LlmEnginePreference.GEMINI_NANO ->
+                        tryInitializeLlamaCpp(AiModel.FLOCK_GEMMA_Q8_0) ?: tryInitializeMediaPipe(settings)
+                    LlmEnginePreference.MEDIAPIPE ->
+                        tryInitializeLlamaCpp(AiModel.FLOCK_GEMMA_Q8_0) ?: tryInitializeGeminiNano()
+                    LlmEnginePreference.LLAMA_CPP ->
+                        tryInitializeMediaPipe(settings) ?: tryInitializeGeminiNano()
+                    LlmEnginePreference.RULE_BASED, LlmEnginePreference.AUTO -> null
                 }
             }
         }
@@ -175,6 +191,7 @@ class LlmEngineManager @Inject constructor(
             _activeEngine.value = finalResult.engine
             _currentModel = finalResult.model ?: when (finalResult.engine) {
                 LlmEngine.GEMINI_NANO -> AiModel.GEMINI_NANO
+                LlmEngine.LLAMA_CPP -> AiModel.FLOCK_GEMMA_Q8_0
                 LlmEngine.MEDIAPIPE -> AiModel.GEMMA3_1B // Default MediaPipe model
                 LlmEngine.RULE_BASED -> AiModel.RULE_BASED
             }
@@ -226,6 +243,35 @@ class LlmEngineManager @Inject constructor(
 
         Log.w(TAG, "Gemini Nano initialization failed")
         recordFailure(LlmEngine.GEMINI_NANO, "Initialization failed")
+        null
+    }
+
+    /** Try to initialize the native llama.cpp GGUF engine. */
+    private suspend fun tryInitializeLlamaCpp(
+        preferredModel: AiModel = AiModel.FLOCK_GEMMA_Q8_0
+    ): EngineInitResult? = withContext(Dispatchers.IO) {
+        val health = engineHealth[LlmEngine.LLAMA_CPP]
+        if (health != null && !health.isHealthy()) {
+            Log.w(TAG, "llama.cpp engine marked unhealthy; failures=${health.consecutiveFailures}")
+            return@withContext null
+        }
+        if (preferredModel.modelFormat != ModelFormat.GGUF) return@withContext null
+
+        val modelDir = context.getDir("ai_models", Context.MODE_PRIVATE)
+        val modelFile = File(modelDir, "${preferredModel.id}.gguf")
+        if (!modelFile.exists() || modelFile.length() < 10_000_000L) {
+            Log.d(TAG, "No GGUF model present for ${preferredModel.id}")
+            return@withContext null
+        }
+
+        val wasReady = llamaCppClient.isReady()
+        val initialized = llamaCppClient.initialize(modelFile, LlamaRuntimeProfiles.genericArm64())
+        if (initialized && (wasReady || llamaCppClient.selfTest())) {
+            recordSuccess(LlmEngine.LLAMA_CPP)
+            return@withContext EngineInitResult(LlmEngine.LLAMA_CPP, true, preferredModel)
+        }
+
+        recordFailure(LlmEngine.LLAMA_CPP, llamaCppClient.getLastError() ?: "Initialization/self-test failed")
         null
     }
 
@@ -283,15 +329,16 @@ class LlmEngineManager @Inject constructor(
     private suspend fun tryFallbackChain(settings: AiSettings): EngineInitResult? {
         Log.d(TAG, "Trying fallback chain...")
 
-        // Try Gemini Nano first (if not already tried)
+        // Device-specialized branch: verified local GGUF first when present.
+        val llamaResult = tryInitializeLlamaCpp(AiModel.FLOCK_GEMMA_Q8_0)
+        if (llamaResult != null) return llamaResult
+
         val geminiResult = tryInitializeGeminiNano()
         if (geminiResult != null) return geminiResult
 
-        // Try MediaPipe
         val mediaPipeResult = tryInitializeMediaPipe(settings)
         if (mediaPipeResult != null) return mediaPipeResult
 
-        // Rule-based is always available
         return EngineInitResult(LlmEngine.RULE_BASED, true)
     }
 
@@ -337,15 +384,22 @@ class LlmEngineManager @Inject constructor(
      */
     fun syncActiveEngine() {
         val geminiReady = geminiNanoClient.isReady()
+        val llamaReady = llamaCppClient.isReady()
         val mediaPipeReady = mediaPipeLlmClient.isReady()
         val currentActive = _activeEngine.value
 
-        Log.d(TAG, "syncActiveEngine: geminiReady=$geminiReady, mediaPipeReady=$mediaPipeReady, current=$currentActive, userPref=$_userEnginePreference")
+        Log.d(TAG, "syncActiveEngine: llamaReady=$llamaReady, geminiReady=$geminiReady, mediaPipeReady=$mediaPipeReady, current=$currentActive, userPref=$_userEnginePreference")
 
         when (_userEnginePreference) {
             LlmEnginePreference.AUTO -> {
                 // Auto mode: prefer the best available engine
                 when {
+                    llamaReady && currentActive != LlmEngine.LLAMA_CPP -> {
+                        Log.i(TAG, "AUTO: selecting verified local llama.cpp engine")
+                        _activeEngine.value = LlmEngine.LLAMA_CPP
+                        _currentModel = AiModel.FLOCK_GEMMA_Q8_0
+                        _engineStatus.value = EngineStatus.Ready(LlmEngine.LLAMA_CPP)
+                    }
                     geminiReady && currentActive != LlmEngine.GEMINI_NANO -> {
                         Log.i(TAG, "AUTO: Upgrading active engine from $currentActive to GEMINI_NANO")
                         _activeEngine.value = LlmEngine.GEMINI_NANO
@@ -360,6 +414,13 @@ class LlmEngineManager @Inject constructor(
                         }
                         _engineStatus.value = EngineStatus.Ready(LlmEngine.MEDIAPIPE)
                     }
+                }
+            }
+            LlmEnginePreference.LLAMA_CPP -> {
+                if (llamaReady && currentActive != LlmEngine.LLAMA_CPP) {
+                    _activeEngine.value = LlmEngine.LLAMA_CPP
+                    _currentModel = AiModel.FLOCK_GEMMA_Q8_0
+                    _engineStatus.value = EngineStatus.Ready(LlmEngine.LLAMA_CPP)
                 }
             }
             LlmEnginePreference.MEDIAPIPE -> {
@@ -518,6 +579,14 @@ class LlmEngineManager @Inject constructor(
                         null
                     }
                 }
+                LlmEngine.LLAMA_CPP -> {
+                    if (llamaCppClient.isReady()) {
+                        val result = llamaCppClient.analyzeDetection(detection, enrichedData, privilegeMode)
+                        if (result.success) recordSuccess(LlmEngine.LLAMA_CPP)
+                        else recordFailure(LlmEngine.LLAMA_CPP, result.error ?: "Unknown error")
+                        result
+                    } else null
+                }
                 LlmEngine.MEDIAPIPE -> {
                     if (mediaPipeLlmClient.isReady()) {
                         Log.d(TAG, "Calling mediaPipeLlmClient.analyzeDetection() with enrichedData=${enrichedData?.javaClass?.simpleName}")
@@ -552,9 +621,10 @@ class LlmEngineManager @Inject constructor(
      */
     private fun getFallbackOrder(currentEngine: LlmEngine): List<LlmEngine> {
         return when (currentEngine) {
-            LlmEngine.GEMINI_NANO -> listOf(LlmEngine.MEDIAPIPE, LlmEngine.RULE_BASED)
-            LlmEngine.MEDIAPIPE -> listOf(LlmEngine.GEMINI_NANO, LlmEngine.RULE_BASED)
-            LlmEngine.RULE_BASED -> listOf(LlmEngine.GEMINI_NANO, LlmEngine.MEDIAPIPE)
+            LlmEngine.GEMINI_NANO -> listOf(LlmEngine.LLAMA_CPP, LlmEngine.MEDIAPIPE, LlmEngine.RULE_BASED)
+            LlmEngine.LLAMA_CPP -> listOf(LlmEngine.MEDIAPIPE, LlmEngine.GEMINI_NANO, LlmEngine.RULE_BASED)
+            LlmEngine.MEDIAPIPE -> listOf(LlmEngine.LLAMA_CPP, LlmEngine.GEMINI_NANO, LlmEngine.RULE_BASED)
+            LlmEngine.RULE_BASED -> listOf(LlmEngine.LLAMA_CPP, LlmEngine.GEMINI_NANO, LlmEngine.MEDIAPIPE)
         }
     }
 
@@ -583,6 +653,16 @@ class LlmEngineManager @Inject constructor(
                                 Log.e(TAG, "Gemini Nano generation failed", e)
                                 recordFailure(LlmEngine.GEMINI_NANO, e.message ?: "Generation failed")
                             }
+                        }
+                    }
+                    LlmEngine.LLAMA_CPP -> {
+                        if (llamaCppClient.isReady()) {
+                            val response = llamaCppClient.generateResponse(prompt)
+                            if (response != null) {
+                                recordSuccess(LlmEngine.LLAMA_CPP)
+                                return@withTimeoutOrNull response
+                            }
+                            recordFailure(LlmEngine.LLAMA_CPP, llamaCppClient.getLastError() ?: "Generation failed")
                         }
                     }
                     LlmEngine.MEDIAPIPE -> {
@@ -618,6 +698,15 @@ class LlmEngineManager @Inject constructor(
                                     }
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Gemini Nano fallback generation failed", e)
+                                }
+                            }
+                        }
+                        LlmEngine.LLAMA_CPP -> {
+                            if (llamaCppClient.isReady()) {
+                                val response = llamaCppClient.generateResponse(prompt)
+                                if (response != null) {
+                                    recordSuccess(LlmEngine.LLAMA_CPP)
+                                    return@withTimeoutOrNull response
                                 }
                             }
                         }
@@ -682,6 +771,7 @@ class LlmEngineManager @Inject constructor(
     fun isEngineReady(engine: LlmEngine): Boolean {
         return when (engine) {
             LlmEngine.GEMINI_NANO -> geminiNanoClient.isReady()
+            LlmEngine.LLAMA_CPP -> llamaCppClient.isReady()
             LlmEngine.MEDIAPIPE -> mediaPipeLlmClient.isReady()
             LlmEngine.RULE_BASED -> true
         }
@@ -705,6 +795,7 @@ class LlmEngineManager @Inject constructor(
      */
     suspend fun cleanup() {
         geminiNanoClient.cleanup()
+        llamaCppClient.cleanup()
         mediaPipeLlmClient.cleanup()
         isInitialized = false
         _engineStatus.value = EngineStatus.NotInitialized
@@ -718,6 +809,7 @@ class LlmEngineManager @Inject constructor(
      */
     fun cleanupSync() {
         geminiNanoClient.cleanup()
+        llamaCppClient.cleanupSync()
         mediaPipeLlmClient.cleanupSync()
         isInitialized = false
         _engineStatus.value = EngineStatus.NotInitialized
@@ -732,6 +824,7 @@ class LlmEngineManager @Inject constructor(
  */
 enum class LlmEngine(val displayName: String, val isAlpha: Boolean) {
     GEMINI_NANO("Gemini Nano (ML Kit)", true),
+    LLAMA_CPP("llama.cpp GGUF", false),
     MEDIAPIPE("MediaPipe LLM", false),
     RULE_BASED("Rule-Based", false)
 }
