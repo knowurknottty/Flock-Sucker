@@ -331,6 +331,12 @@ class DetectionAnalyzer @Inject constructor(
                             isModelLoaded = true
                             currentModel = AiModel.GEMINI_NANO
                         }
+                        LlmEngine.LLAMA_CPP -> {
+                            isModelLoaded = true
+                            if (currentModel.modelFormat != ModelFormat.GGUF) {
+                                currentModel = AiModel.FLOCK_GEMMA_Q8_0
+                            }
+                        }
                         LlmEngine.MEDIAPIPE -> {
                             isModelLoaded = true
                             // Keep the model from settings if it's a MediaPipe model
@@ -1274,9 +1280,9 @@ class DetectionAnalyzer @Inject constructor(
             // Get download URL via NetworkConfig for OEM customization support
             val downloadUrl = AiModel.getDownloadUrl(model)
             if (downloadUrl == null) {
-                // Model requires manual download (e.g., from Kaggle)
+                // Model requires manual import or an explicitly configured direct download URL
                 Log.w(TAG, "Model ${model.id} requires manual download. ${AiModel.getDownloadInstructions(model)}")
-                _modelStatus.value = AiModelStatus.Error("Model requires manual download from Kaggle. See instructions in app.")
+                _modelStatus.value = AiModelStatus.Error(AiModel.getDownloadInstructions(model))
                 return@withContext false
             }
 
@@ -1551,6 +1557,12 @@ class DetectionAnalyzer @Inject constructor(
             ModelFormat.NONE -> return "Built-in"
             ModelFormat.MLKIT_GENAI, ModelFormat.AICORE -> {
                 return if (geminiNanoClient.isReady()) "Managed by AICore" else null
+            }
+            ModelFormat.GGUF -> {
+                val modelDir = context.getDir("ai_models", Context.MODE_PRIVATE)
+                val file = File(modelDir, "${model.id}.gguf")
+                if (!file.exists()) return null
+                return "${file.length() / (1024 * 1024)} MB"
             }
             ModelFormat.TASK -> {
                 val modelDir = context.getDir("ai_models", Context.MODE_PRIVATE)

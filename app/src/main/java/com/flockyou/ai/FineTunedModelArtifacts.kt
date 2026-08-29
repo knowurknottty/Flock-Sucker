@@ -23,7 +23,7 @@ object FineTunedModelArtifacts {
         downloadUrl = "https://mega.nz/file/WzAiwIba#-lYBgLIkxmAgzmd_CXcKEjMIhuuYlvpfWFUeVXMnxlc",
         sizeBytes = 291_545_376L,
         sha256 = "82b323bf05eba698b87a39d1eca8ea31506222aff25b415f6388135069725b57",
-        runtimeCompatible = false,
-        compatibilityReason = "Current MediaPipe backend does not support raw GGUF models."
+        runtimeCompatible = true,
+        compatibilityReason = "Supported by the native llama.cpp GGUF backend."
     )
 }

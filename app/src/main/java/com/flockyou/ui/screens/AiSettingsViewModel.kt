@@ -272,6 +272,7 @@ class AiSettingsViewModel @Inject constructor(
                     // Set engine preference to match the downloaded model
                     val engineId = when (model.modelFormat) {
                         ModelFormat.TASK -> "mediapipe"
+                        ModelFormat.GGUF -> "llama-cpp"
                         ModelFormat.MLKIT_GENAI, ModelFormat.AICORE -> "gemini-nano"
                         ModelFormat.NONE -> "rule-based"
                     }
@@ -336,6 +337,7 @@ class AiSettingsViewModel @Inject constructor(
             // engine is used during initialization
             val engineId = when (model.modelFormat) {
                 ModelFormat.TASK -> "mediapipe"
+                ModelFormat.GGUF -> "llama-cpp"
                 ModelFormat.MLKIT_GENAI, ModelFormat.AICORE -> "gemini-nano"
                 ModelFormat.NONE -> "rule-based"
             }
@@ -498,6 +500,7 @@ class AiSettingsViewModel @Inject constructor(
                     // Set engine preference to match the imported model
                     val engineId = when (model.modelFormat) {
                         ModelFormat.TASK -> "mediapipe"
+                        ModelFormat.GGUF -> "llama-cpp"
                         ModelFormat.MLKIT_GENAI, ModelFormat.AICORE -> "gemini-nano"
                         ModelFormat.NONE -> "rule-based"
                     }

@@ -28,6 +28,7 @@ enum class LlmEnginePreference(val id: String, val displayName: String, val desc
     AUTO("auto", "Auto (Recommended)", "Automatically selects the best available engine"),
     GEMINI_NANO("gemini-nano", "Gemini Nano", "Google's on-device AI via ML Kit GenAI (Pixel 8+, Alpha API)"),
     MEDIAPIPE("mediapipe", "MediaPipe LLM", "MediaPipe with Gemma models (works on most devices)"),
+    LLAMA_CPP("llama-cpp", "llama.cpp GGUF", "Native on-device GGUF inference via llama.cpp"),
     RULE_BASED("rule-based", "Rule-Based Only", "No LLM, use built-in rules only")
 }
 
@@ -71,7 +72,8 @@ enum class ModelFormat {
     NONE,     // No model file needed (rule-based)
     AICORE,   // Google AICore (Gemini Nano via legacy SDK)
     MLKIT_GENAI, // ML Kit GenAI Prompt API (Gemini Nano, alpha)
-    TASK      // MediaPipe .task format (Gemma models)
+    TASK,     // MediaPipe .task format (Gemma models)
+    GGUF      // llama.cpp native GGUF
 }
 
 /**
@@ -171,6 +173,18 @@ enum class AiModel(
         quantization = "INT8",
         modelFormat = ModelFormat.TASK,
         apiStability = ApiStability.STABLE
+    ),
+    FLOCK_GEMMA_Q8_0(
+        id = "gemma-flock-q8-0",
+        displayName = "Flock Fine-Tuned Gemma Q8_0",
+        description = "Inversion Labs fine-tuned Gemma for Flock-Sucker, native GGUF via llama.cpp.",
+        sizeMb = 278,
+        capabilities = listOf("Flock analysis", "Threat explanation", "Local text generation"),
+        minAndroidVersion = 26,
+        downloadUrl = null, // Import the verified artifact; the current host URL is not a direct resumable payload.
+        quantization = "Q8_0",
+        modelFormat = ModelFormat.GGUF,
+        apiStability = ApiStability.STABLE
     );
 
     companion object {
@@ -232,6 +246,7 @@ enum class AiModel(
             // Fallback based on format
             return when (model.modelFormat) {
                 ModelFormat.TASK -> ".task"
+                ModelFormat.GGUF -> ".gguf"
                 ModelFormat.AICORE -> "" // No file, managed by AICore
                 ModelFormat.MLKIT_GENAI -> "" // No file, managed by ML Kit GenAI/AICore
                 ModelFormat.NONE -> "" // No file needed
@@ -243,6 +258,7 @@ enum class AiModel(
          */
         fun getDownloadInstructions(model: AiModel): String {
             return when (model.modelFormat) {
+                ModelFormat.GGUF -> "Download the hash-pinned GGUF artifact from the project documentation, then use Import Model. READY is reported only after llama.cpp loads it and inference succeeds."
                 ModelFormat.TASK -> """
                     To use this model:
                     1. Visit https://www.kaggle.com/models/google/gemma

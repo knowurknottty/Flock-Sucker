@@ -1480,6 +1480,22 @@ private fun LlmEngineSelectionCard(
                         }
                     }
                 }
+                LlmEnginePreference.LLAMA_CPP -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = "llama.cpp engine",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Native GGUF inference via llama.cpp",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 LlmEnginePreference.RULE_BASED -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
