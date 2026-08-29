@@ -37,7 +37,9 @@ import java.util.UUID
  */
 class CellularMonitor(
     private val context: Context,
-    private val errorCallback: DetectorCallback? = null
+    private val errorCallback: DetectorCallback? = null,
+    /** Hybrid silent-SMS correlator; when null, indirect correlation is skipped. */
+    private val silentSmsCorrelator: com.flockyou.detection.silentsms.HybridSilentSmsDetector? = null
 ) {
     
     companion object {
@@ -596,6 +598,7 @@ class CellularMonitor(
 
         // Load persisted data before starting
         loadPersistedData()
+        registerSimStateListener()
 
         isMonitoring = true
         Log.d(TAG, "Starting cellular monitoring")
@@ -659,6 +662,7 @@ class CellularMonitor(
         } catch (e: Exception) {
             Log.e(TAG, "Error unregistering cell listener", e)
         }
+        unregisterSimStateListener()
 
         addTimelineEvent(
             type = CellularEventType.MONITORING_STOPPED,
@@ -1342,6 +1346,68 @@ class CellularMonitor(
         Log.w(TAG, "ANOMALY [${confidence.displayName}]: ${type.displayName} - $description$imsiInfo")
     }
     
+    // ==================== Silent-SMS indirect correlation feed ====================
+
+    /** Latest silent-SMS assessments (EXACT or INDIRECT), newest first. */
+    private val _silentSmsAssessments =
+        kotlinx.coroutines.flow.MutableStateFlow<List<com.flockyou.detection.silentsms.SilentSmsAssessment>>(emptyList())
+    val silentSmsAssessments: kotlinx.coroutines.flow.StateFlow<List<com.flockyou.detection.silentsms.SilentSmsAssessment>> =
+        _silentSmsAssessments
+
+    private fun feedSilentSmsCorrelator(kind: com.flockyou.detection.silentsms.TelephonyObservation.Kind,
+                                        detail: String, magnitude: Float? = null) {
+        val correlator = silentSmsCorrelator ?: return
+        correlator.observe(
+            com.flockyou.detection.silentsms.TelephonyObservation(
+                timestampMs = System.currentTimeMillis(),
+                kind = kind,
+                detail = detail,
+                magnitude = magnitude
+            )
+        )
+        // Re-assess on every observation; keep the latest few
+        val fresh = correlator.assess()
+        if (fresh.isNotEmpty()) {
+            val current = _silentSmsAssessments.value.toMutableList()
+            current.addAll(0, fresh)
+            _silentSmsAssessments.value = current.take(20)
+        }
+    }
+
+    /** Register a SIM-state change receiver — feeds SIM_STATE_CHANGE observations. */
+    private var simStateReceiver: android.content.BroadcastReceiver? = null
+
+    private fun registerSimStateListener() {
+        if (simStateReceiver != null) return
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
+                // SIM_STATE_CHANGED carries no extra — query TelephonyManager.
+                val tm = ctx?.getSystemService(android.content.Context.TELEPHONY_SERVICE)
+                    as? android.telephony.TelephonyManager ?: return
+                val label = when (tm.simState) {
+                    android.telephony.TelephonyManager.SIM_STATE_ABSENT -> "ABSENT"
+                    android.telephony.TelephonyManager.SIM_STATE_READY -> "READY"
+                    android.telephony.TelephonyManager.SIM_STATE_NETWORK_LOCKED,
+                    android.telephony.TelephonyManager.SIM_STATE_PIN_REQUIRED,
+                    android.telephony.TelephonyManager.SIM_STATE_PUK_REQUIRED -> "LOCKED"
+                    else -> "OTHER"
+                }
+                feedSilentSmsCorrelator(
+                    com.flockyou.detection.silentsms.TelephonyObservation.Kind.SIM_STATE_CHANGE,
+                    detail = "SIM state → $label"
+                )
+            }
+        }
+        simStateReceiver = receiver
+        context.registerReceiver(receiver,
+            android.content.IntentFilter("android.intent.action.SIM_STATE_CHANGED"))
+    }
+
+    private fun unregisterSimStateListener() {
+        simStateReceiver?.let { runCatching { context.unregisterReceiver(it) } }
+        simStateReceiver = null
+    }
+
     private fun addTimelineEvent(
         type: CellularEventType,
         title: String,
@@ -1373,6 +1439,26 @@ class CellularMonitor(
 
         // Persist the event
         persistCellularEvent(event)
+
+        // Feed the silent-SMS indirect correlator from this transition
+        feedFromTimelineEvent(event)
+    }
+
+    private fun feedFromTimelineEvent(event: CellularEvent) {
+        val kind = when (event.type) {
+            CellularEventType.CELL_HANDOFF ->
+                com.flockyou.detection.silentsms.TelephonyObservation.Kind.CELL_RESELECTION
+            CellularEventType.NETWORK_CHANGE ->
+                com.flockyou.detection.silentsms.TelephonyObservation.Kind.RAT_CHANGE
+            CellularEventType.SIGNAL_CHANGE ->
+                com.flockyou.detection.silentsms.TelephonyObservation.Kind.SIGNAL_DISCONTINUITY
+            CellularEventType.ENCRYPTION_DOWNGRADE ->
+                com.flockyou.detection.silentsms.TelephonyObservation.Kind.RAT_DOWNGRADE
+            CellularEventType.NEW_CELL_DISCOVERED ->
+                com.flockyou.detection.silentsms.TelephonyObservation.Kind.NEW_CELL_DISCOVERY
+            else -> return  // MONITORING_*/RETURNED_TO_TRUSTED/ANOMALY are not correlator inputs
+        }
+        feedSilentSmsCorrelator(kind, detail = event.description.take(120))
     }
 
     private fun getOrCreateTrustedCellInfo(cellId: String): TrustedCellInfo {
@@ -2294,6 +2380,18 @@ class CellularMonitor(
         val signalDelta = previous?.let { current.signalStrength - it.signalStrength } ?: 0
         val signalSpiked = signalDelta > SIGNAL_SPIKE_THRESHOLD &&
             timeBetweenMs < SIGNAL_SPIKE_TIME_WINDOW
+
+        // Sharp discontinuity (either direction) feeds the silent-SMS
+        // correlator with magnitude for context-aware scoring.
+        val signalDiscontinuity = kotlin.math.abs(signalDelta) > SIGNAL_SPIKE_THRESHOLD &&
+            timeBetweenMs < SIGNAL_SPIKE_TIME_WINDOW
+        if (signalDiscontinuity) {
+            feedSilentSmsCorrelator(
+                com.flockyou.detection.silentsms.TelephonyObservation.Kind.SIGNAL_DISCONTINUITY,
+                detail = "${signalDelta}dB delta in ${timeBetweenMs}ms",
+                magnitude = kotlin.math.abs(signalDelta).toFloat()
+            )
+        }
 
         // Cell trust analysis
         val cellIdStr = current.cellId?.toString()

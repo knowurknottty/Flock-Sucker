@@ -299,6 +299,12 @@ dependencies {
     
     // Location
     implementation("com.google.android.gms:play-services-location:21.4.0")
+
+    // CameraX for foreground optical pulse/NIR candidate analysis
+    implementation("androidx.camera:camera-core:1.6.2")
+    implementation("androidx.camera:camera-camera2:1.6.2")
+    implementation("androidx.camera:camera-lifecycle:1.6.2")
+    implementation("androidx.camera:camera-view:1.6.2")
     
     // Maps - OpenStreetMap (no API key required)
     implementation("org.osmdroid:osmdroid-android:6.1.18")

@@ -368,3 +368,27 @@ object PrivilegeModeDetector {
         )
     }
 }
+
+// ==================== Capability ladder bridge (compatibility) ====================
+
+/**
+ * Map a runtime [CapabilitySnapshot] onto the legacy sealed [PrivilegeMode]
+ * so existing callers keep working unchanged. The ladder is authoritative;
+ * this mapping is presentation-only compatibility.
+ */
+fun CapabilitySnapshot.toLegacyPrivilegeMode(): PrivilegeMode = when (rung) {
+    CapabilityRung.OEM_PLATFORM -> PrivilegeMode.OEM(
+        oemName = null,
+        platformSigned = true,
+        hasReadPrivilegedPhoneState = has(DetectionCapability.PRIVILEGED_PHONE_STATE)
+    )
+    CapabilityRung.SYSTEM_PRIVAPP -> PrivilegeMode.System(
+        hasPrivilegedPermissions = has(DetectionCapability.PRIVILEGED_TELEPHONY_API),
+        canDisableThrottling = has(DetectionCapability.CONTINUOUS_BLE),
+        hasPeersMacPermission = has(DetectionCapability.REAL_MAC_ADDRESS)
+    )
+    CapabilityRung.MAGISK_COMPANION,
+    CapabilityRung.ROOT_LIBSU,
+    CapabilityRung.ADB_PRIVILEGED,
+    CapabilityRung.SIDELOAD -> PrivilegeMode.Sideload
+}
