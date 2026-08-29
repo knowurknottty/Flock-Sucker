@@ -1,6 +1,6 @@
-# Flock You - OEM Integration Guide
+# Flock-Sucker — OEM Integration Guide
 
-This document explains how to build and integrate Flock You in different modes:
+This document explains how to build and integrate Flock-Sucker in different modes:
 - **Sideload**: Standard user-installable APK
 - **System**: Privileged system app (installed in /system/priv-app)
 - **OEM**: Platform-signed OEM embedded app (maximum privileges)
@@ -49,12 +49,12 @@ The app uses Gradle product flavors to create different builds:
 - Process can be more persistent
 - Still no IMEI/IMSI (requires platform signature)
 
-### OEM Mode (platform-signed)
-- All privileges available
-- Real-time modem access
-- IMEI/IMSI access for enhanced IMSI catcher detection
-- Maximum process persistence
-- Full hidden API access
+### OEM Mode (platform-integrated / typically platform-signed)
+- Can request a broader privileged permission set when the target ROM allowlists/grants it
+- May expose additional phone/modem identifiers or framework hooks on compatible OEM builds
+- Can receive stronger process/background integration from the ROM
+- Hidden/modem capabilities remain Android-version, framework, SELinux, signing, allowlist and hardware dependent
+- Platform signing alone is **not** a guarantee of IMEI/IMSI, raw modem, hidden-API or persistence capabilities
 
 ## System App Installation
 
@@ -170,7 +170,7 @@ m
 
 ### Platform Signing (OEM Mode)
 
-For maximum privileges (IMEI/IMSI access), the APK must be signed with the device's platform certificate. The `Android.bp` uses `certificate: "platform"` by default, which signs during the ROM build.
+For OEM/platform integration, the APK can be signed with the target platform certificate; the provided `Android.bp` uses `certificate: "platform"` by default. Signing is only one part of privileged access: the ROM permission allowlist, framework APIs, SELinux policy, modem/hardware support and Android version still determine what is actually available.
 
 To manually sign an APK with platform keys:
 
@@ -215,7 +215,7 @@ if (capabilities.canDisableWifiThrottling) {
     // WiFi throttling can be disabled
 }
 if (capabilities.hasPrivilegedPhoneAccess) {
-    // IMEI/IMSI access available
+    // Privileged phone access was actually granted on this target
 }
 ```
 
@@ -306,7 +306,7 @@ Installing Flock You as a system or OEM app creates a security trade-off:
 | `CONNECTIVITY_INTERNAL` | Disable WiFi scan throttling | Could perform aggressive network reconnaissance |
 | `PERSISTENT_ACTIVITY` | Reliable background detection | Harder to stop if compromised |
 | `START_ACTIVITIES_FROM_BACKGROUND` | Alert user immediately | Could launch phishing overlays |
-| Platform signature | Full hidden API access, modem interaction | Complete device compromise potential |
+| Platform/privileged integration | May expose additional framework/device capabilities | Expands compromise impact according to the permissions/capabilities actually granted |
 
 ### Attack Surface by Installation Mode
 
@@ -410,10 +410,7 @@ Impact: Attacker gains access beyond app's intended scope
    grep -r "http" app/src/main/java/
    ```
 
-2. **Use System mode instead of OEM** unless you specifically need:
-   - IMEI/IMSI access for enhanced IMSI catcher detection
-   - Direct modem interaction
-   - Full hidden API access
+2. **Use System mode instead of OEM** unless the target integration has a documented need for additional platform-granted capabilities. Verify those capabilities on the actual ROM/device rather than assuming platform signing provides them.
 
 3. **Restrict permissions further** by modifying the whitelist:
    ```xml
@@ -518,13 +515,13 @@ The app creates a comprehensive local database of your environment:
 - **Your daily patterns** (trusted cell tower history shows routine)
 - **Networks you've connected to** (WiFi history with locations)
 - **Devices near you** (Bluetooth scan results with timestamps)
-- **Your cellular provider and SIM** (MCC/MNC, and IMEI/IMSI in OEM mode)
+- **Your cellular provider and SIM** (MCC/MNC and any privileged phone identifiers the target ROM actually grants)
 
 This is exactly the kind of data law enforcement, border agents, or adversaries would want.
 
 ### Database Encryption
 
-The app uses SQLCipher with AES-256-GCM encryption:
+The persistent Room database uses SQLCipher 4.x page encryption (AES-256-CBC with per-page HMAC). The database passphrase is separately wrapped with Android Keystore AES/GCM:
 
 ```
 Database: flockyou_database_encrypted
@@ -700,4 +697,4 @@ if (enteredPin == duressPin) {
 
 ## License
 
-This integration guide and associated code is provided under the same license as the main Flock You application.
+Licensing/redistribution terms must follow the root repository once authoritative upstream license provenance is verified. The current tree does not contain a root `LICENSE` file, so do not infer terms from historical README badges alone.

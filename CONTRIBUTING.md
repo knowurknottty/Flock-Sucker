@@ -1,215 +1,132 @@
-# Contributing to Flock You Android
+# Contributing to Flock-Sucker
 
-Thank you for your interest in contributing! This document covers how to set up the project for development and how the CI/CD pipeline works.
+Thanks for contributing. Flock-Sucker is an evidence-oriented counter-surveillance project, so changes should be explicit about **what was observed, how it was classified, and what can still be a false positive**.
 
-## Development Setup
+## Development setup
 
 ### Prerequisites
 
-- Android Studio Hedgehog (2023.1.1) or newer
 - JDK 17
-- Android SDK 34
-- Git
+- Android SDK Platform 37
+- Git with submodule support
+- Android Studio compatible with the repository's AGP/Kotlin toolchain, or the checked-in Gradle wrapper
+- Optional: `ufbt` for building the Flipper Zero companion FAP
 
-### Getting Started
+The repository currently pins Gradle 9.3.1, Android Gradle Plugin 9.1.1, Kotlin/Compose 2.4.10 and KSP 2.3.10. Use the wrapper instead of a separately installed Gradle version.
 
-1. **Fork and clone the repository**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/flock-you-android.git
-   cd flock-you-android
-   ```
-
-2. **Open in Android Studio**
-   - File → Open → Select the project folder
-   - Wait for Gradle sync to complete
-
-3. **Add Google Maps API Key** (optional, for map features)
-   - Get an API key from [Google Cloud Console](https://console.cloud.google.com/)
-   - Add to `local.properties`:
-     ```properties
-     MAPS_API_KEY=your_api_key_here
-     ```
-   - Or set in `AndroidManifest.xml` directly for testing
-
-4. **Run the app**
-   - Select a device/emulator
-   - Click Run (▶️)
-
-## CI/CD Pipeline
-
-The project uses GitHub Actions for continuous integration and deployment.
-
-### Workflows
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `android-ci.yml` | Push, PR, Manual | Build, lint, test, and optionally release |
-| `release-on-tag.yml` | Tag push (`v*.*.*`) | Automatic release when a version tag is pushed |
-
-### Manual Release
-
-1. Go to **Actions** → **Android CI/CD**
-2. Click **Run workflow**
-3. Configure options:
-   - ✅ **Create a GitHub Release** - Check to create a release
-   - **Release version** - e.g., `1.2.0`
-   - **Mark as pre-release** - For beta/alpha releases
-   - **Release notes** - Custom release notes (optional)
-4. Click **Run workflow**
-
-### Automatic Release (via Tags)
+### Clone
 
 ```bash
-# Create and push a version tag
-git tag v1.2.0
-git push origin v1.2.0
+git clone --recurse-submodules https://github.com/knowurknottty/Flock-Sucker.git
+cd Flock-Sucker
 ```
 
-This automatically triggers a release build.
-
-## Setting Up Release Signing
-
-For signed release builds, you need to configure these repository secrets:
-
-### Required Secrets
-
-| Secret | Description |
-|--------|-------------|
-| `KEYSTORE_BASE64` | Base64-encoded keystore file |
-| `KEYSTORE_PASSWORD` | Password for the keystore |
-| `KEY_ALIAS` | Alias of the signing key |
-| `KEY_PASSWORD` | Password for the key |
-
-### Creating a Keystore
+If you already cloned without submodules:
 
 ```bash
-# Generate a new keystore
-keytool -genkey -v -keystore release-keystore.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 \
-  -alias flockyou
-
-# Convert to base64 for GitHub secrets
-base64 -i release-keystore.jks | pbcopy  # macOS
-base64 release-keystore.jks | xclip      # Linux
+git submodule update --init --recursive
 ```
 
-### Adding Secrets to GitHub
+No Google Maps API key is required: current map screens use OpenStreetMap/osmdroid. See the README's network disclosure before adding any new external service.
 
-1. Go to your repository → **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Add each secret:
-
-   **KEYSTORE_BASE64:**
-   ```
-   Paste the base64 output from above
-   ```
-
-   **KEYSTORE_PASSWORD:**
-   ```
-   Your keystore password
-   ```
-
-   **KEY_ALIAS:**
-   ```
-   flockyou (or whatever alias you used)
-   ```
-
-   **KEY_PASSWORD:**
-   ```
-   Your key password
-   ```
-
-### Without Signing Secrets
-
-If secrets aren't configured, the CI will build an **unsigned** release APK. This is fine for testing but shouldn't be distributed to users.
-
-## Code Style
-
-- Follow [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
-- Use meaningful commit messages
-- Keep commits focused and atomic
-
-### Commit Message Format
-
-```
-type(scope): description
-
-[optional body]
-```
-
-Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`
-
-Examples:
-```
-feat(scan): add support for new device type
-fix(ble): handle null device names
-docs: update README with new features
-ci(deps): update gradle to 8.2.2
-```
-
-## Pull Request Process
-
-1. Create a feature branch from `main`
-   ```bash
-   git checkout -b feat/your-feature
-   ```
-
-2. Make your changes and commit
-
-3. Push and create a PR
-   ```bash
-   git push origin feat/your-feature
-   ```
-
-4. Ensure CI passes (build, lint, tests)
-
-5. Request review
-
-## Testing
-
-### Running Tests Locally
+## Build variants
 
 ```bash
-# Unit tests
-./gradlew testDebugUnitTest
-
-# Lint
-./gradlew lint
-
-# Build debug APK
-./gradlew assembleDebug
+./gradlew :app:assembleSideloadDebug
+./gradlew :app:assembleSystemDebug
+./gradlew :app:assembleOemDebug
 ```
 
-### Testing Detection
+- `sideload` is the normal APK flavor.
+- `system` is intended for privileged ROM integration; requested privileged permissions still require ROM allowlisting/signing support.
+- `oem` is intended for platform/OEM integration and can use OEM build properties. Platform signing does not, by itself, guarantee every hidden/modem capability on every Android target.
 
-For testing surveillance device detection without actual devices:
+See [OEM_INTEGRATION.md](OEM_INTEGRATION.md) and [docs/OEM_INTEGRATION_GUIDE.md](docs/OEM_INTEGRATION_GUIDE.md).
 
-1. Create a WiFi hotspot with an SSID like `Flock_Test_Camera`
-2. Use a BLE advertising app to broadcast as `Flock-Device`
-3. The app should detect these as test devices
+## Verification gates
 
-## Project Structure
+At minimum, run the tests and build for the flavor you changed. Portable scanner/runtime changes should normally pass all three debug variants:
 
-```
-app/src/main/java/com/flockyou/
-├── data/
-│   ├── model/          # Data classes & detection patterns
-│   └── repository/     # Database & data access
-├── di/                 # Dependency injection
-├── service/            # Background scanning service
-└── ui/
-    ├── components/     # Reusable UI components
-    ├── screens/        # Screen composables & ViewModels
-    └── theme/          # Material 3 theming
+```bash
+./gradlew :app:testSideloadDebugUnitTest :app:assembleSideloadDebug
+./gradlew :app:testSystemDebugUnitTest :app:assembleSystemDebug
+./gradlew :app:testOemDebugUnitTest :app:assembleOemDebug
 ```
 
-## Questions?
+For focused work, run the narrowest relevant test first, then broaden before opening the PR. Use `git diff --check` for documentation/configuration changes.
 
-Open an issue for:
-- Bug reports
-- Feature requests
-- Questions about the codebase
+## Detection and evidence changes
 
----
+A new signature or heuristic should include:
 
-Thank you for contributing! 🎉
+1. The evidence source or technical rationale.
+2. The exact observable being matched: UUID, manufacturer data, OUI, SSID, behavior, API state, etc.
+3. Expected false positives and spoofability.
+4. The weakest defensible device/classification claim.
+5. Unit or fixture coverage for positive and negative cases.
+6. Documentation when the public capability/boundary changes.
+
+Do not convert “identifier resembles vendor X” into “confirmed surveillance by vendor X.” Vehicle-radio detections, consumer-camera OUIs, SSIDs and BLE names are especially important places to preserve that boundary.
+
+## Performance changes
+
+Classify performance work as **portable** or **device-specific**. Device tuning should not be merged into general defaults merely because it helped one handset.
+
+Use the canonical process documents:
+
+- [Device-Specific Android Optimization Playbook](docs/agent-workflows/DEVICE_SPECIFIC_ANDROID_OPTIMIZATION_PLAYBOOK.md)
+- [MAXSTATS Android Performance Evidence Gate](docs/agent-workflows/MAXSTATS_ANDROID_PERF_EVIDENCE.md)
+- [Engine / Transmission Performance Plan](docs/superpowers/plans/2026-08-28-engine-transmission-performance.md)
+
+Scanner-performance claims should use the proof-of-life/ingress telemetry when applicable: raw observations, candidates, accepted sightings, suppressions, throttle drops and persistence failures.
+
+## Privacy and network changes
+
+Core detection and supported local-AI analysis are on-device, but the application intentionally has network-capable surfaces (for example OSM tiles, scheduled IEEE OUI refresh, model acquisition, Tor/IP/DNS diagnostics and explicit Shodan browser searches).
+
+Any PR adding or changing networking must document:
+
+- destination/service;
+- trigger (automatic, scheduled, UI-driven or explicit user action);
+- data included in the request;
+- Tor/proxy behavior and fallback semantics;
+- failure behavior;
+- user-facing disclosure if materially changed.
+
+Do not introduce blanket claims such as “No Network Calls.”
+
+## Database and schema changes
+
+Room schema export is enabled. If the schema version changes, include the generated schema JSON and migration/test evidence. Do not fabricate history during migrations; the v11 sighting-ledger migration is the reference example for preserving that rule.
+
+Persistent database pages are protected by SQLCipher (AES-256-CBC + per-page HMAC); the database passphrase wrapper uses Android Keystore AES/GCM. Keep those layers distinct in code and documentation.
+
+## Local AI changes
+
+The supported analysis stack includes rule-based fallback, MediaPipe models, Gemini Nano where the Android device supports it, and native llama.cpp GGUF.
+
+For GGUF, file compatibility is not runtime readiness. Tests/docs must preserve the rule that READY requires a successful load/self-test/inference path.
+
+## Flipper Zero changes
+
+The companion application lives at `flipper_app/flock_bridge`. Passive scanner work and active probing are different risk surfaces. Active transmissions/probes must be documented as authorization-required security research and should not be presented as necessary for ordinary Android passive detection.
+
+## Pull requests
+
+Keep commits focused. A useful PR description includes:
+
+- what changed;
+- why the evidence supports it;
+- verification commands/results;
+- known limitations or unverified hardware behavior;
+- whether the change is portable, device-specific, privileged-build-only or optional-hardware-dependent.
+
+Suggested commit prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `chore`, `ci`.
+
+## Releases and signing
+
+GitHub Actions contains the canonical CI/release workflows. Release signing uses repository secrets; do not commit keystores, private keys or passwords. Inspect `.github/workflows/` before changing release instructions because workflow inputs can evolve.
+
+## Questions and issues
+
+Use [GitHub Issues](https://github.com/knowurknottty/Flock-Sucker/issues) for reproducible bugs, feature proposals and evidence discussions.

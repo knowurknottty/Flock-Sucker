@@ -392,7 +392,7 @@ private fun PrivacyNoticeCard() {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "All AI analysis runs entirely on your device. Your detection data never leaves your phone - no cloud, no servers, no tracking.",
+                    text = "Detection AI inference runs on-device; Flock-Sucker does not send prompts or detections to a remote LLM API. Model/platform provisioning and other disclosed app features may use the network.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

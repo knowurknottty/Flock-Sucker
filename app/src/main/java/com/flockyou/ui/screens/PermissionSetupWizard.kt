@@ -240,7 +240,7 @@ private fun WelcomePage(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "All data stays on your device. No telemetry or cloud uploads.",
+                    text = "Core detection and scoring stay on-device. Optional maps, OUI updates, model acquisition, diagnostics, and Shodan actions can use disclosed network services.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )

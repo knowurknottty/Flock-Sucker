@@ -1,8 +1,8 @@
-# Flock-You-Android: Satellite Connectivity Monitoring Module
+# Flock-Sucker: Satellite Connectivity Monitoring Module
 
 ## Overview
 
-This module adds comprehensive satellite connectivity detection and monitoring capabilities to the Flock-You surveillance detection app. It monitors for potentially malicious network manipulation involving satellite connections, particularly relevant for modern phones supporting Direct-to-Cell (D2D) satellite services.
+This module adds comprehensive satellite connectivity detection and monitoring capabilities to the Flock-Sucker surveillance detection app. It monitors for potentially malicious network manipulation involving satellite connections, particularly relevant for modern phones supporting Direct-to-Cell (D2D) satellite services.
 
 ## Supported Satellite Technologies
 
@@ -204,7 +204,7 @@ object ModemState {
 ## Implementation Files
 
 ```
-flock-you-android/
+Flock-Sucker/
 └── app/src/main/java/com/flockyou/android/
     ├── monitoring/
     │   ├── SatelliteMonitor.kt           # Core monitoring service

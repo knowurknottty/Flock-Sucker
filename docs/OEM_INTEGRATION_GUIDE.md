@@ -1,6 +1,6 @@
-# Flock You - OEM Integration Guide
+# Flock-Sucker — OEM Integration Guide
 
-This guide provides comprehensive documentation for OEM partners integrating Flock You into their Android devices or custom ROMs.
+This guide documents OEM/ROM integration for Flock-Sucker. Privileged capabilities must be verified on the target build; product flavor or platform signing does not by itself guarantee a permission/API is granted.
 
 ---
 
@@ -22,7 +22,7 @@ This guide provides comprehensive documentation for OEM partners integrating Flo
 
 ### Build Flavors
 
-Flock You supports three build flavors, each designed for different deployment scenarios:
+Flock-Sucker supports three build flavors, each designed for different deployment scenarios:
 
 | Flavor | Description | Installation Location | Signing | Privileges |
 |--------|-------------|----------------------|---------|------------|
@@ -34,12 +34,12 @@ Flock You supports three build flavors, each designed for different deployment s
 
 | Capability | Sideload | System | OEM |
 |------------|----------|--------|-----|
-| WiFi Scanning | Subject to throttling (4 scans/2min) | Can disable throttling | Can disable throttling |
-| BLE Scanning | Duty-cycled by OS | Continuous (with whitelist) | Continuous |
-| MAC Address Access | Randomized only | Real hardware addresses | Real hardware addresses |
-| Phone State (IMEI/IMSI) | Limited | Limited | Full access |
-| Process Persistence | Standard (may be killed) | Persistent | Persistent |
-| Background Start | Restricted | Allowed | Allowed |
+| WiFi Scanning | Subject to platform limits | May gain privileged behavior if ROM permits | OEM/ROM-dependent |
+| BLE Scanning | Subject to platform/background limits | Privileged behavior depends on granted permissions/ROM | OEM/ROM-dependent |
+| Hardware identifier access | Restricted/randomized | Depends on privileged grants and Android version | OEM/ROM-dependent |
+| Privileged phone identifiers | Limited | ROM-dependent | OEM/ROM-dependent; verify actual grants |
+| Process Persistence | Standard app lifecycle | Can be strengthened by ROM integration | OEM policy-dependent |
+| Background Start | Restricted | Depends on platform integration/exemptions | OEM policy-dependent |
 
 ### Target Audience
 
@@ -57,8 +57,8 @@ This guide is intended for:
 
 **Prerequisites:**
 - JDK 17
-- Android SDK with API 34
-- Gradle 8.x
+- Android SDK with API 37
+- Use the checked-in Gradle 9.3.1 wrapper
 
 **Build Commands:**
 
@@ -304,7 +304,7 @@ system/
 **File:** `system/Android.bp`
 
 ```blueprint
-// Flock You - Android.bp for AOSP build integration
+// Flock-Sucker - Android.bp for AOSP build integration
 android_app_import {
     name: "FlockYou",
     apk: "FlockYou.apk",
@@ -492,7 +492,7 @@ android_app_import {
 **In your device.mk or vendor configuration:**
 
 ```makefile
-# Include Flock You
+# Include Flock-Sucker
 $(call inherit-product, vendor/flockyou/flockyou.mk)
 
 # Or add directly to PRODUCT_PACKAGES
