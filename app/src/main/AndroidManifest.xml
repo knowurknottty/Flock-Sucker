@@ -14,6 +14,8 @@
 
     <!-- WiFi permissions -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
@@ -143,6 +145,8 @@
     <queries>
         <package android:name="org.torproject.android" />
     </queries>
+
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:name=".FlockYouApplication"
