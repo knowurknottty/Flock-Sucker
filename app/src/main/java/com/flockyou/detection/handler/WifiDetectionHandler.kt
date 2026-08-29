@@ -341,7 +341,9 @@ class WifiDetectionHandler @Inject constructor(
                 // Process through pattern matching, passing scan environment size
                 val detection = handlePatternMatching(context, totalApCount)
                 if (detection != null) {
-                    detections.add(detection.detection)
+                    // MAC OUI cross-reference: annotate camera-vendor evidence
+                    // and known default ports onto the detection record.
+                    detections.add(annotateMacIntelligence(detection.detection))
 
                     // Store enriched data for LLM analysis (keyed by detection ID)
                     detection.enrichedData?.let { enriched ->
@@ -564,6 +566,29 @@ class WifiDetectionHandler @Inject constructor(
                 _detections.emit(detection)
             }
         }
+    }
+
+    // ==================== MAC Intelligence Enrichment ====================
+
+    /**
+     * Annotate a detection with camera-vendor OUI cross-reference evidence:
+     * matched vendor + known default ports. Appends to the matchedPatterns
+     * JSON array without altering classification (observables, not inference).
+     */
+    private fun annotateMacIntelligence(detection: Detection): Detection {
+        val mac = detection.macAddress ?: return detection
+        val intel = com.flockyou.detection.enrichment.HostProbeEngine.macIntelligence(mac) ?: return detection
+        val vendor = intel.cameraVendor ?: return detection
+        val annotation = "camera-vendor=$vendor" +
+            if (intel.cameraPorts.isNotEmpty())
+                "; camera-default-ports=${intel.cameraPorts.joinToString("/")}" else ""
+        val existing = detection.matchedPatterns
+        val updated = when {
+            existing.isNullOrBlank() -> "[\"$annotation\"]"
+            existing.startsWith("[") -> existing.dropLast(1) + ",\"$annotation\"]"
+            else -> existing
+        }
+        return detection.copy(matchedPatterns = updated)
     }
 
     // ==================== Helper Methods ====================

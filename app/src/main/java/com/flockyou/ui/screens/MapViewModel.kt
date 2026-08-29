@@ -11,10 +11,15 @@ import com.flockyou.data.repository.DetectionRepository
 import com.flockyou.service.ScanningServiceConnection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import javax.inject.Inject
+
+@OptIn(ExperimentalCoroutinesApi::class)
 
 data class MapUiState(
     val showHeatmap: Boolean = false,
+    /** Device-scoped sighting overlay (MAP HISTORY): active detection id or null. */
+    val sightingOverlayDetectionId: String? = null,
     // Filter state (same semantics as MainUiState)
     val filterThreatLevel: ThreatLevel? = null,
     val filterDeviceTypes: Set<DeviceType> = emptySet(),
@@ -35,6 +40,31 @@ class MapViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+    // ==================== Device-scoped sighting overlay (MAP HISTORY) ====================
+
+    private val _overlayDetectionId = MutableStateFlow<String?>(null)
+
+    /** One point per located sighting for the overlay detection, chronological. */
+    val sightingOverlayPoints: StateFlow<List<com.flockyou.data.model.Sighting>> =
+        _overlayDetectionId
+            .flatMapLatest { id ->
+                if (id == null) flowOf(emptyList())
+                else repository.locatedSightingsForDetection(id)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val sightingOverlayActive: StateFlow<String?> = _overlayDetectionId.asStateFlow()
+
+    /** Open MAP HISTORY for a specific detection. */
+    fun openSightingOverlay(detectionId: String) {
+        _overlayDetectionId.value = detectionId
+    }
+
+    /** Close MAP HISTORY overlay. */
+    fun closeSightingOverlay() {
+        _overlayDetectionId.value = null
+    }
 
     /** Cross-process scanning truth mirrored from the singleton IPC connection. */
     val isScanning: StateFlow<Boolean> = serviceConnection.isScanning

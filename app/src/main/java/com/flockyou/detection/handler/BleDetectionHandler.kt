@@ -609,6 +609,12 @@ class BleDetectionHandler @Inject constructor(
             return result
         }
 
+        // Priority 4b: Tesla name/OUI cross-reference (no command service).
+        checkTeslaIdentity(context)?.let { result ->
+            lastDetectionTime[context.macAddress] = now
+            return result
+        }
+
         // Priority 5: Check device name patterns (includes vehicles, Flipper Zero, hacking tools)
         context.deviceName?.let { name ->
             checkDeviceNamePattern(context, name)?.let { result ->
@@ -1106,6 +1112,49 @@ community organizing opportunities, and legal options for the user.
      * Detect Tesla's published vehicle-command BLE service. This is vehicle-presence evidence,
      * not evidence that cameras are recording, that the vehicle is autonomous, or that it is tracking the user.
      */
+    /**
+     * Detect Tesla vehicles by BLE name/OUI cross-reference even when the
+     * vehicle-command service is not advertised (parked cars advertise
+     * presence via phone-key beacons). Confidence reflects corroboration:
+     * name+OUI = higher than name alone.
+     */
+    private fun checkTeslaIdentity(context: BleDetectionContext): BleDetectionResult? {
+        val confidence = com.flockyou.detection.enrichment.TeslaSignatures.confidence(
+            name = context.deviceName,
+            macOrOui = context.macAddress
+        ) ?: return null
+        val patterns = mutableListOf<String>()
+        if (com.flockyou.detection.enrichment.TeslaSignatures.matchesName(context.deviceName)) {
+            patterns += "Tesla BLE name pattern matched: ${context.deviceName}"
+        }
+        if (context.macAddress != null && com.flockyou.detection.enrichment.TeslaSignatures.matchesOui(context.macAddress)) {
+            patterns += "Tesla OUI prefix ${context.macAddress.take(8)}"
+        }
+        val detection = Detection(
+            protocol = DetectionProtocol.BLUETOOTH_LE,
+            detectionMethod = DetectionMethod.BLE_DEVICE_NAME,
+            deviceType = DeviceType.TESLA_VEHICLE,
+            deviceName = context.deviceName?.takeIf { it.isNotBlank() }
+                ?: DeviceType.TESLA_VEHICLE.displayName,
+            macAddress = context.macAddress,
+            rssi = context.rssi,
+            signalStrength = rssiToSignalStrength(context.rssi),
+            latitude = context.latitude,
+            longitude = context.longitude,
+            threatLevel = ThreatLevel.INFO,
+            threatScore = 10,
+            manufacturer = "Tesla",
+            matchedPatterns = buildMatchedPatternsJson(patterns),
+            rawData = formatRawBleData(context)
+        )
+        return BleDetectionResult(
+            detection = detection,
+            aiPrompt = "Nearby Tesla vehicle identified via BLE name/OUI cross-reference " +
+                "(confidence: $confidence). Vehicle radio presence only; no inference of tracking or recording.",
+            confidence = calculateConfidence(context, 0.85f)
+        )
+    }
+
     private fun checkTeslaVehicleCommandService(context: BleDetectionContext): BleDetectionResult? {
         if (!DetectionPatterns.isTeslaVehicleCommandService(context.serviceUuids)) return null
         val strictName = context.deviceName?.let(DetectionPatterns::isTeslaVehicleAdvertisementName) == true

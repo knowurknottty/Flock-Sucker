@@ -49,6 +49,9 @@ import org.osmdroid.views.overlay.Marker
 import java.text.SimpleDateFormat
 import java.util.*
 
+/** Marker id prefix for MAP HISTORY sighting overlay markers. */
+private const val MAP_HISTORY_MARKER_ID = "map-history-marker"
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MapScreen(
@@ -63,10 +66,42 @@ fun MapScreen(
     val hasLocatedDetections by viewModel.hasLocatedDetections.collectAsStateWithLifecycle()
     val isScanning by viewModel.isScanning.collectAsStateWithLifecycle()
     var selectedDetection by remember { mutableStateOf<Detection?>(null) }
+    // MAP HISTORY: device-scoped sighting overlay state
+    val sightingOverlayActive by viewModel.sightingOverlayActive.collectAsStateWithLifecycle()
+    val sightingOverlayPoints by viewModel.sightingOverlayPoints.collectAsStateWithLifecycle()
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var zoomBucket by remember { mutableStateOf(MapZoomBucket.WORLD) }
     var didAutoFit by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
+
+    // MAP HISTORY overlay: numbered chronological sighting markers when active
+    LaunchedEffect(sightingOverlayActive, sightingOverlayPoints, mapView) {
+        mapView?.let { map ->
+            if (sightingOverlayActive == null) return@let
+            map.overlays.removeAll { it is Marker && it.id?.startsWith(MAP_HISTORY_MARKER_ID) == true }
+            sightingOverlayPoints.forEach { sighting ->
+                val lat = sighting.latitude ?: return@forEach
+                val lon = sighting.longitude ?: return@forEach
+                val marker = Marker(map).apply {
+                    id = MAP_HISTORY_MARKER_ID + "-" + sighting.sequence
+                    position = GeoPoint(lat, lon)
+                    title = "#${sighting.sequence} ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(sighting.timestamp))}"
+                    snippet = "RSSI ${sighting.rssi ?: "?"} dBm - ${sighting.disposition}"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                }
+                map.overlays.add(marker)
+            }
+            if (sightingOverlayPoints.isNotEmpty()) {
+                val pts = sightingOverlayPoints.mapNotNull { s ->
+                    val lat = s.latitude ?: return@mapNotNull null
+                    val lon = s.longitude ?: return@mapNotNull null
+                    GeoPoint(lat, lon)
+                }
+                if (pts.isNotEmpty()) zoomToFitPoints(map, pts, minZoom = 16.0)
+            }
+            map.invalidate()
+        }
+    }
 
     // GPS status state
     var gpsStatus by remember { mutableStateOf(MapGpsStatus.SEARCHING) }
@@ -416,11 +451,20 @@ fun MapScreen(
         }
     }
     
+    // MAP HISTORY overlay panel: chronological numbered points + legend + close
+    if (sightingOverlayActive != null) {
+        MapHistoryPanel(
+            points = sightingOverlayPoints,
+            onClose = { viewModel.closeSightingOverlay() }
+        )
+    }
+
     // Detection detail sheet
     selectedDetection?.let { detection ->
         MapDetectionSheet(
             detection = detection,
             onDismiss = { selectedDetection = null },
+            onOpenMapHistory = { detectionId -> viewModel.openSightingOverlay(detection.id) },
             onCopyCoordinates = { lat, lon ->
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("coordinates", "$lat, $lon")
@@ -585,6 +629,7 @@ private val HTTPS_MAPNIK: OnlineTileSourceBase by lazy {
 private fun MapDetectionSheet(
     detection: Detection,
     onDismiss: () -> Unit,
+    onOpenMapHistory: ((String) -> Unit)? = null,
     onCopyCoordinates: ((Double, Double) -> Unit)? = null,
     onViewFullDetails: ((String) -> Unit)? = null
 ) {
@@ -825,6 +870,25 @@ private fun MapDetectionSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // MAP HISTORY button (device-scoped sighting overlay)
+                if (onOpenMapHistory != null) {
+                    OutlinedButton(
+                        onClick = {
+                            onOpenMapHistory(detection.id)
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("MAP HISTORY")
+                    }
+                }
+
                 // View Full Details button
                 if (onViewFullDetails != null) {
                     OutlinedButton(
@@ -1197,6 +1261,52 @@ private fun MapFilterBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * MAP HISTORY overlay panel: chronological numbered sighting points with
+ * legend and close. One point per located sighting per the evidence spec.
+ */
+@Composable
+private fun MapHistoryPanel(
+    points: List<com.flockyou.data.model.Sighting>,
+    onClose: () -> Unit
+) {
+    val timeFormat = remember { SimpleDateFormat("MMM dd HH:mm:ss", Locale.getDefault()) }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "MAP HISTORY - ${points.size} located sighting(s)",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                TextButton(onClick = onClose) { Text("Close") }
+            }
+            if (points.isEmpty()) {
+                Text(
+                    "No located sightings for this device. The app never invents coordinates.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                points.forEach { sighting ->
+                    Text(
+                        "#${sighting.sequence} - ${timeFormat.format(java.util.Date(sighting.timestamp))} - " +
+                            "${sighting.disposition} - RSSI ${sighting.rssi ?: "?"} dBm",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
     }
 }

@@ -660,6 +660,14 @@ class RogueWifiMonitor(
     /**
      * Process WiFi scan results from ScanningService
      */
+    /** RF burst monitor over per-scan peak RSSI — flags burst trains. */
+    private val burstMonitor = com.flockyou.detection.enrichment.RfBurstMonitor()
+
+    /** Last burst-train summary for evidence export. */
+    @Volatile
+    var lastBurstEvidence: String? = null
+        private set
+
     fun processScanResults(results: List<ScanResult>) {
         if (!isMonitoring) return
 
@@ -695,6 +703,15 @@ class RogueWifiMonitor(
 
         if (validResults.size < results.size) {
             Log.d(TAG, "Filtered ${results.size - validResults.size} WiFi results with invalid RSSI values")
+        }
+
+        // RF burst monitoring: feed the per-scan peak RSSI as one wideband
+        // sample. Repeated scans with strong peaks form burst trains — the
+        // signature class for beacons/pulsed emitters (spec r1: RF BURSTS).
+        if (validResults.isNotEmpty()) {
+            val peakRssi = validResults.maxOf { it.level }
+            burstMonitor.process(com.flockyou.detection.enrichment.RfBurstMonitor.Sample(now, peakRssi))
+            lastBurstEvidence = burstMonitor.evidenceSummary()
         }
 
         for (result in validResults) {
