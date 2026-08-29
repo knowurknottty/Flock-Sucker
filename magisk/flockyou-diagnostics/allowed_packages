@@ -1,0 +1,3 @@
+# One Android package per line. UID is resolved from /data/system/packages.list.
+com.flockyou
+com.flockyou.debug

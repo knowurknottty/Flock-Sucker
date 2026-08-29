@@ -19,6 +19,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.flockyou.BuildConfig
 import com.flockyou.MainActivity
+import com.flockyou.adversarial.BleCoTravelerAnalyzer
+import com.flockyou.adversarial.BleFingerprintInput
+import com.flockyou.adversarial.BleTailObservation
+import com.flockyou.adversarial.BleTailRegistry
+import com.flockyou.telephony.HybridSilentSmsDetector
 import com.flockyou.R
 import com.flockyou.data.model.*
 import com.flockyou.data.repository.DetectionRepository
@@ -277,6 +282,7 @@ class ScanningService : Service() {
     private var lastHeartbeatRecordElapsed = 0L
     private var lastNotificationContentText: String? = null
     private val gson = Gson()
+    private val bleCoTravelerAnalyzer = BleCoTravelerAnalyzer()
 
     // Bluetooth
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -338,6 +344,7 @@ class ScanningService : Service() {
 
     // Shannon SDM diagnostic monitor (OEM only)
     internal var shannonDiagMonitor: com.flockyou.shannon.ShannonDiagMonitor? = null
+    internal var hybridSilentSmsDetector: HybridSilentSmsDetector? = null
     internal var shannonStatusJob: Job? = null
     internal var shannonAnomalyJob: Job? = null
     internal val processedShannonAnomalyIds = mutableSetOf<String>()
@@ -587,40 +594,8 @@ class ScanningService : Service() {
             getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
 
-        // Initialize Shannon SDM Diagnostic Monitor (OEM only) BEFORE the
-        // cellular monitor so the exact silent-SMS sensor can bind to it.
-        if (com.flockyou.config.OemFeatureFlags.SHANNON_DIAG_ENABLED) {
-            shannonDiagMonitor = com.flockyou.shannon.ShannonDiagMonitor(applicationContext) { name, error ->
-                detectorCallbackImpl.onError(name, error, true)
-            }
-        }
-
         // Initialize Cellular Monitor
-        // Silent-SMS hybrid: exact Shannon sensor when modem-diag verified,
-        // indirect correlator always. Availability is capability-bounded —
-        // no Shannon channel means the EXACT path is honestly unavailable.
-        val shannonMonitor = shannonDiagMonitor
-        val shannonAvailable = shannonMonitor != null &&
-            com.flockyou.shannon.ShannonCapabilityDetector.detect() ==
-                com.flockyou.shannon.ShannonCapabilityDetector.ShannonStatus.AVAILABLE
-        val silentSmsDetector = com.flockyou.detection.silentsms.HybridSilentSmsDetector(
-            exactSensor = if (shannonMonitor != null && shannonAvailable) {
-                com.flockyou.detection.silentsms.ShannonExactSilentSmsSensor(
-                    anomaliesFlow = shannonMonitor.anomalies,
-                    modemDiagVerified = true
-                )
-            } else null,
-            correlator = com.flockyou.detection.silentsms.IndirectSilentSmsCorrelator()
-        ).apply {
-            // ADB middle ground: when READ_LOGS is granted, the radio log is
-            // scanned for silent-SMS markers (EXACT_BY_LOG evidence class).
-            com.flockyou.privilege.AdbGrant.init(applicationContext)
-            val adbProbe = com.flockyou.privilege.CapabilityLadderDetector.probeAdbGrants()
-            if (adbProbe.hasRadioLogAccess) {
-                radioLogScanner = { com.flockyou.privilege.RadioLogSilentSmsScanner.scan() }
-            }
-        }
-        cellularMonitor = CellularMonitor(applicationContext, detectorCallbackImpl, silentSmsDetector).also {
+        cellularMonitor = CellularMonitor(applicationContext, detectorCallbackImpl).also {
             // Set ephemeral mode from current privacy settings (will be updated by settings collector)
             it.setEphemeralMode(currentPrivacySettings.ephemeralModeEnabled)
         }
@@ -633,6 +608,10 @@ class ScanningService : Service() {
 
         // RF, ultrasonic and GNSS monitors are intentionally lazy.
         // Disabled subsystems should not consume startup RAM or threads.
+
+        // Public-Telephony correlation is available on ordinary sideload installs.
+        // Exact Type-0 evidence is layered in by Shannon diagnostics when runtime capability permits.
+        hybridSilentSmsDetector = HybridSilentSmsDetector(applicationContext)
 
         // Initialize detector health data so it's available immediately when clients connect
         // This ensures Service Health screen can display data even before scanning starts
@@ -660,6 +639,7 @@ class ScanningService : Service() {
         // Schedule watchdog to ensure service stays running
         ServiceRestartReceiver.scheduleWatchdog(this)
 
+        hybridSilentSmsDetector?.start()
         startScanning()
 
         return START_STICKY
@@ -701,6 +681,8 @@ class ScanningService : Service() {
         gnssSatelliteMonitor = null
         shannonDiagMonitor?.destroy()
         shannonDiagMonitor = null
+        hybridSilentSmsDetector?.destroy()
+        hybridSilentSmsDetector = null
 
         // Cancel watchdog if service is intentionally stopped
         // Only schedule restart if service should still be running
@@ -1052,7 +1034,7 @@ class ScanningService : Service() {
             startCellularMonitoring()
         }
 
-        // Start Shannon SDM diagnostic monitoring (OEM only, after cellular)
+        // Start Shannon SDM diagnostics when runtime capability proves access (after cellular)
         startShannonDiagMonitoring()
 
         // Start satellite monitoring
@@ -1682,13 +1664,73 @@ class ScanningService : Service() {
         val rssi = result.rssi
         val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
 
-        // Extract manufacturer data for detection handlers
+        // Extract manufacturer data for detection handlers and MAC-independent tail fingerprinting.
         val manufacturerData = mutableMapOf<Int, String>()
+        val manufacturerDataLengths = mutableMapOf<Int, Int>()
         result.scanRecord?.manufacturerSpecificData?.let { data ->
             for (i in 0 until data.size()) {
                 val key = data.keyAt(i)
                 val value = data.valueAt(i)
                 manufacturerData[key] = value.joinToString("") { "%02X".format(it) }
+                manufacturerDataLengths[key] = value.size
+            }
+        }
+
+        currentLocation?.let { location ->
+            val record = result.scanRecord
+            val serviceDataLengths = record?.serviceData
+                ?.mapKeys { it.key.uuid.toString() }
+                ?.mapValues { it.value.size }
+                ?: emptyMap()
+            val advertisedTxPower = record?.txPowerLevel?.takeUnless { it == Int.MIN_VALUE }
+            val nameShape = deviceName?.let { name ->
+                "${name.length}:${name.count { it.isDigit() }}:${name.count { it.isLetter() }}"
+            }
+            val fingerprint = bleCoTravelerAnalyzer.fingerprint(
+                BleFingerprintInput(
+                    manufacturerDataLengths = manufacturerDataLengths,
+                    serviceUuids = serviceUuids.map { it.toString() },
+                    serviceDataLengths = serviceDataLengths,
+                    txPower = advertisedTxPower,
+                    nameShape = nameShape
+                )
+            )
+            bleCoTravelerAnalyzer.observe(
+                fingerprint,
+                BleTailObservation(
+                    macAddress = macAddress,
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    timestampMs = System.currentTimeMillis(),
+                    rssi = rssi
+                )
+            )?.let { alert ->
+                BleTailRegistry.record(alert)
+                val strength = when {
+                    rssi >= -50 -> SignalStrength.EXCELLENT
+                    rssi >= -60 -> SignalStrength.GOOD
+                    rssi >= -70 -> SignalStrength.MEDIUM
+                    rssi >= -80 -> SignalStrength.WEAK
+                    else -> SignalStrength.VERY_WEAK
+                }
+                handleDetection(
+                    Detection(
+                        protocol = DetectionProtocol.BLUETOOTH_LE,
+                        detectionMethod = DetectionMethod.TRACKER_FOLLOWING,
+                        deviceType = DeviceType.GENERIC_BLE_TRACKER,
+                        deviceName = "BLE co-traveler fingerprint",
+                        macAddress = "TAIL:${alert.fingerprint}",
+                        rssi = rssi,
+                        signalStrength = strength,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        threatLevel = ThreatLevel.MEDIUM,
+                        threatScore = (alert.confidence * 100f).toInt(),
+                        matchedPatterns = "fingerprint=${alert.fingerprint};macs=${alert.distinctMacs};locations=${alert.separatedLocations}",
+                        rawData = "${alert.proofBoundary};maxSeparationMeters=${alert.maxSeparationMeters.toInt()}",
+                        detectionSource = DetectionSource.NATIVE_BLE
+                    )
+                )
             }
         }
 

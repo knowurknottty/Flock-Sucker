@@ -1,7 +1,14 @@
 package com.flockyou.adversarial
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Looper
+import androidx.core.content.ContextCompat
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -28,6 +35,9 @@ data class AdsBAircraft(
     val groundSpeedKnots: Int? = null,
     val trackDegrees: Int? = null,
     val verticalRateFpm: Int? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val observerDistanceMeters: Double? = null,
     val messageCount: Long = 0,
     val lastSeenMs: Long = 0L
 )
@@ -41,6 +51,8 @@ data class AdsBReceiverState(
     val sampleRate: Double? = null,
     val centerHz: Double? = null,
     val aircraft: List<AdsBAircraft> = emptyList(),
+    val loiterCandidates: List<OverheadLoiterCandidate> = emptyList(),
+    val observerFixFresh: Boolean = false,
     val error: String? = null
 )
 
@@ -157,12 +169,20 @@ object AdsBFrameDecoder {
 }
 
 class RtlSdrAdsBReceiver(context: Context) {
-    private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    private val appContext = context.applicationContext
+    private val usbManager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
+    private val locationManager = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
     private var radio: Rtl2832R8xxAndroidDevice? = null
     private val aircraft = LinkedHashMap<String, AdsBAircraft>()
     private val recentFrames = LinkedHashMap<String, Long>()
+    private val evenCpr = LinkedHashMap<String, AirborneCprFrame>()
+    private val oddCpr = LinkedHashMap<String, AirborneCprFrame>()
+    private val loiterDetector = AdsBLoiterDetector()
+    private val loiterCandidates = LinkedHashMap<String, OverheadLoiterCandidate>()
+    @Volatile private var observerLocation: Location? = null
+    private val locationListener = LocationListener { location -> observerLocation = chooseBetterLocation(observerLocation, location) }
     private val _state = MutableStateFlow(AdsBReceiverState())
     val state: StateFlow<AdsBReceiverState> = _state.asStateFlow()
 
@@ -172,12 +192,14 @@ class RtlSdrAdsBReceiver(context: Context) {
             _state.value = AdsBReceiverState(error = "Native Mode-S demodulator unavailable", status = "Native backend unavailable")
             return
         }
+        startObserverTracking()
         job = scope.launch {
             val r = Rtl2832R8xxAndroidDevice(usbManager, device)
             radio = r
             val opened = r.openForAdsB().getOrElse { t ->
                 _state.value = AdsBReceiverState(error = t.message ?: t.javaClass.simpleName, status = "RTL-SDR open/tune failed")
                 radio = null
+                stopObserverTracking()
                 return@launch
             }
             _state.value = AdsBReceiverState(
@@ -206,16 +228,29 @@ class RtlSdrAdsBReceiver(context: Context) {
                         if (prior != null && now - prior < 1_000L) continue
                         recentFrames[hex] = now
                         val update = AdsBFrameDecoder.decode(frame) ?: continue
-                        merge(update, now)
+                        val position = decodePosition(frame, now)
+                        val observer = currentObserver(now)
+                        merge(update, now, position, observer)
+                        if (position != null && observer != null) {
+                            loiterDetector.observe(
+                                update.icao, position, observer.latitude, observer.longitude
+                            )?.let { loiterCandidates[update.icao] = it }
+                        }
                     }
                     recentFrames.entries.removeAll { now - it.value > 2_000L }
                     aircraft.entries.removeAll { now - it.value.lastSeenMs > 120_000L }
+                    evenCpr.entries.removeAll { now - it.value.timestampMs > AirborneCprDecoder.MAX_PAIR_AGE_MS }
+                    oddCpr.entries.removeAll { now - it.value.timestampMs > AirborneCprDecoder.MAX_PAIR_AGE_MS }
+                    loiterCandidates.entries.removeAll { now - it.value.lastSeenMs > 20L * 60L * 1000L }
+                    val observer = currentObserver(now)
                     val overlap = minOf(512, combined.size)
                     tail = combined.copyOfRange(combined.size - overlap, combined.size)
                     _state.value = _state.value.copy(
                         bytesReceived = _state.value.bytesReceived + n,
                         validFrames = aircraft.values.sumOf { it.messageCount },
-                        aircraft = aircraft.values.sortedByDescending { it.lastSeenMs }.take(64)
+                        aircraft = aircraft.values.sortedByDescending { it.lastSeenMs }.take(64),
+                        loiterCandidates = loiterCandidates.values.sortedByDescending { it.lastSeenMs }.take(16),
+                        observerFixFresh = observer != null
                     )
                 }
             } catch (t: Throwable) {
@@ -223,7 +258,8 @@ class RtlSdrAdsBReceiver(context: Context) {
             } finally {
                 r.close()
                 radio = null
-                _state.value = _state.value.copy(active = false)
+                stopObserverTracking()
+                _state.value = _state.value.copy(active = false, observerFixFresh = false)
             }
         }
     }
@@ -233,7 +269,8 @@ class RtlSdrAdsBReceiver(context: Context) {
         job = null
         radio?.close()
         radio = null
-        _state.value = _state.value.copy(active = false, status = "1090 MHz receiver stopped")
+        stopObserverTracking()
+        _state.value = _state.value.copy(active = false, status = "1090 MHz receiver stopped", observerFixFresh = false)
     }
 
     fun destroy() {
@@ -241,16 +278,70 @@ class RtlSdrAdsBReceiver(context: Context) {
         scope.cancel()
     }
 
-    private fun merge(u: AdsBFrameDecoder.Update, now: Long) {
+    private fun merge(u: AdsBFrameDecoder.Update, now: Long, position: AdsBPosition?, observer: Location?) {
         val old = aircraft[u.icao] ?: AdsBAircraft(icao = u.icao)
+        val distance = if (position != null && observer != null) distanceMeters(
+            position.latitude, position.longitude, observer.latitude, observer.longitude
+        ) else old.observerDistanceMeters
         aircraft[u.icao] = old.copy(
             callsign = u.callsign ?: old.callsign,
             altitudeFeet = u.altitudeFeet ?: old.altitudeFeet,
             groundSpeedKnots = u.groundSpeedKnots ?: old.groundSpeedKnots,
             trackDegrees = u.trackDegrees ?: old.trackDegrees,
             verticalRateFpm = u.verticalRateFpm ?: old.verticalRateFpm,
+            latitude = position?.latitude ?: old.latitude,
+            longitude = position?.longitude ?: old.longitude,
+            observerDistanceMeters = distance,
             messageCount = old.messageCount + 1,
             lastSeenMs = now
         )
     }
+
+    private fun decodePosition(frame: ByteArray, now: Long): AdsBPosition? {
+        val cpr = AdsBFrameDecoder.airborneCpr(frame, now) ?: return null
+        if (cpr.odd) oddCpr[cpr.icao] = cpr else evenCpr[cpr.icao] = cpr
+        val even = evenCpr[cpr.icao] ?: return null
+        val odd = oddCpr[cpr.icao] ?: return null
+        return AirborneCprDecoder.decodeGlobal(even, odd)
+    }
+
+    private fun currentObserver(now: Long): Location? = observerLocation?.takeIf { location ->
+        now - location.time in 0L..60_000L && (!location.hasAccuracy() || location.accuracy <= 200f)
+    }
+
+    private fun chooseBetterLocation(current: Location?, candidate: Location): Location {
+        if (current == null) return candidate
+        if (candidate.time > current.time + 10_000L) return candidate
+        if (kotlin.math.abs(candidate.time - current.time) <= 10_000L &&
+            candidate.hasAccuracy() && (!current.hasAccuracy() || candidate.accuracy < current.accuracy)) return candidate
+        return current
+    }
+
+    private fun startObserverTracking() {
+        val fine = ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) return
+        val providers = buildList {
+            if (fine && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
+        }
+        for (provider in providers) {
+            try {
+                locationManager.getLastKnownLocation(provider)?.let { observerLocation = chooseBetterLocation(observerLocation, it) }
+                locationManager.requestLocationUpdates(provider, 5_000L, 10f, locationListener, Looper.getMainLooper())
+            } catch (_: SecurityException) { }
+        }
+    }
+
+    private fun stopObserverTracking() {
+        try { locationManager.removeUpdates(locationListener) } catch (_: SecurityException) { }
+        observerLocation = null
+    }
+
+    private fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val out = FloatArray(1)
+        Location.distanceBetween(lat1, lon1, lat2, lon2, out)
+        return out[0].toDouble()
+    }
+
 }

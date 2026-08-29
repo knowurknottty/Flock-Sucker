@@ -833,11 +833,8 @@ internal fun ScanningService.hasAudioPermissions(): Boolean {
 // ==================== Shannon SDM Diagnostic Monitoring (OEM Only) ====================
 
 internal fun ScanningService.startShannonDiagMonitoring() {
-    // Guard: feature flag + runtime capability
-    if (!com.flockyou.config.OemFeatureFlags.SHANNON_DIAG_ENABLED) {
-        return
-    }
-
+    // Runtime capability is authoritative. A sideload build with an already-granted
+    // root shell may legitimately reach the Shannon diagnostic tier.
     val capability = com.flockyou.shannon.ShannonCapabilityDetector.detect()
     if (capability != com.flockyou.shannon.ShannonCapabilityDetector.ShannonStatus.AVAILABLE) {
         ScanningServiceState.shannonDiagStatus.value = SubsystemStatus.Error(
@@ -847,6 +844,11 @@ internal fun ScanningService.startShannonDiagMonitoring() {
         return
     }
 
+    if (shannonDiagMonitor == null) {
+        shannonDiagMonitor = com.flockyou.shannon.ShannonDiagMonitor(applicationContext) { name, error ->
+            detectorCallbackImpl.onError(name, error, true)
+        }
+    }
     shannonDiagMonitor?.startMonitoring()
     ScanningServiceState.shannonDiagStatus.value = SubsystemStatus.Active
     broadcastSubsystemStatus()
@@ -878,6 +880,15 @@ internal fun ScanningService.startShannonDiagMonitoring() {
 
                 // Send broadcast for automation apps
                 broadcastShannonAnomaly(anomaly)
+
+                if (anomaly.type == com.flockyou.shannon.ShannonAnomalyType.SILENT_SMS) {
+                    com.flockyou.telephony.HybridSilentSmsRegistry.recordExact(
+                        timestampMs = anomaly.timestamp,
+                        sensorPath = anomaly.details["sensorPath"] ?: "/dev/umts_dm0",
+                        details = listOf(anomaly.description, anomaly.proofBoundary),
+                        parserConfidence = anomaly.confidence
+                    )
+                }
 
                 // Convert to detection via handler
                 val detection = cellularDetectionHandler.convertShannonAnomalyToDetection(

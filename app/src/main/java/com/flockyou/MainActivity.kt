@@ -69,6 +69,7 @@ import com.flockyou.ui.screens.WifiSecurityScreen
 import com.flockyou.ui.screens.AiSettingsScreen
 import com.flockyou.ui.screens.ServiceHealthStatusScreen
 import com.flockyou.ui.screens.ActiveProbesScreen
+import com.flockyou.ui.screens.AdversarialSensorsScreen
 import com.flockyou.ui.screens.TestModeSettingsScreen
 import com.flockyou.ui.theme.FlockYouTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -370,7 +371,8 @@ fun AppNavigation(
                 onNavigateToSatelliteDetection = { navController.navigate("satellite_detection") },
                 onNavigateToWifiSecurity = { navController.navigate("wifi_security") },
                 onNavigateToServiceHealth = { navController.navigate("service_health") },
-                onNavigateToActiveProbes = { navController.navigate("active_probes") }
+                onNavigateToActiveProbes = { navController.navigate("active_probes") },
+                onNavigateToAdversarialSensors = { navController.navigate("adversarial_sensors") }
             )
         }
         composable("map") {
@@ -466,6 +468,12 @@ fun AppNavigation(
         }
         composable("active_probes") {
             ActiveProbesScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        composable("adversarial_sensors") {
+            AdversarialSensorsScreen(
+                detectionRepository = detectionRepository,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

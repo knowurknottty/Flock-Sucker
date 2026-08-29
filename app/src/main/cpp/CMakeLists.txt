@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(flock_rtlsdr LANGUAGES CXX)
+add_library(flock_rtlsdr SHARED flock_modes_adsb.cpp)
+target_compile_features(flock_rtlsdr PRIVATE cxx_std_17)
+target_compile_options(flock_rtlsdr PRIVATE -Wall -Wextra -Werror -fvisibility=hidden)
+find_library(log-lib log)
+target_link_libraries(flock_rtlsdr PRIVATE ${log-lib})

@@ -1,0 +1,6 @@
+id=flockyou_diagnostics
+name=Flock-Sucker Diagnostic Companion
+version=1.1.0
+versionCode=2
+author=Inversion Labs
+description=Optional authenticated read-only privileged bridge for Samsung Shannon and MediaTek CCCI modem diagnostics. Raw CCCI transport is never treated as Shannon/Type-0 proof without a MediaTek-specific parser.

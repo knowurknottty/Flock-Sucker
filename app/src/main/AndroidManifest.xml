@@ -11,13 +11,17 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
     <!-- WiFi permissions -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+
+    <!-- Optional hardware used by adversarial sensor modules -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <!-- Location permissions (required for BLE and WiFi scanning) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -132,7 +136,7 @@
          Protection level: signature|privileged|development|appop -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
-    
+
     <!-- Feature declarations -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.wifi" android:required="true" />
@@ -146,7 +150,6 @@
         <package android:name="org.torproject.android" />
     </queries>
 
-    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:name=".FlockYouApplication"
@@ -165,7 +168,7 @@
         <!-- Required for LLM inference with GPU backend on Android 12+ -->
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -186,7 +189,7 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/Theme.FlockYou.EmergencyAlert" />
-        
+
         <!-- Scanning service with multiple foreground types for robust background operation -->
         <service
             android:name=".service.ScanningService"
@@ -199,7 +202,7 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="surveillance_detection" />
         </service>
-        
+
         <!-- Boot receiver for auto-starting service. System boot broadcasts are allowed
              to reach a non-exported receiver; vendor QUICKBOOT aliases are intentionally excluded. -->
         <receiver
@@ -212,7 +215,7 @@
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-        
+
         <!-- Service restart receiver -->
         <receiver
             android:name=".service.ServiceRestartReceiver"
@@ -232,7 +235,7 @@
             android:exported="false"
             android:process=":scanning"
             android:permission="android.permission.BIND_JOB_SERVICE" />
-        
+
         <!-- File Provider for sharing exported files -->
         <provider
             android:name="androidx.core.content.FileProvider"
