@@ -354,6 +354,8 @@ private fun ScanToggleChip(
             iconColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
         border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = enabled,
             borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
             selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
             borderWidth = 1.dp,

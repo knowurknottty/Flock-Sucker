@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
@@ -32,7 +31,7 @@ val oemFeatureShannonDiagEnabled = getOemFeatureFlag("OEM_FEATURE_SHANNON_DIAG_E
 
 android {
     namespace = "com.flockyou"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.flockyou"
@@ -197,8 +196,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
     }
     buildFeatures {
         compose = true
@@ -247,12 +248,12 @@ ksp {
 dependencies {
     implementation(project(":llamaandroid"))
     // Core Android
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     
     // Compose
-    implementation(platform("androidx.compose:compose-bom:2023.10.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.08.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -266,19 +267,19 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.54")
-    ksp("com.google.dagger:hilt-android-compiler:2.54")
-    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    ksp("com.google.dagger:hilt-android-compiler:2.60.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.4.0")
     
     // Room with SQLCipher encryption
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
     implementation("net.zetetic:sqlcipher-android:4.12.0@aar")
-    implementation("androidx.sqlite:sqlite-ktx:2.4.0")
+    implementation("androidx.sqlite:sqlite-ktx:2.7.0")
     
     // Location
-    implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation("com.google.android.gms:play-services-location:21.4.0")
     
     // Maps - OpenStreetMap (no API key required)
     implementation("org.osmdroid:osmdroid-android:6.1.18")
@@ -295,8 +296,8 @@ dependencies {
 
     // WorkManager for periodic background tasks
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-    implementation("androidx.hilt:hilt-work:1.1.0")
-    ksp("androidx.hilt:hilt-compiler:1.1.0")
+    implementation("androidx.hilt:hilt-work:1.4.0")
+    ksp("androidx.hilt:hilt-compiler:1.4.0")
 
     // Guava for ListenableFuture (needed by WorkManager awaits)
     implementation("com.google.guava:guava:33.7.1-android")
@@ -309,7 +310,7 @@ dependencies {
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
 
     // Security - Encrypted SharedPreferences for storing DB passphrase
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
 
     // Biometric authentication
     implementation("androidx.biometric:biometric:1.1.0")
@@ -318,12 +319,10 @@ dependencies {
     implementation("androidx.car.app:app:1.4.0")
 
     // Google AI - On-device inference (LOCAL ONLY - no cloud API)
-    // LiteRT for GGUF model inference
-    implementation("com.google.ai.edge.litert:litert:1.0.1")
-    implementation("com.google.ai.edge.litert:litert-gpu:1.0.1")
-    implementation("com.google.ai.edge.litert:litert-support:1.0.1")
+    // MediaPipe owns its required inference runtime transitively. Raw GGUF
+    // inference is provided by the pinned native llama.cpp module.
 
-    // MediaPipe LLM Inference for GGUF models on-device
+    // MediaPipe LLM inference for MediaPipe-compatible .task/.bin models on-device
     // 0.10.24 has fixes for DetokenizerCalculator native crash (RET_CHECK id >= 0)
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
@@ -343,18 +342,18 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.8")
     
     // Testing - Instrumented Tests
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2023.10.01"))
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:rules:1.7.0")
     androidTestImplementation("io.mockk:mockk-android:1.13.8")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 
     // Hilt Testing
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.54")
-    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.54")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     
     // Debug implementations
     debugImplementation("androidx.compose.ui:ui-tooling")
@@ -443,12 +442,28 @@ tasks.matching { it.name.contains("Release") && it.name.startsWith("assemble") }
  * Set SKIP_FLIPPER_BUILD=true to skip Flipper-related tasks (e.g., in CI).
  */
 val flipperAppDir = file("${rootDir}/flipper_app/flock_bridge")
-val flipperBuildDir = file("${buildDir}/flipper")
+val flipperBuildDir = layout.buildDirectory.dir("flipper").get().asFile
 val fapOutputName = "flock_bridge.fap"
 
 // Check if Flipper build should be skipped (e.g., in CI without ufbt)
 val skipFlipperBuild = System.getenv("SKIP_FLIPPER_BUILD")?.toBoolean() == true ||
     project.findProperty("skipFlipperBuild")?.toString()?.toBoolean() == true
+
+fun runExternalCommand(
+    command: List<String>,
+    workingDirectory: java.io.File? = null,
+    ignoreExitValue: Boolean = false
+): Int {
+    val processBuilder = ProcessBuilder(command).inheritIO()
+    if (workingDirectory != null) processBuilder.directory(workingDirectory)
+    val exitCode = processBuilder.start().waitFor()
+    if (exitCode != 0 && !ignoreExitValue) {
+        throw org.gradle.api.GradleException(
+            "Command failed ($exitCode): ${command.joinToString(" ")}"
+        )
+    }
+    return exitCode
+}
 
 // Check if ufbt is available (cached result)
 val ufbtAvailable: Boolean by lazy {
@@ -510,15 +525,10 @@ tasks.register("buildFlipperFap") {
         println("Building Flock Bridge FAP...")
         println("Source: ${flipperAppDir.absolutePath}")
 
-        exec {
-            workingDir = flipperAppDir
-            commandLine(
-                "ufbt",
-                "fap_flock_bridge",
-                "COMPACT=1",
-                "DEBUG=0"
-            )
-        }
+        runExternalCommand(
+            command = listOf("ufbt", "fap_flock_bridge", "COMPACT=1", "DEBUG=0"),
+            workingDirectory = flipperAppDir
+        )
 
         // Copy the built FAP to our build directory
         val distDir = file("${flipperAppDir}/dist")
@@ -545,11 +555,11 @@ tasks.register("cleanFlipperFap") {
 
     doLast {
         if (ufbtAvailable) {
-            exec {
-                workingDir = flipperAppDir
-                commandLine("ufbt", "clean")
-                isIgnoreExitValue = true
-            }
+            runExternalCommand(
+                command = listOf("ufbt", "clean"),
+                workingDirectory = flipperAppDir,
+                ignoreExitValue = true
+            )
         }
         delete(flipperBuildDir)
         println("Flipper build artifacts cleaned")
@@ -615,23 +625,23 @@ tasks.register("installFlipperFap") {
 
         // Try using qFlipper CLI
         try {
-            exec {
-                commandLine(
+            runExternalCommand(
+                command = listOf(
                     "qFlipper-cli",
                     "storage", "write",
                     fapFile.absolutePath,
                     "/ext/apps/Tools/${fapOutputName}"
                 )
-            }
+            )
             println("FAP installed successfully!")
             println("Location: /ext/apps/Tools/${fapOutputName}")
         } catch (e: Exception) {
             // Try ufbt's built-in launch feature
             println("qFlipper CLI not found, trying ufbt...")
-            exec {
-                workingDir = flipperAppDir
-                commandLine("ufbt", "launch")
-            }
+            runExternalCommand(
+                command = listOf("ufbt", "launch"),
+                workingDirectory = flipperAppDir
+            )
         }
     }
 }
