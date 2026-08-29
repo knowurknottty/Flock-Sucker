@@ -7,7 +7,7 @@ import androidx.car.app.ScreenManager
 import androidx.car.app.Session
 
 /**
- * Android Auto session for Flock You.
+ * Android Auto session for Flock-Sucker.
  *
  * This class manages the lifecycle of the car app experience and provides
  * the initial screen when the user opens the app on Android Auto. It handles:

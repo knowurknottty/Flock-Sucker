@@ -62,7 +62,8 @@ fun MainScreen(
     onNavigateToSatelliteDetection: () -> Unit = {},
     onNavigateToWifiSecurity: () -> Unit = {},
     onNavigateToServiceHealth: () -> Unit = {},
-    onNavigateToActiveProbes: () -> Unit = {}
+    onNavigateToActiveProbes: () -> Unit = {},
+    onNavigateToAdversarialSensors: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val filteredHistoryDetections by viewModel.filteredHistoryDetections.collectAsStateWithLifecycle()
@@ -417,6 +418,33 @@ fun MainScreen(
                                 ultrasonicBeaconCount = uiState.ultrasonicBeacons.size,
                                 satelliteAnomalyCount = filteredSatelliteAnomalies.size
                             )
+                        }
+
+                        item(key = "adversarial_sensors_shortcut") {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                ),
+                                onClick = onNavigateToAdversarialSensors
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Adversarial Sensors", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "NIR · RTL-SDR · BLE co-traveler · mesh · magnetic sweep",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = "Go")
+                                }
+                            }
                         }
 
                         // Service Health shortcut card

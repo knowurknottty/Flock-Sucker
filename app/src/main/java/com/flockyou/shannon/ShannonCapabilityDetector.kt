@@ -2,6 +2,8 @@ package com.flockyou.shannon
 
 import android.util.Log
 import com.flockyou.config.OemFeatureFlags
+import com.flockyou.privilege.MagiskDiagnosticCompanion
+import com.topjohnwu.superuser.Shell
 import java.io.File
 
 /**
@@ -68,9 +70,13 @@ object ShannonCapabilityDetector {
      * Checks are ordered from cheapest to most expensive.
      */
     fun detect(): ShannonStatus {
-        // 1. Feature flag check (compile-time, essentially free)
-        if (!OemFeatureFlags.SHANNON_DIAG_ENABLED) {
-            Log.d(TAG, "Shannon diagnostics feature flag disabled")
+        // Build flags are advisory: a sideload build with an already-granted root shell
+        // must be able to climb the runtime capability ladder. This check never prompts for root.
+        val rootAlreadyGranted = Shell.isAppGrantedRoot() == true
+        val companionCaps = MagiskDiagnosticCompanion.probeCapabilities()
+        val companionAvailable = companionCaps.companionAvailable && companionCaps.shannonStreamAvailable
+        if (!OemFeatureFlags.SHANNON_DIAG_ENABLED && !rootAlreadyGranted && !companionAvailable) {
+            Log.d(TAG, "Shannon diagnostics build flag disabled and no verified runtime privileged transport")
             return ShannonStatus.FEATURE_DISABLED
         }
 
@@ -82,15 +88,23 @@ object ShannonCapabilityDetector {
 
         // 3. Device node existence check
         val deviceNode = File(DIAG_DEVICE_PATH)
-        if (!deviceNode.exists()) {
-            Log.d(TAG, "Shannon modem present but $DIAG_DEVICE_PATH not found")
+        val rootExists = if (!deviceNode.exists() && rootAlreadyGranted) {
+            try { Shell.cmd("test -e $DIAG_DEVICE_PATH").exec().isSuccess } catch (_: Throwable) { false }
+        } else false
+        if (!deviceNode.exists() && !rootExists && !companionAvailable) {
+            Log.d(TAG, "Shannon modem present but $DIAG_DEVICE_PATH not found through any verified transport")
             return ShannonStatus.NO_DEVICE_NODE
         }
 
-        // 4. Readability check (will fail if SELinux denies access)
-        if (!deviceNode.canRead()) {
-            Log.d(TAG, "Shannon diagnostic node exists but not readable (SELinux?)")
-            return ShannonStatus.ACCESS_DENIED
+        // 4. Direct readability, authenticated companion, or verified read access through an already-granted libsu root shell.
+        if (!deviceNode.canRead() && !companionAvailable) {
+            val rootReadable = if (Shell.isAppGrantedRoot() == true) {
+                try { Shell.cmd("test -r $DIAG_DEVICE_PATH").exec().isSuccess } catch (_: Throwable) { false }
+            } else false
+            if (!rootReadable) {
+                Log.d(TAG, "Shannon diagnostic node is not readable directly, through authenticated companion, or verified root")
+                return ShannonStatus.ACCESS_DENIED
+            }
         }
 
         Log.i(TAG, "Shannon diagnostic interface available at $DIAG_DEVICE_PATH")
@@ -102,27 +116,36 @@ object ShannonCapabilityDetector {
      */
     private fun hasShannonModem(): Boolean {
         // Check ro.hardware.chipname (Pixel Tensor devices)
-        val chipname = getSystemProperty("ro.hardware.chipname")
+        val chipname = getSystemProperty("ro.hardware.chipname") ?: getRootSystemProperty("ro.hardware.chipname")
         if (chipname != null && chipname.lowercase() in SHANNON_CHIPNAMES) {
             Log.d(TAG, "Shannon modem detected via chipname: $chipname")
             return true
         }
 
         // Check ro.board.platform (Samsung Exynos devices)
-        val platform = getSystemProperty("ro.board.platform")
+        val platform = getSystemProperty("ro.board.platform") ?: getRootSystemProperty("ro.board.platform")
         if (platform != null && EXYNOS_PLATFORMS.any { platform.lowercase().startsWith(it) }) {
             Log.d(TAG, "Shannon modem detected via platform: $platform")
             return true
         }
 
         // Check ro.soc.model (Tensor SoC branding)
-        val socModel = getSystemProperty("ro.soc.model")
+        val socModel = getSystemProperty("ro.soc.model") ?: getRootSystemProperty("ro.soc.model")
         if (socModel != null && TENSOR_SOC_MODELS.any { socModel.contains(it, ignoreCase = true) }) {
             Log.d(TAG, "Shannon modem detected via SoC model: $socModel")
             return true
         }
 
         return false
+    }
+
+    private fun getRootSystemProperty(key: String): String? {
+        if (Shell.isAppGrantedRoot() != true) return null
+        return try {
+            Shell.cmd("getprop $key").exec().out.firstOrNull()?.trim()?.takeIf { it.isNotBlank() }
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     /**

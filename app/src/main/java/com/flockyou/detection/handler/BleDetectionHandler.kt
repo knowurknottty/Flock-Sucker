@@ -51,7 +51,7 @@ import javax.inject.Singleton
  * - Configurable RSSI thresholds
  * - AI prompt generation for detected devices
  *
- * @author Flock You Android Team
+ * @author Flock-Sucker Android Team
  */
 /**
  * BLE Detection Handler - Standalone implementation for BLE detection logic.

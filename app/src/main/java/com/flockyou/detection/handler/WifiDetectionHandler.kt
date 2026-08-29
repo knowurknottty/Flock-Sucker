@@ -97,7 +97,7 @@ import javax.inject.Singleton
  * - Rogue access points / WiFi Pineapple
  * - Tracking devices (following networks)
  *
- * @author Flock You Android Team
+ * @author Flock-Sucker Android Team
  */
 @Singleton
 class WifiDetectionHandler @Inject constructor(

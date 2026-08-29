@@ -1,0 +1,10 @@
+# App connects only to the Magisk-domain companion's abstract Unix socket.
+allow untrusted_app magisk unix_stream_socket connectto
+
+# Samsung Shannon diagnostic character device (label varies by OEM ROM).
+allow magisk radio_device chr_file { open read getattr ioctl }
+
+# MediaTek CCCI diagnostic/log channels observed on moto g power (2022) / tonga.
+allow magisk ccci_device chr_file { open read getattr ioctl }
+allow magisk ccci_mdmonitor_device chr_file { open read getattr ioctl }
+allow magisk ccci_monitor_device chr_file { open read getattr ioctl }

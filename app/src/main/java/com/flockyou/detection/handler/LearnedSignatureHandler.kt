@@ -41,7 +41,7 @@ import javax.inject.Singleton
  * 4. Future scans check against learned signatures
  * 5. Matches generate HIGH threat detections
  *
- * @author Flock You Android Team
+ * @author Flock-Sucker Android Team
  */
 @Singleton
 class LearnedSignatureHandler @Inject constructor(

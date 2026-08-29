@@ -1,0 +1,4 @@
+Flock-Sucker's Rtl2832R8xxAndroidDevice.kt adapts the RTL2832U and R820T/R820T2/R860
+register-programming logic from GNU Radio 4's RTL2832Device implementation.
+Original project: GNU Radio 4 / gnuradio4-blocks.
+The corresponding MIT license is packaged alongside this notice.

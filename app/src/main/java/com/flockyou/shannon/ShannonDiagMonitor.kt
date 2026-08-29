@@ -1,13 +1,27 @@
 package com.flockyou.shannon
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
 import android.util.Log
+import com.flockyou.privilege.MagiskDiagnosticCompanion
 import com.flockyou.shannon.sdm.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
+import com.topjohnwu.superuser.Shell
+import com.topjohnwu.superuser.ipc.RootService
+import com.topjohnwu.superuser.nio.FileSystemManager
 import java.io.IOException
 import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Monitors the Samsung Shannon modem diagnostic interface (/dev/umts_dm0)
@@ -62,6 +76,9 @@ class ShannonDiagMonitor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var readJob: Job? = null
+    private var rootConnection: ServiceConnection? = null
+    private var usingRootTransport = false
+    private var usingCompanionTransport = false
     private val frameParser = SdmFrameParser()
     private val nasParser = NasMessageParser()
     private var reconnectAttempts = 0
@@ -107,9 +124,23 @@ class ShannonDiagMonitor(
     private fun startReadLoop() {
         readJob?.cancel()
         readJob = scope.launch {
-            var stream: FileInputStream? = null
+            var stream: InputStream? = null
             try {
-                stream = FileInputStream(DIAG_DEVICE_PATH)
+                stream = if (File(DIAG_DEVICE_PATH).canRead()) {
+                    usingRootTransport = false
+                    usingCompanionTransport = false
+                    FileInputStream(DIAG_DEVICE_PATH)
+                } else if (MagiskDiagnosticCompanion.probe()) {
+                    usingRootTransport = false
+                    usingCompanionTransport = true
+                    MagiskDiagnosticCompanion.openShannonStream()
+                } else if (Shell.isAppGrantedRoot() == true) {
+                    usingCompanionTransport = false
+                    usingRootTransport = true
+                    openRootDiagnosticStream()
+                } else {
+                    throw SecurityException("Diagnostic node not readable and no verified privileged transport")
+                }
                 _status.value = ShannonDiagStatus.ACTIVE
                 reconnectAttempts = 0
                 Log.i(TAG, "Connected to Shannon diagnostic interface")
@@ -117,7 +148,7 @@ class ShannonDiagMonitor(
                 val buffer = ByteArray(READ_BUFFER_SIZE)
                 while (isActive) {
                     val bytesRead = try {
-                        stream.read(buffer)
+                        stream!!.read(buffer)
                     } catch (e: IOException) {
                         if (isActive) {
                             Log.e(TAG, "Read error: ${e.message}")
@@ -163,11 +194,91 @@ class ShannonDiagMonitor(
                 errorCallback?.invoke("Shannon Diagnostics", "Error: ${e.message}")
             } finally {
                 try { stream?.close() } catch (_: Exception) {}
+                if (usingRootTransport) closeRootTransport()
+                usingRootTransport = false
+                usingCompanionTransport = false
+            }
+        }
+    }
+
+    private suspend fun openRootDiagnosticStream(): InputStream {
+        if (Shell.isAppGrantedRoot() != true) {
+            throw SecurityException("Root grant is not active")
+        }
+        return withTimeout(8_000L) {
+            suspendCancellableCoroutine { continuation ->
+                val intent = Intent(context, ShannonRootFileService::class.java)
+                val connection = object : ServiceConnection {
+                    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                        if (service == null) {
+                            if (continuation.isActive) {
+                                continuation.resumeWithException(IOException("Root file-system binder was null"))
+                            }
+                            return
+                        }
+                        try {
+                            val remoteFs = FileSystemManager.getRemote(service)
+                            val diagFile = remoteFs.getFile(DIAG_DEVICE_PATH)
+                            if (!diagFile.exists()) {
+                                throw IOException("$DIAG_DEVICE_PATH not visible in root namespace")
+                            }
+                            val input = diagFile.newInputStream()
+                            if (continuation.isActive) continuation.resume(input)
+                            else input.close()
+                        } catch (t: Throwable) {
+                            if (continuation.isActive) continuation.resumeWithException(t)
+                        }
+                    }
+
+                    override fun onServiceDisconnected(name: ComponentName?) {
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(IOException("Root file-system service disconnected"))
+                        }
+                    }
+                }
+                rootConnection = connection
+                continuation.invokeOnCancellation {
+                    Handler(Looper.getMainLooper()).post {
+                        if (rootConnection === connection) {
+                            rootConnection = null
+                            try { RootService.unbind(connection) } catch (_: Throwable) {}
+                        }
+                    }
+                }
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        RootService.bind(intent, connection)
+                    } catch (t: Throwable) {
+                        if (continuation.isActive) continuation.resumeWithException(t)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun closeRootTransport() {
+        val connection = rootConnection ?: return
+        rootConnection = null
+        withContext(NonCancellable + Dispatchers.Main.immediate) {
+            try {
+                RootService.unbind(connection)
+            } catch (_: Throwable) {
+                // Already disconnected/unbound.
             }
         }
     }
 
     private suspend fun handleReadError() {
+        if (usingRootTransport || usingCompanionTransport) {
+            // Fail closed instead of automatically re-launching a privileged transport.
+            // A user must explicitly restart/probe root after root-service loss, preventing
+            // foreground-service loops from repeatedly surfacing root-manager authorization UI.
+            _status.value = ShannonDiagStatus.ERROR
+            val name = if (usingCompanionTransport) "Companion" else "Root"
+            errorCallback?.invoke("Shannon Diagnostics", "$name diagnostic transport lost; explicit restart required")
+            Log.e(TAG, "$name diagnostic transport lost; automatic privileged reconnect disabled")
+            return
+        }
         reconnectAttempts++
         if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
             _status.value = ShannonDiagStatus.ERROR
@@ -249,9 +360,12 @@ class ShannonDiagMonitor(
                     type = ShannonAnomalyType.SILENT_SMS,
                     severity = ShannonSeverity.HIGH,
                     confidence = 0.85f,
-                    description = "Silent SMS (Type 0) received. This message is invisible to the user " +
-                            "and is used by law enforcement to confirm device location.",
-                    details = emptyMap()
+                    description = "Modem diagnostic NAS parser classified a Type-0 / silent SMS event.",
+                    details = mapOf(
+                        "evidenceClass" to "EXACT",
+                        "sensorPath" to "/dev/umts_dm0",
+                        "proofBoundary" to "Exact modem signaling evidence for a Type-0 event; sender identity and purpose are not established"
+                    )
                 )
             }
             is NasSignalingEvent.Forced2gRedirect -> {
@@ -332,7 +446,9 @@ data class ShannonAnomaly(
     val severity: ShannonSeverity,
     val confidence: Float,
     val description: String,
-    val details: Map<String, String> = emptyMap()
+    val details: Map<String, String> = emptyMap(),
+    val evidenceClass: String = "EXACT",
+    val proofBoundary: String = "Modem-level parsed signaling event; attribution and intent are not established"
 )
 
 data class ShannonDiagStatistics(

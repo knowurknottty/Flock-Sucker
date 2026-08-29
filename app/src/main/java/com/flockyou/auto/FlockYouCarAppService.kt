@@ -8,9 +8,9 @@ import androidx.car.app.SessionInfo
 import androidx.car.app.validation.HostValidator
 
 /**
- * Android Auto Car App Service for Flock You.
+ * Android Auto Car App Service for Flock-Sucker.
  *
- * This service provides the entry point for the Flock You surveillance detection
+ * This service provides the entry point for the Flock-Sucker surveillance detection
  * app on Android Auto. It enables the app to display detection alerts on
  * Android Auto head units, providing drivers with real-time threat awareness
  * while on the road.

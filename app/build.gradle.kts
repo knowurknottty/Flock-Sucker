@@ -46,6 +46,11 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17")
+            }
+        }
 
         // Default build config values (can be overridden by flavors)
         buildConfigField("boolean", "IS_SYSTEM_BUILD", "false")
@@ -224,6 +229,12 @@ android {
         compose = true
         buildConfig = true  // Enable BuildConfig for debug checks
     }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
     // Note: composeOptions.kotlinCompilerExtensionVersion is not needed with Kotlin 2.0+
     // The compose compiler is now a Kotlin compiler plugin (org.jetbrains.kotlin.plugin.compose)
     packaging {
@@ -333,6 +344,11 @@ dependencies {
 
     // USB Serial for Flipper Zero USB CDC communication
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
+
+    // Optional root capability bridge; root is never required for sideload operation.
+    implementation("com.github.topjohnwu.libsu:core:6.0.0")
+    implementation("com.github.topjohnwu.libsu:service:6.0.0")
+    implementation("com.github.topjohnwu.libsu:nio:6.0.0")
 
     // Security - Encrypted SharedPreferences for storing DB passphrase
     implementation("androidx.security:security-crypto:1.1.0")
@@ -754,7 +770,7 @@ tasks.register("generatePrivappPermissions") {
 
         val xmlContent = """<?xml version="1.0" encoding="utf-8"?>
 <!--
-    Privileged permission whitelist for ${if (oemPackageName != defaultPackageName) "OEM partner build" else "Flock You"}.
+    Privileged permission whitelist for ${if (oemPackageName != defaultPackageName) "OEM partner build" else "Flock-Sucker"}.
     Generated automatically by: ./gradlew generatePrivappPermissions
 
     Package: $oemPackageName
@@ -836,7 +852,7 @@ tasks.register("generateDefaultPermissions") {
 
         val xmlContent = """<?xml version="1.0" encoding="utf-8"?>
 <!--
-    Default runtime permissions for ${if (oemPackageName != defaultPackageName) "OEM partner build" else "Flock You"} on first boot.
+    Default runtime permissions for ${if (oemPackageName != defaultPackageName) "OEM partner build" else "Flock-Sucker"} on first boot.
     Generated automatically by: ./gradlew generateDefaultPermissions
 
     Package: $oemPackageName
