@@ -289,8 +289,6 @@ Device-specialized branches are not automatically merged into general `main`. Po
 
 Flock-Sucker has always used an intentionally abrasive, anti-bureaucratic personality to keep the project from sounding like the surveillance systems it audits. The jokes are allowed to be stupid; the evidence ledger is not.
 
-The creator reports **`BOLO MILF`** as an internal adversarial-QA/audit codename/persona from the project's development history. During this documentation pass we searched the current repository, Git history/refs, GitHub-visible code/issues, retained Obsidian audit/session material, Spotlight-indexed local files, OpenAI local application state and available Pieces storage. **No primary artifact containing the exact or near phrase was recovered.**
-
 Accordingly, this README records `BOLO MILF` as **creator-reported project lore with unverified primary provenance**, not as a verified historical test artifact and not as evidence for any detection claim. If the original screenshot/log/audit artifact is recovered, it should be committed or linked with provenance rather than retroactively inventing a citation.
 
 That distinction is intentional: an evidence project should be willing to say “we remember this, but cannot currently prove it.”
