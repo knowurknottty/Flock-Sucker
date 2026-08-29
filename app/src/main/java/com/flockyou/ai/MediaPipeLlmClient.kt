@@ -215,8 +215,8 @@ class MediaPipeLlmClient @Inject constructor(
             return@withLock true
         }
 
-        // Close existing model if any
-        cleanupInternal()
+        // Close existing model only after any active inference has left the native session.
+        inferenceMutex.withLock { cleanupInternal() }
         initializationError = null
 
         return@withLock try {
@@ -325,6 +325,9 @@ class MediaPipeLlmClient @Inject constructor(
                 }
             }
         } catch (e: TimeoutCancellationException) {
+            // A slow/cancelled GPU init is not proof of a native crash. Clear the
+            // crash-sentinel so the next process start does not permanently blacklist GPU.
+            prefs.edit().putBoolean(KEY_GPU_INIT_IN_PROGRESS, false).commit()
             initializationError = "Model initialization timed out after ${INIT_TIMEOUT_MS / 1000} seconds"
             Log.e(TAG, initializationError!!)
             isInitialized = false
@@ -668,20 +671,21 @@ class MediaPipeLlmClient @Inject constructor(
 
     /**
      * Synchronous cleanup for non-suspend contexts (e.g., onDestroy).
-     * Marks as not initialized immediately to reject new inference requests,
-     * then closes resources directly without blocking.
-     *
-     * Note: We don't wait for ongoing inference because:
-     * 1. runBlocking can cause ANR if inference takes >5 seconds
-     * 2. Marking isInitialized = false prevents new requests
-     * 3. The LlmInference.close() method is thread-safe
+     * Marks the client unavailable immediately. If native inference is still active,
+     * resource closure is deferred rather than racing the JNI session.
      */
     fun cleanupSync() {
         // Mark as not initialized immediately to reject new requests
         isInitialized = false
 
-        // Close resources directly without blocking for mutex
-        // The mutex protects inference, but cleanup just needs to release resources
+        // Never close the native object while a blocking JNI inference may still own it.
+        // In that case we reject new work now and defer the close to the next serialized
+        // initialize/cleanup path (or process teardown).
+        if (prefs.getBoolean(KEY_INFERENCE_IN_PROGRESS, false)) {
+            Log.w(TAG, "Inference still marked in progress; deferring synchronous native close")
+            return
+        }
+
         try {
             llmInference?.close()
         } catch (e: Exception) {
