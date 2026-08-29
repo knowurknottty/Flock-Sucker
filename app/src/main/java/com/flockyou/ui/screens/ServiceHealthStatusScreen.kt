@@ -854,8 +854,8 @@ private fun LiveScanActivityCard(
                     color = if (isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                 )
                 AnimatedStatValue(
-                    value = scanStats.bleDevicesSeen,
-                    label = "BLE Seen",
+                    value = scanStats.bleCallbacksReceived,
+                    label = "BLE Raw",
                     icon = Icons.Default.DevicesOther,
                     color = MaterialTheme.colorScheme.secondary
                 )
@@ -869,7 +869,7 @@ private fun LiveScanActivityCard(
 
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "BLE  observed ${scanStats.bleDevicesSeen}  →  candidates ${scanStats.bleCandidates}  →  new ${scanStats.bleDetectionsCreated}  /  not new ${scanStats.bleDetectionsNotNew}",
+                                text = "BLE raw ${scanStats.bleCallbacksReceived}  →  processed ${scanStats.bleDevicesSeen}  →  dropped ${scanStats.bleCallbacksDropped}  →  candidates ${scanStats.bleCandidates}  →  new ${scanStats.bleDetectionsCreated} / not new ${scanStats.bleDetectionsNotNew}",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
