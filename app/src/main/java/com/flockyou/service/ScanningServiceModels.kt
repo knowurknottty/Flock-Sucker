@@ -67,6 +67,8 @@ data class ScanStatistics(
     val totalWifiScans: Int = 0,
     val successfulWifiScans: Int = 0,
     val throttledWifiScans: Int = 0,
+    val bleCallbacksReceived: Int = 0,
+    val bleCallbacksDropped: Int = 0,
     val bleDevicesSeen: Int = 0,
     val wifiNetworksSeen: Int = 0,
     val bleCandidates: Int = 0,

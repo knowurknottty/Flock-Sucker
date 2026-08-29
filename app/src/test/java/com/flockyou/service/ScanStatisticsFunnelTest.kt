@@ -33,4 +33,14 @@ class ScanStatisticsFunnelTest {
         assertEquals(3, stats.wifiExplicitSuppressions)
         assertEquals(18, stats.wifiNonCandidateObservations)
     }
+
+    @Test
+    fun bleIngress_distinguishesRawCallbacksProcessedAndDropped() {
+        val stats = ScanStatistics(bleDevicesSeen = 17)
+            .recordBleIngress(received = 700, dropped = 23)
+
+        assertEquals(700, stats.bleCallbacksReceived)
+        assertEquals(23, stats.bleCallbacksDropped)
+        assertEquals(17, stats.bleDevicesSeen)
+    }
 }

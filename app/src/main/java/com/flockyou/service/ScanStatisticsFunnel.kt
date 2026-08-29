@@ -32,3 +32,11 @@ internal fun ScanStatistics.recordPersistenceOutcome(
 
 internal fun ScanStatistics.recordExplicitWifiSuppressions(count: Int = 1): ScanStatistics =
     copy(wifiExplicitSuppressions = wifiExplicitSuppressions + count)
+
+internal fun ScanStatistics.recordBleIngress(
+    received: Int = 1,
+    dropped: Int = 0
+): ScanStatistics = copy(
+    bleCallbacksReceived = bleCallbacksReceived + received,
+    bleCallbacksDropped = bleCallbacksDropped + dropped
+)

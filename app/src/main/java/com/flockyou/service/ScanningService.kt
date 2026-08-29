@@ -31,7 +31,6 @@ import com.google.gson.Gson
 import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -268,10 +267,7 @@ class ScanningService : Service() {
     private var nukeReceiver: BroadcastReceiver? = null
 
     internal val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val bleResultChannel = Channel<ScanResult>(
-        capacity = 128,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    private val bleResultChannel = Channel<ScanResult>(capacity = 128)
     private var bleProcessorJob: Job? = null
     private val seenBleRegistry = java.util.LinkedHashMap<String, SeenDevice>(128, 0.75f, true)
     private val seenWifiRegistry = java.util.LinkedHashMap<String, SeenDevice>(128, 0.75f, true)
@@ -1608,13 +1604,20 @@ class ScanningService : Service() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             lastBleScanResultTime = System.currentTimeMillis()
             bleWatchdogFailures = 0
-            bleResultChannel.trySend(result)
+            val accepted = bleResultChannel.trySend(result).isSuccess
+            scanStats.update {
+                it.recordBleIngress(received = 1, dropped = if (accepted) 0 else 1)
+            }
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
             lastBleScanResultTime = System.currentTimeMillis()
             bleWatchdogFailures = 0
-            results.forEach { bleResultChannel.trySend(it) }
+            var dropped = 0
+            results.forEach { result ->
+                if (bleResultChannel.trySend(result).isFailure) dropped++
+            }
+            scanStats.update { it.recordBleIngress(received = results.size, dropped = dropped) }
         }
 
         override fun onScanFailed(errorCode: Int) {
