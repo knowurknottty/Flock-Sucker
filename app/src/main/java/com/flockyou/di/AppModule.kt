@@ -119,11 +119,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDetectionRepository(
+        database: FlockYouDatabase,
         detectionDao: DetectionDao,
         sightingDao: SightingDao,
         deduplicator: DetectionDeduplicator
     ): DetectionRepository {
-        return DetectionRepository(detectionDao, sightingDao, deduplicator)
+        return DetectionRepository(database, detectionDao, sightingDao, deduplicator)
     }
 
     @Provides

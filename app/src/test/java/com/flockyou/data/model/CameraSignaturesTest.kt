@@ -101,6 +101,25 @@ class CameraSignaturesTest {
     }
 
     @Test
+    fun `registry OUIs are unique across vendors - attribution never order-dependent`() {
+        val seen = mutableMapOf<String, String>()
+        for (vendor in CameraSignatures.vendors) {
+            for (oui in vendor.ouiPrefixes) {
+                val key = oui.uppercase()
+                val previous = seen[key]
+                assertNull("OUI $key claimed by both '${previous}' and '${vendor.vendor}'", previous)
+                seen[key] = vendor.vendor
+            }
+        }
+        // Multi-vendor resolution must agree with single-vendor resolution.
+        for ((oui, vendor) in seen) {
+            val all = CameraSignatures.vendorsForMac(oui)
+            assertEquals(1, all.size)
+            assertEquals(vendor, all.first().vendor)
+        }
+    }
+
+    @Test
     fun `new camera OUIs are wired into DetectionPatterns macPrefixes`() {
         // Spot-check the newly added MacPrefix entries resolve to camera types.
         val checks = mapOf(

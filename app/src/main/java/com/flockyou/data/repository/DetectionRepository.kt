@@ -2,7 +2,9 @@ package com.flockyou.data.repository
 
 import android.util.Log
 import com.flockyou.data.model.*
+import com.flockyou.data.repository.FlockYouDatabase
 import kotlinx.coroutines.flow.Flow
+import androidx.room.withTransaction
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,6 +13,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DetectionRepository @Inject constructor(
+    private val database: FlockYouDatabase,
     private val detectionDao: DetectionDao,
     private val sightingDao: SightingDao,
     private val deduplicator: DetectionDeduplicator
@@ -102,7 +105,8 @@ class DetectionRepository @Inject constructor(
      * Uses enhanced deduplication with throttling and composite key matching.
      */
     suspend fun upsertDetection(detection: Detection): Boolean {
-        // 1. Check throttling first (rapid detection suppression)
+        // 1. Check throttling first (rapid detection suppression).
+        // Throttled observations never touch the ledger (funnel diagnostics only).
         if (deduplicator.shouldThrottle(detection)) {
             Log.d(TAG, "Throttled rapid detection: ${detection.macAddress ?: detection.ssid}")
             return false  // Treat as duplicate
@@ -124,7 +128,8 @@ class DetectionRepository @Inject constructor(
 
         val existing = existingByMac ?: existingBySsid ?: existingByServiceUuid ?: existingByComposite
 
-        return if (existing != null) {
+        return database.withTransaction {
+            if (existing != null) {
             // Update existing - increment seen count
             when {
                 detection.macAddress != null -> {
@@ -184,19 +189,20 @@ class DetectionRepository @Inject constructor(
             }
             false // Not a new detection
         } else {
-            // Insert new
-            insertDetection(detection)
-            // Record the founding sighting for the new device
-            try {
-                recordSighting(
-                    detectionId = detection.id,
-                    detection = detection,
-                    disposition = SightingDisposition.NEW_DEVICE
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Sighting ledger append failed for ${detection.id}: ${e.message}")
+                // Insert new
+                insertDetection(detection)
+                // Record the founding sighting for the new device
+                try {
+                    recordSighting(
+                        detectionId = detection.id,
+                        detection = detection,
+                        disposition = SightingDisposition.NEW_DEVICE
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Sighting ledger append failed for ${detection.id}: ${e.message}")
+                }
+                true // New detection
             }
-            true // New detection
         }
     }
 
@@ -210,27 +216,22 @@ class DetectionRepository @Inject constructor(
         detection: Detection,
         disposition: SightingDisposition
     ) {
-        val sequence = sightingDao.maxSequenceFor(detectionId) + 1
-        sightingDao.insert(
-            Sighting(
-                id = java.util.UUID.randomUUID().toString(),
-                detectionId = detectionId,
-                timestamp = detection.timestamp,
-                sequence = sequence,
-                protocol = detection.protocol.name,
-                sourceScanner = detection.detectionSource?.name
-                    ?: detection.protocol.name,
-                detectorHealthGeneration = 0,
-                rssi = detection.rssi,
-                latitude = detection.latitude,
-                longitude = detection.longitude,
-                accuracyMeters = null,
-                matchedRuleIds = detection.matchedPatterns,
-                confidence = detection.threatScore.toFloat() / 100f,
-                rawMetadata = null,
-                disposition = disposition.value(),
-                provenance = null
-            )
+        // Atomic next-sequence insert: no read-then-write race between
+        // concurrent upserts for the same detection.
+        sightingDao.insertWithNextSequence(
+            id = java.util.UUID.randomUUID().toString(),
+            detectionId = detectionId,
+            timestamp = detection.timestamp,
+            protocol = detection.protocol.name,
+            sourceScanner = detection.detectionSource?.name
+                ?: detection.protocol.name,
+            detectorHealthGeneration = 0,
+            rssi = detection.rssi,
+            latitude = detection.latitude,
+            longitude = detection.longitude,
+            matchedRuleIds = detection.matchedPatterns,
+            confidence = detection.threatScore.toFloat() / 100f,
+            disposition = disposition.value()
         )
     }
 

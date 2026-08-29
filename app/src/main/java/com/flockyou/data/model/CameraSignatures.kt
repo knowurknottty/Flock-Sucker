@@ -68,7 +68,7 @@ object CameraSignatures {
         ),
         CameraVendor(
             vendor = "Reolink",
-            ouiPrefixes = listOf("EC:71:DB", "B0:B5:49", "9C:8E:CD"),
+            ouiPrefixes = listOf("B0:B5:49"),
             defaultPorts = listOf(80, 554, 8000, 9000),
             commonSsidPattern = Regex("(?i)^reolink[_-]?.*"),
             notes = "Common in AirBnB/hotel covert placements per field reports"
@@ -162,7 +162,7 @@ object CameraSignatures {
         ),
         CameraVendor(
             vendor = "Nest / Google",
-            ouiPrefixes = listOf("18:B4:30", "F4:F5:D8", "64:16:66"),
+            ouiPrefixes = listOf("F4:F5:D8", "64:16:66"),
             defaultPorts = listOf(80, 443, 8443),
             commonSsidPattern = Regex("(?i)^(nest|google)[_-]?(cam|doorbell|hello).*"),
             notes = "Setup AP SSIDs observable during onboarding"
@@ -178,7 +178,7 @@ object CameraSignatures {
             vendor = "Shenzhen white-label (TVT/Ogemray/Bilian/Reecam/iComm/B-Link)",
             ouiPrefixes = listOf(
                 "00:18:AE", "7C:DD:90", "D4:D2:52", "E8:AB:FA",
-                "AC:B7:4D", "EC:71:DB", "48:02:2A", "00:62:6E"
+                "AC:B7:4D", "48:02:2A"
             ),
             defaultPorts = listOf(80, 554, 8004, 34567, 34599),
             notes = "OEM modules inside most cheap hidden cameras; 34567 is a common XiongMai DVR port"
@@ -213,11 +213,19 @@ object CameraSignatures {
      * Resolve a BSSID/MAC to a camera vendor, or null. Accepts either the raw
      * MAC (uses first 3 octets) or an already-extracted "AA:BB:CC" OUI.
      */
-    fun vendorForMac(macOrOui: String): CameraVendor? {
+    fun vendorForMac(macOrOui: String): CameraVendor? =
+        vendorsForMac(macOrOui).firstOrNull()
+
+    /**
+     * All camera vendors claiming this OUI. Empty for unknown MACs. Registry
+     * invariants require at most one vendor per OUI — duplicates are a defect
+     * (guarded by CameraSignaturesTest).
+     */
+    fun vendorsForMac(macOrOui: String): List<CameraVendor> {
         val oui = macOrOui.uppercase().replace("-", ":").let {
             if (it.length >= 8) it.take(8) else it
         }
-        return vendors.find { v -> v.ouiPrefixes.any { it.uppercase() == oui } }
+        return vendors.filter { v -> v.ouiPrefixes.any { it.uppercase() == oui } }
     }
 
     /**
