@@ -18,9 +18,9 @@ class CapabilityLadderTest {
     fun `ladder ordering is monotonic`() {
         val rungs = CapabilityRung.entries.sortedBy { it.rank }
         assertEquals(
-            listOf(CapabilityRung.SIDELOAD, CapabilityRung.ROOT_LIBSU,
-                CapabilityRung.MAGISK_COMPANION, CapabilityRung.SYSTEM_PRIVAPP,
-                CapabilityRung.OEM_PLATFORM),
+            listOf(CapabilityRung.SIDELOAD, CapabilityRung.ADB_PRIVILEGED,
+                CapabilityRung.ROOT_LIBSU, CapabilityRung.MAGISK_COMPANION,
+                CapabilityRung.SYSTEM_PRIVAPP, CapabilityRung.OEM_PLATFORM),
             rungs
         )
         assertTrue(CapabilityRung.OEM_PLATFORM.atLeast(CapabilityRung.SIDELOAD))

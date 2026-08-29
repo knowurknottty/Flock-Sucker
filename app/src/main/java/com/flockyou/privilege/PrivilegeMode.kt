@@ -389,5 +389,6 @@ fun CapabilitySnapshot.toLegacyPrivilegeMode(): PrivilegeMode = when (rung) {
     )
     CapabilityRung.MAGISK_COMPANION,
     CapabilityRung.ROOT_LIBSU,
+    CapabilityRung.ADB_PRIVILEGED,
     CapabilityRung.SIDELOAD -> PrivilegeMode.Sideload
 }

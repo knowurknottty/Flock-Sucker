@@ -587,8 +587,40 @@ class ScanningService : Service() {
             getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
 
+        // Initialize Shannon SDM Diagnostic Monitor (OEM only) BEFORE the
+        // cellular monitor so the exact silent-SMS sensor can bind to it.
+        if (com.flockyou.config.OemFeatureFlags.SHANNON_DIAG_ENABLED) {
+            shannonDiagMonitor = com.flockyou.shannon.ShannonDiagMonitor(applicationContext) { name, error ->
+                detectorCallbackImpl.onError(name, error, true)
+            }
+        }
+
         // Initialize Cellular Monitor
-        cellularMonitor = CellularMonitor(applicationContext, detectorCallbackImpl).also {
+        // Silent-SMS hybrid: exact Shannon sensor when modem-diag verified,
+        // indirect correlator always. Availability is capability-bounded —
+        // no Shannon channel means the EXACT path is honestly unavailable.
+        val shannonMonitor = shannonDiagMonitor
+        val shannonAvailable = shannonMonitor != null &&
+            com.flockyou.shannon.ShannonCapabilityDetector.detect() ==
+                com.flockyou.shannon.ShannonCapabilityDetector.ShannonStatus.AVAILABLE
+        val silentSmsDetector = com.flockyou.detection.silentsms.HybridSilentSmsDetector(
+            exactSensor = if (shannonMonitor != null && shannonAvailable) {
+                com.flockyou.detection.silentsms.ShannonExactSilentSmsSensor(
+                    anomaliesFlow = shannonMonitor.anomalies,
+                    modemDiagVerified = true
+                )
+            } else null,
+            correlator = com.flockyou.detection.silentsms.IndirectSilentSmsCorrelator()
+        ).apply {
+            // ADB middle ground: when READ_LOGS is granted, the radio log is
+            // scanned for silent-SMS markers (EXACT_BY_LOG evidence class).
+            com.flockyou.privilege.AdbGrant.init(applicationContext)
+            val adbProbe = com.flockyou.privilege.CapabilityLadderDetector.probeAdbGrants()
+            if (adbProbe.hasRadioLogAccess) {
+                radioLogScanner = { com.flockyou.privilege.RadioLogSilentSmsScanner.scan() }
+            }
+        }
+        cellularMonitor = CellularMonitor(applicationContext, detectorCallbackImpl, silentSmsDetector).also {
             // Set ephemeral mode from current privacy settings (will be updated by settings collector)
             it.setEphemeralMode(currentPrivacySettings.ephemeralModeEnabled)
         }
@@ -601,13 +633,6 @@ class ScanningService : Service() {
 
         // RF, ultrasonic and GNSS monitors are intentionally lazy.
         // Disabled subsystems should not consume startup RAM or threads.
-
-        // Initialize Shannon SDM Diagnostic Monitor (OEM only)
-        if (com.flockyou.config.OemFeatureFlags.SHANNON_DIAG_ENABLED) {
-            shannonDiagMonitor = com.flockyou.shannon.ShannonDiagMonitor(applicationContext) { name, error ->
-                detectorCallbackImpl.onError(name, error, true)
-            }
-        }
 
         // Initialize detector health data so it's available immediately when clients connect
         // This ensures Service Health screen can display data even before scanning starts

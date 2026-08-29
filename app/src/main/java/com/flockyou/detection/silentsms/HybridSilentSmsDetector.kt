@@ -32,6 +32,13 @@ package com.flockyou.detection.silentsms
 
 /** Source class for a detection record. */
 enum class SourceClass(val displayName: String, val proofBoundary: String) {
+    /**
+     * Radio-log evidence: the radio log buffer (READ_LOGS grant) directly
+     * named the event (Type-0 marker, TP-PID 0x40). The log line IS the
+     * evidence and is captured verbatim — but log fidelity varies by OEM
+     * and driver, so this is exact-at-the-log, not a modem-diag capture.
+     */
+    EXACT_BY_LOG("EXACT (radio log)", "Radio log directly named the silent-SMS event; verbatim log line captured; log fidelity varies by OEM"),
     EXACT("EXACT", "Privileged sensor directly observed the silent-SMS protocol event"),
     INDIRECT("INDIRECT", "Anomaly inferred from correlated telephony side-effects; no direct proof of a silent SMS; benign causes remain possible")
 }
@@ -209,11 +216,43 @@ class HybridSilentSmsDetector(
 ) {
 
     /**
-     * Poll both paths. Returns EXACT assessments first (direct evidence),
-     * then an INDIRECT assessment if the correlator has one.
+     * Optional radio-log scanner (ADB READ_LOGS middle ground). When
+     * supplied, pollLatest scans the radio buffer for silent-SMS markers.
+     */
+    var radioLogScanner: (() -> List<com.flockyou.privilege.RadioLogSilentSmsScanner.RadioLogHit>)? = null
+
+    /** Radio-log hits already reported (dedupe by line). */
+    private val reportedLogLines = mutableSetOf<String>()
+
+    /**
+     * Poll all paths. EXACT (modem diag) first, then EXACT_BY_LOG (radio
+     * log), then INDIRECT if the correlator has one.
      */
     fun assess(nowMs: Long? = null): List<SilentSmsAssessment> {
         val results = mutableListOf<SilentSmsAssessment>()
+
+        // EXACT_BY_LOG path — radio log named the event directly
+        radioLogScanner?.invoke()?.forEach { hit ->
+            if (reportedLogLines.add(hit.logLine)) {
+                results.add(
+                    SilentSmsAssessment(
+                        timestampMs = hit.timestampMs,
+                        sourceClass = SourceClass.EXACT_BY_LOG,
+                        confidence = 0.80f,
+                        sensorPath = "radio-log/${hit.matchedPattern}",
+                        proofBoundary = SourceClass.EXACT_BY_LOG.proofBoundary,
+                        observations = emptyList(),
+                        exactEvent = ExactSilentSmsEvent(
+                            timestampMs = hit.timestampMs,
+                            sensorPath = "radio-log",
+                            protocolDetail = hit.logLine
+                        ),
+                        anomalySummary = "Radio log matched silent-SMS pattern " +
+                            "[${hit.matchedPattern}]: ${hit.logLine.take(120)}"
+                    )
+                )
+            }
+        }
 
         // EXACT path — only real when a sensor is present AND available
         val sensor = exactSensor

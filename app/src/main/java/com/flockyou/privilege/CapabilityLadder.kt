@@ -25,10 +25,11 @@ import java.io.File
  */
 enum class CapabilityRung(val displayName: String, val rank: Int) {
     SIDELOAD("Sideload", 0),
-    ROOT_LIBSU("Root (libsu)", 1),
-    MAGISK_COMPANION("Magisk Companion", 2),
-    SYSTEM_PRIVAPP("System Priv-App", 3),
-    OEM_PLATFORM("OEM Platform", 4);
+    ADB_PRIVILEGED("ADB-Granted", 1),
+    ROOT_LIBSU("Root (libsu)", 2),
+    MAGISK_COMPANION("Magisk Companion", 3),
+    SYSTEM_PRIVAPP("System Priv-App", 4),
+    OEM_PLATFORM("OEM Platform", 5);
 
     fun atLeast(other: CapabilityRung): Boolean = rank >= other.rank
 }
@@ -41,6 +42,12 @@ enum class CapabilityRung(val displayName: String, val rank: Int) {
 enum class DetectionCapability {
     /** Connect-only WiFi/BLE scanning, cellular cell info. */
     BASIC_SENSORS,
+
+    /** ADB-granted permissions (WRITE_SECURE_SETTINGS / READ_LOGS / DUMP). */
+    ADB_GRANTED_PERMISSIONS,
+
+    /** Radio log buffer readable — radio-log silent-SMS evidence path. */
+    RADIO_LOG_ACCESS,
 
     /** Continuous BLE background scanning without duty-cycle throttling. */
     CONTINUOUS_BLE,
@@ -167,6 +174,19 @@ object CapabilityLadderDetector {
             evidence[DetectionCapability.ROOT_SHELL] = rootProbe.evidence
         }
 
+        // --- ADB-granted permissions probe (middle ground, no root) ---
+        val adbProbe = probeAdbGrants()
+        if (adbProbe.granted.isNotEmpty()) {
+            capabilities.add(DetectionCapability.ADB_GRANTED_PERMISSIONS)
+            evidence[DetectionCapability.ADB_GRANTED_PERMISSIONS] =
+                "ADB grants verified: " + adbProbe.granted.joinToString(",") { it.name }
+            if (adbProbe.hasRadioLogAccess) {
+                capabilities.add(DetectionCapability.RADIO_LOG_ACCESS)
+                evidence[DetectionCapability.RADIO_LOG_ACCESS] =
+                    "radio log buffer readable via READ_LOGS grant"
+            }
+        }
+
         // --- Magisk companion probe ---
         val magiskProbe = probeMagiskCompanion(rootProbe.verified)
         if (magiskProbe.verified) {
@@ -181,6 +201,7 @@ object CapabilityLadderDetector {
                 CapabilityRung.SYSTEM_PRIVAPP
             magiskProbe.verified -> CapabilityRung.MAGISK_COMPANION
             rootProbe.verified -> CapabilityRung.ROOT_LIBSU
+            adbProbe.granted.isNotEmpty() -> CapabilityRung.ADB_PRIVILEGED
             else -> CapabilityRung.SIDELOAD
         }
 
@@ -242,6 +263,19 @@ object CapabilityLadderDetector {
                 if (modemProbe.verified) {
                     capabilities.add(DetectionCapability.MODEM_DIAG_ACCESS)
                     evidence[DetectionCapability.MODEM_DIAG_ACCESS] = modemProbe.evidence
+                }
+            }
+            CapabilityRung.ADB_PRIVILEGED -> {
+                if (adbProbe.hasRadioLogAccess) {
+                    capabilities.add(DetectionCapability.RADIO_LOG_ACCESS)
+                    evidence[DetectionCapability.RADIO_LOG_ACCESS] =
+                        "radio log readable via READ_LOGS"
+                }
+                // DUMP enables telephony.registry snapshots
+                if (AdbGrant.DUMP in adbProbe.granted) {
+                    capabilities.add(DetectionCapability.PRIVILEGED_TELEPHONY_API)
+                    evidence[DetectionCapability.PRIVILEGED_TELEPHONY_API] =
+                        "dumpsys telephony.registry readable via DUMP grant"
                 }
             }
             CapabilityRung.SIDELOAD -> { /* basic sensors only */ }
@@ -312,6 +346,26 @@ object CapabilityLadderDetector {
         val found = candidates.firstOrNull { val f = File(it); f.exists() && f.canRead() }
             ?: return ProbeResult(false, "no modem diag device node readable")
         return ProbeResult(true, "modem diag node readable at $found")
+    }
+
+    /**
+     * ADB-grant probe: exercise each grantable permission. Existence of the
+     * manifest entry proves nothing — each probe attempts the operation.
+     */
+    fun probeAdbGrants(): AdbCapabilityProbe {
+        val granted = mutableSetOf<AdbGrant>()
+        val evidence = mutableMapOf<AdbGrant, String>()
+        for (grant in AdbGrant.entries) {
+            try {
+                if (grant.verifyCommand()) {
+                    granted.add(grant)
+                    evidence[grant] = "${grant.permission} verified by operation probe"
+                }
+            } catch (e: Exception) {
+                // probe failed — not granted
+            }
+        }
+        return AdbCapabilityProbe(granted, evidence, System.currentTimeMillis())
     }
 
     // ==================== Legacy flag checks (unchanged) ====================
