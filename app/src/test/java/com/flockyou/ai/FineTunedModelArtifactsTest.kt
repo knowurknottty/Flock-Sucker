@@ -1,13 +1,12 @@
 package com.flockyou.ai
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FineTunedModelArtifactsTest {
     @Test
-    fun `hosted Gemma GGUF metadata is exact and non selectable`() {
+    fun `hosted Gemma GGUF metadata is exact and truthfully runtime compatible`() {
         val artifact = FineTunedModelArtifacts.GEMMA_FLOCK_Q8_0
 
         assertEquals("gemma-flock-q8-0", artifact.id)
@@ -18,7 +17,8 @@ class FineTunedModelArtifactsTest {
             artifact.sha256
         )
         assertTrue(artifact.downloadUrl.startsWith("https://mega.nz/file/WzAiwIba#"))
-        assertFalse(artifact.runtimeCompatible)
-        assertTrue(artifact.compatibilityReason.contains("MediaPipe"))
+        assertTrue(artifact.runtimeCompatible)
+        assertTrue(artifact.compatibilityReason.contains("llama.cpp"))
+        assertTrue(artifact.compatibilityReason.contains("READY"))
     }
 }
