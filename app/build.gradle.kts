@@ -58,7 +58,7 @@ android {
 
         // External Service URLs
         buildConfigField("String", "URL_GITHUB_REPO",
-            "\"${project.findProperty("URL_GITHUB_REPO") ?: "https://github.com/MaxwellDPS/Flock-You-Android"}\"")
+            "\"${project.findProperty("URL_GITHUB_REPO") ?: "https://github.com/knowurknottty/Flock-Sucker"}\"")
 
         // AI Model Download URLs (Hugging Face)
         buildConfigField("String", "URL_AI_MODEL_GEMMA3_1B",
