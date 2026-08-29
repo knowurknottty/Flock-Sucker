@@ -1,11 +1,10 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
     namespace = "com.arm.aichat"
-    compileSdk = 34
+    compileSdk = 37
     ndkVersion = "25.1.8937393"
 
     defaultConfig {
@@ -34,7 +33,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
     packaging {
         jniLibs { useLegacyPackaging = false }
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
