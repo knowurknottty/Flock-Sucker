@@ -65,6 +65,14 @@ class ScanningRuntimePolicyTest {
     }
 
     @Test
+    fun boostActivation_acceptsManualOrAndroidAutoSource() {
+        assertFalse(ScanningRuntimePolicy.isBoostActive(false, 0))
+        assertTrue(ScanningRuntimePolicy.isBoostActive(true, 0))
+        assertTrue(ScanningRuntimePolicy.isBoostActive(false, 1))
+        assertTrue(ScanningRuntimePolicy.isBoostActive(true, 2))
+    }
+
+    @Test
     fun disabledCellular_neverRequestsWatchdogRestart() {
         assertFalse(ScanningRuntimePolicy.shouldRestartCellularMonitoring(
             enabled = false, monitorPresent = true, anomalyJobActive = false

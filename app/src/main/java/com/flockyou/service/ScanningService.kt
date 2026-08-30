@@ -429,7 +429,10 @@ class ScanningService : Service() {
 
     /** Whether boost mode is active (faster scanning for Android Auto) */
     internal val isBoostModeActive: Boolean
-        get() = androidAutoClientCount.get() > 0
+        get() = ScanningRuntimePolicy.isBoostActive(
+            manualBoostEnabled = currentScanSettings.flockBoostEnabled,
+            androidAutoClientCount = androidAutoClientCount.get()
+        )
 
     // IPC: Messenger for cross-process communication
     // Using CopyOnWriteArrayList for thread-safe iteration and modification

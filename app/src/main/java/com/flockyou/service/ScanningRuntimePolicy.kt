@@ -40,6 +40,11 @@ internal object ScanningRuntimePolicy {
         aggressiveBleMode = true
     )
 
+    fun isBoostActive(
+        manualBoostEnabled: Boolean,
+        androidAutoClientCount: Int
+    ): Boolean = manualBoostEnabled || androidAutoClientCount > 0
+
     fun shouldUseAggressiveBle(
         config: ScanConfig,
         batteryMode: BatteryAdaptiveMode,
