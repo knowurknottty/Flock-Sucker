@@ -60,15 +60,24 @@ class PrivilegeModeCapabilityTest {
             PrivilegePermissionEvidence(
                 bluetoothPrivileged = false,
                 connectivityInternal = true,
+                networkSettings = false,
                 peersMac = false,
                 localMac = true,
                 readPrivilegedPhoneState = true
             )
         )
         assertFalse(wifiAndPhone.hasContinuousBleScan)
-        assertTrue(wifiAndPhone.canDisableWifiThrottling)
+        assertFalse(wifiAndPhone.canDisableWifiThrottling)
         assertTrue(wifiAndPhone.hasRealMacAccess)
         assertTrue(wifiAndPhone.hasPrivilegedPhoneAccess)
+    }
+
+    @Test
+    fun wifiThrottleControl_requiresNetworkSettings_notConnectivityInternal() {
+        val networkSettings = PrivilegeCapabilityPolicy.systemMode(
+            PrivilegePermissionEvidence(networkSettings = true)
+        )
+        assertTrue(networkSettings.canDisableWifiThrottling)
     }
 
 }

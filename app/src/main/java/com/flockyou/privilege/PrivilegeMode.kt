@@ -17,6 +17,7 @@ import android.util.Log
 data class PrivilegePermissionEvidence(
     val bluetoothPrivileged: Boolean = false,
     val connectivityInternal: Boolean = false,
+    val networkSettings: Boolean = false,
     val peersMac: Boolean = false,
     val localMac: Boolean = false,
     val readPrivilegedPhoneState: Boolean = false
@@ -25,7 +26,7 @@ data class PrivilegePermissionEvidence(
 internal object PrivilegeCapabilityPolicy {
     fun systemMode(evidence: PrivilegePermissionEvidence): PrivilegeMode.System = PrivilegeMode.System(
         hasPrivilegedPermissions = evidence.bluetoothPrivileged,
-        canDisableThrottling = evidence.connectivityInternal,
+        canDisableThrottling = evidence.networkSettings,
         hasPeersMacPermission = evidence.peersMac || evidence.localMac,
         hasReadPrivilegedPhoneState = evidence.readPrivilegedPhoneState
     )
@@ -147,6 +148,7 @@ object PrivilegeModeDetector {
     private const val PERMISSION_BLUETOOTH_PRIVILEGED = "android.permission.BLUETOOTH_PRIVILEGED"
     private const val PERMISSION_LOCAL_MAC_ADDRESS = "android.permission.LOCAL_MAC_ADDRESS"
     private const val PERMISSION_CONNECTIVITY_INTERNAL = "android.permission.CONNECTIVITY_INTERNAL"
+    private const val PERMISSION_NETWORK_SETTINGS = "android.permission.NETWORK_SETTINGS"
 
     // Cache the detected mode
     @Volatile
@@ -194,6 +196,7 @@ object PrivilegeModeDetector {
         val hasBluetoothPrivileged = hasPermission(context, PERMISSION_BLUETOOTH_PRIVILEGED)
         val hasLocalMac = hasPermission(context, PERMISSION_LOCAL_MAC_ADDRESS)
         val hasConnectivityInternal = hasPermission(context, PERMISSION_CONNECTIVITY_INTERNAL)
+        val hasNetworkSettings = hasPermission(context, PERMISSION_NETWORK_SETTINGS)
 
         Log.d(TAG, "Permissions: peersMac=$hasPeersMac, privilegedPhone=$hasPrivilegedPhone, btPrivileged=$hasBluetoothPrivileged")
 
@@ -213,6 +216,7 @@ object PrivilegeModeDetector {
                 PrivilegePermissionEvidence(
                     bluetoothPrivileged = hasBluetoothPrivileged,
                     connectivityInternal = hasConnectivityInternal,
+                    networkSettings = hasNetworkSettings,
                     peersMac = hasPeersMac,
                     localMac = hasLocalMac,
                     readPrivilegedPhoneState = hasPrivilegedPhone
@@ -221,11 +225,12 @@ object PrivilegeModeDetector {
         }
 
         // Check if any system permission is granted (might be system app without FLAG_SYSTEM)
-        if (hasPeersMac || hasBluetoothPrivileged || hasLocalMac || hasPrivilegedPhone || hasConnectivityInternal) {
+        if (hasPeersMac || hasBluetoothPrivileged || hasLocalMac || hasPrivilegedPhone || hasConnectivityInternal || hasNetworkSettings) {
             return PrivilegeCapabilityPolicy.systemMode(
                 PrivilegePermissionEvidence(
                     bluetoothPrivileged = hasBluetoothPrivileged,
                     connectivityInternal = hasConnectivityInternal,
+                    networkSettings = hasNetworkSettings,
                     peersMac = hasPeersMac,
                     localMac = hasLocalMac,
                     readPrivilegedPhoneState = hasPrivilegedPhone
