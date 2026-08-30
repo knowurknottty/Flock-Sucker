@@ -783,7 +783,7 @@ class GnssSatelliteMonitor(
      *
      * @param intervalSeconds Cooldown time between same anomaly type reports (60-300 seconds)
      */
-    fun updateScanTiming(intervalSeconds: Int) {
+    fun updateAnomalyCooldown(intervalSeconds: Int) {
         // Enforce minimum 60-second cooldown to prevent alert flooding.
         // Maximum 300 seconds (5 minutes) which is the default.
         anomalyCooldownMs = (intervalSeconds.coerceIn(60, 300) * 1000L)

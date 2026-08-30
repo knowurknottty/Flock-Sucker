@@ -96,16 +96,15 @@ data class ScanSettings(
     val enableBleScanning: Boolean = true,
     val enableWifiScanning: Boolean = true,
     val trackSeenDevices: Boolean = true,
-    // RF detection timing
-    val rfScanIntervalSeconds: Int = 15,     // Reduced from 30s for more frequent scanning
     // Ultrasonic detection timing
     val ultrasonicScanIntervalSeconds: Int = 20,  // Reduced from 30s for more frequent scanning
     val ultrasonicScanDurationSeconds: Int = 5,
-    // GNSS/Satellite detection timing
-    val gnssScanIntervalSeconds: Int = 3,    // Reduced from 5s for more frequent scanning
-    val satelliteScanIntervalSeconds: Int = 5,   // Reduced from 10s for more frequent scanning
-    // Cellular detection timing
-    val cellularScanIntervalSeconds: Int = 3,    // Reduced from 5s for more frequent scanning
+    // GNSS anomaly-report cooldown and satellite acquisition timing.
+    // Raw GNSS measurement callbacks are continuous/event-driven; this does NOT control sampling cadence.
+    val gnssAnomalyCooldownSeconds: Int = 60,
+    val satelliteScanIntervalSeconds: Int = 5,
+    // Cellular anomaly-report cooldown. Telephony acquisition has its own framework/scanner cadence.
+    val cellularAnomalyCooldownSeconds: Int = 3,
     // Battery-adaptive mode settings
     val batteryAdaptiveMode: String = "balanced",
     val autoBatteryAdaptive: Boolean = true, // When true, automatically adjust based on battery level
@@ -149,6 +148,13 @@ data class ScanSettings(
     fun shouldDisableNonEssential(batteryPercent: Int): Boolean {
         return getEffectiveMode(batteryPercent).disableNonEssential
     }
+
+    fun effectiveGnssAnomalyCooldownSeconds(): Int =
+        gnssAnomalyCooldownSeconds.coerceIn(60, 300)
+
+    fun effectiveCellularAnomalyCooldownSeconds(): Int =
+        cellularAnomalyCooldownSeconds.coerceIn(1, 30)
+
 }
 
 @Singleton
@@ -166,12 +172,11 @@ class ScanSettingsRepository @Inject constructor(
                 wifiScanIntervalSeconds = 45,
                 bleScanDurationSeconds = 8,
                 inactiveTimeoutSeconds = 90,
-                rfScanIntervalSeconds = 60,
                 ultrasonicScanIntervalSeconds = 60,
                 ultrasonicScanDurationSeconds = 4,
-                gnssScanIntervalSeconds = 10,
+                gnssAnomalyCooldownSeconds = 60,
                 satelliteScanIntervalSeconds = 30,
-                cellularScanIntervalSeconds = 10,
+                cellularAnomalyCooldownSeconds = 10,
                 batteryAdaptiveMode = "balanced",
                 autoBatteryAdaptive = true
             )
@@ -188,16 +193,16 @@ class ScanSettingsRepository @Inject constructor(
         val ENABLE_BLE = booleanPreferencesKey("enable_ble_scanning")
         val ENABLE_WIFI = booleanPreferencesKey("enable_wifi_scanning")
         val TRACK_SEEN_DEVICES = booleanPreferencesKey("track_seen_devices")
-        // RF detection timing
-        val RF_SCAN_INTERVAL = intPreferencesKey("rf_scan_interval_seconds")
         // Ultrasonic detection timing
         val ULTRASONIC_SCAN_INTERVAL = intPreferencesKey("ultrasonic_scan_interval_seconds")
         val ULTRASONIC_SCAN_DURATION = intPreferencesKey("ultrasonic_scan_duration_seconds")
-        // GNSS/Satellite detection timing
-        val GNSS_SCAN_INTERVAL = intPreferencesKey("gnss_scan_interval_seconds")
+        // GNSS anomaly cooldown. Legacy key retained read-only for migration.
+        val GNSS_ANOMALY_COOLDOWN = intPreferencesKey("gnss_anomaly_cooldown_seconds")
+        val LEGACY_GNSS_SCAN_INTERVAL = intPreferencesKey("gnss_scan_interval_seconds")
         val SATELLITE_SCAN_INTERVAL = intPreferencesKey("satellite_scan_interval_seconds")
-        // Cellular detection timing
-        val CELLULAR_SCAN_INTERVAL = intPreferencesKey("cellular_scan_interval_seconds")
+        // Cellular anomaly cooldown. Legacy key retained read-only for migration.
+        val CELLULAR_ANOMALY_COOLDOWN = intPreferencesKey("cellular_anomaly_cooldown_seconds")
+        val LEGACY_CELLULAR_SCAN_INTERVAL = intPreferencesKey("cellular_scan_interval_seconds")
         // Battery-adaptive mode
         val BATTERY_ADAPTIVE_MODE = stringPreferencesKey("battery_adaptive_mode")
         val AUTO_BATTERY_ADAPTIVE = booleanPreferencesKey("auto_battery_adaptive")
@@ -214,12 +219,11 @@ class ScanSettingsRepository @Inject constructor(
             enableBleScanning = preferences[PreferencesKeys.ENABLE_BLE] ?: defaults.enableBleScanning,
             enableWifiScanning = preferences[PreferencesKeys.ENABLE_WIFI] ?: defaults.enableWifiScanning,
             trackSeenDevices = preferences[PreferencesKeys.TRACK_SEEN_DEVICES] ?: defaults.trackSeenDevices,
-            rfScanIntervalSeconds = preferences[PreferencesKeys.RF_SCAN_INTERVAL] ?: defaults.rfScanIntervalSeconds,
             ultrasonicScanIntervalSeconds = preferences[PreferencesKeys.ULTRASONIC_SCAN_INTERVAL] ?: defaults.ultrasonicScanIntervalSeconds,
             ultrasonicScanDurationSeconds = preferences[PreferencesKeys.ULTRASONIC_SCAN_DURATION] ?: defaults.ultrasonicScanDurationSeconds,
-            gnssScanIntervalSeconds = preferences[PreferencesKeys.GNSS_SCAN_INTERVAL] ?: defaults.gnssScanIntervalSeconds,
+            gnssAnomalyCooldownSeconds = (preferences[PreferencesKeys.GNSS_ANOMALY_COOLDOWN] ?: preferences[PreferencesKeys.LEGACY_GNSS_SCAN_INTERVAL] ?: defaults.gnssAnomalyCooldownSeconds).coerceIn(60, 300),
             satelliteScanIntervalSeconds = preferences[PreferencesKeys.SATELLITE_SCAN_INTERVAL] ?: defaults.satelliteScanIntervalSeconds,
-            cellularScanIntervalSeconds = preferences[PreferencesKeys.CELLULAR_SCAN_INTERVAL] ?: defaults.cellularScanIntervalSeconds,
+            cellularAnomalyCooldownSeconds = (preferences[PreferencesKeys.CELLULAR_ANOMALY_COOLDOWN] ?: preferences[PreferencesKeys.LEGACY_CELLULAR_SCAN_INTERVAL] ?: defaults.cellularAnomalyCooldownSeconds).coerceIn(1, 30),
             batteryAdaptiveMode = preferences[PreferencesKeys.BATTERY_ADAPTIVE_MODE] ?: defaults.batteryAdaptiveMode,
             autoBatteryAdaptive = preferences[PreferencesKeys.AUTO_BATTERY_ADAPTIVE] ?: defaults.autoBatteryAdaptive,
             flockBoostEnabled = preferences[PreferencesKeys.FLOCK_BOOST_ENABLED] ?: defaults.flockBoostEnabled
@@ -268,15 +272,9 @@ class ScanSettingsRepository @Inject constructor(
         }
     }
 
-    suspend fun updateRfScanInterval(seconds: Int) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.RF_SCAN_INTERVAL] = seconds.coerceIn(5, 120)
-        }
-    }
-
     suspend fun updateUltrasonicScanInterval(seconds: Int) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.ULTRASONIC_SCAN_INTERVAL] = seconds.coerceIn(10, 120)
+            preferences[PreferencesKeys.ULTRASONIC_SCAN_INTERVAL] = seconds.coerceIn(15, 120)
         }
     }
 
@@ -286,9 +284,10 @@ class ScanSettingsRepository @Inject constructor(
         }
     }
 
-    suspend fun updateGnssScanInterval(seconds: Int) {
+    suspend fun updateGnssAnomalyCooldown(seconds: Int) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.GNSS_SCAN_INTERVAL] = seconds.coerceIn(1, 30)
+            preferences[PreferencesKeys.GNSS_ANOMALY_COOLDOWN] = seconds.coerceIn(60, 300)
+            preferences.remove(PreferencesKeys.LEGACY_GNSS_SCAN_INTERVAL)
         }
     }
 
@@ -298,9 +297,10 @@ class ScanSettingsRepository @Inject constructor(
         }
     }
 
-    suspend fun updateCellularScanInterval(seconds: Int) {
+    suspend fun updateCellularAnomalyCooldown(seconds: Int) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.CELLULAR_SCAN_INTERVAL] = seconds.coerceIn(1, 30)
+            preferences[PreferencesKeys.CELLULAR_ANOMALY_COOLDOWN] = seconds.coerceIn(1, 30)
+            preferences.remove(PreferencesKeys.LEGACY_CELLULAR_SCAN_INTERVAL)
         }
     }
 
@@ -321,6 +321,28 @@ class ScanSettingsRepository @Inject constructor(
     suspend fun setAutoBatteryAdaptive(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.AUTO_BATTERY_ADAPTIVE] = enabled
+        }
+    }
+
+    suspend fun applyRuntimeProfile(profile: FlockRuntimeProfile) {
+        val normalized = profile.normalized()
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.WIFI_SCAN_INTERVAL] = normalized.wifiScanIntervalSeconds
+            preferences[PreferencesKeys.BLE_SCAN_DURATION] = normalized.bleScanDurationSeconds
+            preferences[PreferencesKeys.INACTIVE_TIMEOUT] = normalized.inactiveTimeoutSeconds
+            preferences[PreferencesKeys.ENABLE_BLE] = normalized.enableBleScanning
+            preferences[PreferencesKeys.ENABLE_WIFI] = normalized.enableWifiScanning
+            preferences[PreferencesKeys.TRACK_SEEN_DEVICES] = normalized.trackSeenDevices
+            preferences[PreferencesKeys.ULTRASONIC_SCAN_INTERVAL] = normalized.ultrasonicScanIntervalSeconds
+            preferences[PreferencesKeys.ULTRASONIC_SCAN_DURATION] = normalized.ultrasonicScanDurationSeconds
+            preferences[PreferencesKeys.GNSS_ANOMALY_COOLDOWN] = normalized.gnssAnomalyCooldownSeconds
+            preferences[PreferencesKeys.SATELLITE_SCAN_INTERVAL] = normalized.satelliteCheckIntervalSeconds
+            preferences[PreferencesKeys.CELLULAR_ANOMALY_COOLDOWN] = normalized.cellularAnomalyCooldownSeconds
+            preferences[PreferencesKeys.BATTERY_ADAPTIVE_MODE] = normalized.batteryAdaptiveMode
+            preferences[PreferencesKeys.AUTO_BATTERY_ADAPTIVE] = normalized.autoBatteryAdaptive
+            preferences[PreferencesKeys.FLOCK_BOOST_ENABLED] = normalized.flockBoostEnabled
+            preferences.remove(PreferencesKeys.LEGACY_GNSS_SCAN_INTERVAL)
+            preferences.remove(PreferencesKeys.LEGACY_CELLULAR_SCAN_INTERVAL)
         }
     }
 

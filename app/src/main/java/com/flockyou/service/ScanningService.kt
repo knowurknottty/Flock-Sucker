@@ -113,6 +113,7 @@ class ScanningService : Service() {
         val currentBatteryLevel get() = ScanningServiceState.currentBatteryLevel
         val isBatteryCharging get() = ScanningServiceState.isBatteryCharging
         val scanStats get() = ScanningServiceState.scanStats
+        val wifiScanEvidence get() = ScanningServiceState.wifiScanEvidence
         val detectionRefreshEvent get() = ScanningServiceState.detectionRefreshEvent
         val learningModeEnabled get() = ScanningServiceState.learningModeEnabled
         val learnedSignatures get() = ScanningServiceState.learnedSignatures
@@ -803,9 +804,9 @@ class ScanningService : Service() {
             intervalSeconds = settings.ultrasonicScanIntervalSeconds,
             durationSeconds = settings.ultrasonicScanDurationSeconds
         )
-        gnssSatelliteMonitor?.updateScanTiming(settings.gnssScanIntervalSeconds)
+        gnssSatelliteMonitor?.updateAnomalyCooldown(settings.effectiveGnssAnomalyCooldownSeconds())
         satelliteMonitor?.updateScanTiming(settings.satelliteScanIntervalSeconds)
-        cellularMonitor?.updateScanTiming(settings.cellularScanIntervalSeconds)
+        cellularMonitor?.updateAnomalyCooldown(settings.effectiveCellularAnomalyCooldownSeconds())
 
         currentSettings.value = ScanningRuntimePolicy.toRuntimeScanConfig(settings)
         updateEffectiveBatteryMode()
@@ -1015,6 +1016,7 @@ class ScanningService : Service() {
 
         val privilegeEvidence = scanningPrivilegeBridge.onScanningStarted()
         Log.i(TAG, "Privilege bridge start evidence: $privilegeEvidence")
+        wifiScanEvidence.value = WifiScanEvidence()
 
         isScanning.value = true
         scanStatus.value = ScanStatus.Active
@@ -1833,6 +1835,9 @@ class ScanningService : Service() {
 
         if (timeSinceLastScan < adaptiveInterval) {
             val remainingMs = adaptiveInterval - timeSinceLastScan
+            wifiScanEvidence.value = WifiScanEvidenceReducer.localSkip(
+                wifiScanEvidence.value, now, baseInterval, adaptiveInterval, wifiScanAttemptsSinceSuccess
+            )
             Log.d(TAG, "WiFi scan skipped (throttle optimization): ${remainingMs}ms until next allowed scan")
             return
         }
@@ -1847,13 +1852,23 @@ class ScanningService : Service() {
             @Suppress("DEPRECATION")
             val started = wifiManager.startScan()
             if (started) {
+                wifiScanEvidence.value = WifiScanEvidenceReducer.apiRequestResult(
+                    wifiScanEvidence.value, now, true, baseInterval, adaptiveInterval, wifiScanAttemptsSinceSuccess
+                )
                 wifiStatus.value = SubsystemStatus.Active
                 Log.d(TAG, "WiFi scan started (attempt ${wifiScanAttemptsSinceSuccess + 1})")
             } else {
                 wifiScanAttemptsSinceSuccess++
+                wifiScanEvidence.value = WifiScanEvidenceReducer.apiRequestResult(
+                    wifiScanEvidence.value, now, false, baseInterval, adaptiveInterval, wifiScanAttemptsSinceSuccess
+                )
+                Log.i(TAG, "WiFi scan evidence: ${wifiScanEvidence.value}")
                 Log.d(TAG, "WiFi scan request rejected (throttled, backoff level: $wifiScanAttemptsSinceSuccess)")
             }
         } catch (e: Exception) {
+            wifiScanEvidence.value = WifiScanEvidenceReducer.apiException(
+                wifiScanEvidence.value, now, baseInterval, adaptiveInterval, wifiScanAttemptsSinceSuccess
+            )
             Log.e(TAG, "Failed to start WiFi scan", e)
             wifiStatus.value = SubsystemStatus.Error(-1, e.message ?: "Unknown error")
             logError("WiFi", -1, "Failed to start scan: ${e.message}", recoverable = true)
@@ -1870,6 +1885,13 @@ class ScanningService : Service() {
                     if (success) {
                         lastSuccessfulWifiScanTime = System.currentTimeMillis()
                         wifiScanAttemptsSinceSuccess = 0
+                        wifiScanEvidence.value = WifiScanEvidenceReducer.resultsBroadcast(
+                            wifiScanEvidence.value, lastSuccessfulWifiScanTime, true, 0
+                        )
+                        if (wifiScanEvidence.value.freshResultCount == 1L ||
+                            wifiScanEvidence.value.freshResultCount % 10L == 0L) {
+                            Log.i(TAG, "WiFi scan evidence: ${wifiScanEvidence.value}")
+                        }
 
                         wifiStatus.value = SubsystemStatus.Active
                         serviceScope.launch {
@@ -1888,6 +1910,11 @@ class ScanningService : Service() {
                         Log.d(TAG, "WiFi scan successful, backoff reset")
                     } else {
                         wifiScanAttemptsSinceSuccess++
+                        val staleNow = System.currentTimeMillis()
+                        wifiScanEvidence.value = WifiScanEvidenceReducer.resultsBroadcast(
+                            wifiScanEvidence.value, staleNow, false, wifiScanAttemptsSinceSuccess
+                        )
+                        Log.i(TAG, "WiFi scan evidence: ${wifiScanEvidence.value}")
 
                         val stats = scanStats.value
                         scanStats.value = stats.copy(

@@ -674,7 +674,7 @@ class CellularMonitor(
      * Update scan timing configuration.
      * @param intervalSeconds Cooldown time between anomaly reports (1-30 seconds)
      */
-    fun updateScanTiming(intervalSeconds: Int) {
+    fun updateAnomalyCooldown(intervalSeconds: Int) {
         minAnomalyIntervalMs = (intervalSeconds.coerceIn(1, 30) * 1000L)
         globalAnomalyCooldownMs = (intervalSeconds.coerceIn(1, 30) * 500L) // Half the min interval
         Log.d(TAG, "Updated anomaly cooldown: min=${minAnomalyIntervalMs}ms, global=${globalAnomalyCooldownMs}ms")

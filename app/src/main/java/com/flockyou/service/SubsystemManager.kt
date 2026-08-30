@@ -653,7 +653,7 @@ internal fun ScanningService.startGnssMonitoring() {
     if (gnssSatelliteMonitor == null) {
         gnssSatelliteMonitor = com.flockyou.monitoring.GnssSatelliteMonitor(applicationContext, detectorCallbackImpl)
     }
-    gnssSatelliteMonitor?.updateScanTiming(currentScanSettings.gnssScanIntervalSeconds)
+    gnssSatelliteMonitor?.updateAnomalyCooldown(currentScanSettings.effectiveGnssAnomalyCooldownSeconds())
 
     Log.d(TAG, "Starting GNSS satellite monitoring for spoofing/jamming detection")
     ScanningServiceState.gnssMonitorStatus.value = SubsystemStatus.Active

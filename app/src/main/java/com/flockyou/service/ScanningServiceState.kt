@@ -105,6 +105,7 @@ object ScanningServiceState {
 
     // Scan statistics
     val scanStats = MutableStateFlow(ScanStatistics())
+    val wifiScanEvidence = MutableStateFlow(WifiScanEvidence())
 
     // Detection refresh event - emits when detections are added/updated
     private val _detectionRefreshEvent = MutableSharedFlow<Unit>(replay = 0, extraBufferCapacity = 1)
