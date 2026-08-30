@@ -188,6 +188,9 @@ class ScanningService : Service() {
     @Inject
     lateinit var threadingMonitor: com.flockyou.monitoring.ScannerThreadingMonitor
 
+    @Inject
+    lateinit var scanningPrivilegeBridge: ScanningPrivilegeBridge
+
     // ==================== Detection Handler System ====================
     //
     // These handlers implement the standardized DetectionHandler interface for
@@ -1007,6 +1010,9 @@ class ScanningService : Service() {
             logError("Location", -1, "Location permissions not granted", recoverable = true)
         }
 
+        val privilegeEvidence = scanningPrivilegeBridge.onScanningStarted()
+        Log.i(TAG, "Privilege bridge start evidence: $privilegeEvidence")
+
         isScanning.value = true
         scanStatus.value = ScanStatus.Active
 
@@ -1147,7 +1153,8 @@ class ScanningService : Service() {
                         try {
                             val aggressiveBle = ScanningRuntimePolicy.shouldUseAggressiveBle(
                                 scanConfig,
-                                batteryMode
+                                batteryMode,
+                                boostActive = isBoostModeActive
                             )
                             startBleScan(aggressiveBle)
                             delay(effectiveBleScanDuration)
@@ -1278,6 +1285,8 @@ class ScanningService : Service() {
                 while (bleResultChannel.tryReceive().isSuccess) { /* drain stale callbacks */ }
                 stopBleScan()
                 unregisterWifiReceiver()
+                val privilegeEvidence = scanningPrivilegeBridge.onScanningStopped()
+                Log.i(TAG, "Privilege bridge stop evidence: $privilegeEvidence")
                 stopCellularMonitoring()
                 stopSatelliteMonitoring()
                 stopRogueWifiMonitoring()
@@ -1528,6 +1537,20 @@ class ScanningService : Service() {
 
     // ==================== BLE Scanning ====================
 
+    private fun readBleControllerCapabilities(): BleControllerCapabilities {
+        val adapter = bluetoothAdapter ?: return BleControllerCapabilities()
+        return try {
+            BleControllerCapabilities(
+                extendedAdvertising = adapter.isLeExtendedAdvertisingSupported,
+                le2mPhy = adapter.isLe2MPhySupported,
+                codedPhy = adapter.isLeCodedPhySupported
+            )
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to read BLE controller capabilities; using legacy-safe defaults", error)
+            BleControllerCapabilities()
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun startBleScan(aggressiveMode: Boolean) {
         if (!hasBluetoothPermissions()) {
@@ -1547,21 +1570,40 @@ class ScanningService : Service() {
             stopBleScan()
         }
 
-        // Build aggressive scan settings for maximum detection capability
+        val controllerCapabilities = readBleControllerCapabilities()
+        val runtimePlan = ScanningRuntimePolicy.planBleScan(
+            aggressive = aggressiveMode,
+            controller = controllerCapabilities
+        )
+
         val scanSettings = ScanSettings.Builder()
             .setScanMode(
-                if (aggressiveMode) ScanSettings.SCAN_MODE_LOW_LATENCY
+                if (runtimePlan.aggressive) ScanSettings.SCAN_MODE_LOW_LATENCY
                 else ScanSettings.SCAN_MODE_BALANCED
             )
-            .setReportDelay(if (aggressiveMode) 0L else 500L)
+            .setReportDelay(runtimePlan.reportDelayMs)
             .apply {
-                if (aggressiveMode) {
+                if (runtimePlan.aggressiveMatching) {
                     setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
-                    setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
                     setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                }
+                if (runtimePlan.maxAdvertisementMatches) {
+                    setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
+                }
+                if (runtimePlan.requestExtendedAdvertisements) {
+                    setLegacy(false)
+                    setPhy(
+                        if (runtimePlan.phyRequest == BlePhyRequest.ALL_SUPPORTED) {
+                            ScanSettings.PHY_LE_ALL_SUPPORTED
+                        } else {
+                            BluetoothDevice.PHY_LE_1M
+                        }
+                    )
                 }
             }
             .build()
+
+        Log.i(TAG, "BLE runtime plan: controller=$controllerCapabilities plan=$runtimePlan")
 
         try {
             bleScanner?.startScan(null, scanSettings, bleScanCallback)

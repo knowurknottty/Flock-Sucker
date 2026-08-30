@@ -14,6 +14,23 @@ import android.util.Log
  * - System: System app with elevated permissions (installed in /system/priv-app)
  * - OEM: OEM-embedded app with maximum privileges (signed with platform key)
  */
+data class PrivilegePermissionEvidence(
+    val bluetoothPrivileged: Boolean = false,
+    val connectivityInternal: Boolean = false,
+    val peersMac: Boolean = false,
+    val localMac: Boolean = false,
+    val readPrivilegedPhoneState: Boolean = false
+)
+
+internal object PrivilegeCapabilityPolicy {
+    fun systemMode(evidence: PrivilegePermissionEvidence): PrivilegeMode.System = PrivilegeMode.System(
+        hasPrivilegedPermissions = evidence.bluetoothPrivileged,
+        canDisableThrottling = evidence.connectivityInternal,
+        hasPeersMacPermission = evidence.peersMac || evidence.localMac,
+        hasReadPrivilegedPhoneState = evidence.readPrivilegedPhoneState
+    )
+}
+
 sealed class PrivilegeMode {
     /**
      * Standard sideloaded app mode.
@@ -38,9 +55,10 @@ sealed class PrivilegeMode {
     data class System(
         val hasPrivilegedPermissions: Boolean = false,
         val canDisableThrottling: Boolean = false,
-        val hasPeersMacPermission: Boolean = false
+        val hasPeersMacPermission: Boolean = false,
+        val hasReadPrivilegedPhoneState: Boolean = false
     ) : PrivilegeMode() {
-        override fun toString() = "System(privileged=$hasPrivilegedPermissions, throttling=$canDisableThrottling, mac=$hasPeersMacPermission)"
+        override fun toString() = "System(btPrivileged=$hasPrivilegedPermissions, throttling=$canDisableThrottling, mac=$hasPeersMacPermission, phoneState=$hasReadPrivilegedPhoneState)"
     }
 
     /**
@@ -91,7 +109,7 @@ sealed class PrivilegeMode {
     val hasPrivilegedPhoneAccess: Boolean
         get() = when (this) {
             is Sideload -> false
-            is System -> false
+            is System -> hasReadPrivilegedPhoneState
             is OEM -> hasReadPrivilegedPhoneState
         }
 
@@ -99,7 +117,11 @@ sealed class PrivilegeMode {
      * Check if BLE continuous scanning is available.
      */
     val hasContinuousBleScan: Boolean
-        get() = this !is Sideload
+        get() = when (this) {
+            is Sideload -> false
+            is System -> hasPrivilegedPermissions
+            is OEM -> true
+        }
 
     /**
      * Check if process can be marked as persistent.
@@ -187,20 +209,27 @@ object PrivilegeModeDetector {
 
         // System Mode: Privileged app with system permissions
         if (isPrivilegedApp || isSystemApp) {
-            val canDisableThrottle = hasConnectivityInternal || hasBluetoothPrivileged
-            return PrivilegeMode.System(
-                hasPrivilegedPermissions = hasBluetoothPrivileged,
-                canDisableThrottling = canDisableThrottle,
-                hasPeersMacPermission = hasPeersMac || hasLocalMac
+            return PrivilegeCapabilityPolicy.systemMode(
+                PrivilegePermissionEvidence(
+                    bluetoothPrivileged = hasBluetoothPrivileged,
+                    connectivityInternal = hasConnectivityInternal,
+                    peersMac = hasPeersMac,
+                    localMac = hasLocalMac,
+                    readPrivilegedPhoneState = hasPrivilegedPhone
+                )
             )
         }
 
         // Check if any system permission is granted (might be system app without FLAG_SYSTEM)
-        if (hasPeersMac || hasBluetoothPrivileged || hasLocalMac) {
-            return PrivilegeMode.System(
-                hasPrivilegedPermissions = hasBluetoothPrivileged,
-                canDisableThrottling = hasBluetoothPrivileged,
-                hasPeersMacPermission = hasPeersMac || hasLocalMac
+        if (hasPeersMac || hasBluetoothPrivileged || hasLocalMac || hasPrivilegedPhone || hasConnectivityInternal) {
+            return PrivilegeCapabilityPolicy.systemMode(
+                PrivilegePermissionEvidence(
+                    bluetoothPrivileged = hasBluetoothPrivileged,
+                    connectivityInternal = hasConnectivityInternal,
+                    peersMac = hasPeersMac,
+                    localMac = hasLocalMac,
+                    readPrivilegedPhoneState = hasPrivilegedPhone
+                )
             )
         }
 
@@ -217,7 +246,7 @@ object PrivilegeModeDetector {
                 context.packageName,
                 0
             )
-            (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
         } catch (e: PackageManager.NameNotFoundException) {
             Log.e(TAG, "Failed to check system app status", e)
             false
@@ -235,7 +264,7 @@ object PrivilegeModeDetector {
                 0
             )
             // Check both system flag and if installed in priv-app
-            val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isSystem = (appInfo.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
             val sourceDir = appInfo.sourceDir
 
             isSystem && (sourceDir?.contains("/priv-app/") == true ||
