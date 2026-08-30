@@ -18,6 +18,23 @@ internal object ProcessBootstrapPolicy {
         currentProcessName == mainProcessName -> ProcessRole.MAIN
         else -> ProcessRole.SECONDARY
     }
+
+    fun shouldRunPackageBootstrap(currentProcessName: String?, mainProcessName: String?): Boolean =
+        classify(currentProcessName, mainProcessName) == ProcessRole.MAIN
+}
+
+internal enum class AiBackgroundWorkAction {
+    SCHEDULE,
+    CANCEL
+}
+
+internal fun aiBackgroundWorkAction(
+    aiEnabled: Boolean,
+    falsePositiveFilteringEnabled: Boolean
+): AiBackgroundWorkAction = if (aiEnabled && falsePositiveFilteringEnabled) {
+    AiBackgroundWorkAction.SCHEDULE
+} else {
+    AiBackgroundWorkAction.CANCEL
 }
 
 internal object ProcessNameResolver {

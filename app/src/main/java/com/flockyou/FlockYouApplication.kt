@@ -9,7 +9,10 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import com.flockyou.ai.DetectionAnalyzer
+import com.flockyou.bootstrap.AiBackgroundWorkAction
+import com.flockyou.bootstrap.ProcessBootstrapPolicy
+import com.flockyou.bootstrap.ProcessNameResolver
+import com.flockyou.bootstrap.aiBackgroundWorkAction
 import com.flockyou.data.AiSettingsRepository
 import com.flockyou.data.NukeSettingsRepository
 import com.flockyou.data.OuiSettingsRepository
@@ -26,7 +29,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import dagger.Lazy
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -49,9 +51,6 @@ class FlockYouApplication : Application(), Configuration.Provider {
     lateinit var aiSettingsRepository: AiSettingsRepository
 
     @Inject
-    lateinit var detectionAnalyzer: Lazy<DetectionAnalyzer>
-
-    @Inject
     lateinit var nukeSettingsRepository: NukeSettingsRepository
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -64,6 +63,20 @@ class FlockYouApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
 
+        val currentProcessName = ProcessNameResolver.currentProcessName(this)
+        val mainProcessName = applicationInfo.processName
+        val processRole = ProcessBootstrapPolicy.classify(currentProcessName, mainProcessName)
+        if (!ProcessBootstrapPolicy.shouldRunPackageBootstrap(currentProcessName, mainProcessName)) {
+            Log.i(
+                TAG,
+                "Skipping package-global bootstrap in process=${currentProcessName ?: "<unknown>"} " +
+                    "role=$processRole main=$mainProcessName"
+            )
+            return
+        }
+
+        Log.i(TAG, "Running package-global bootstrap in main process=$currentProcessName")
+
         // Create all notification channels at app startup
         createNotificationChannels()
 
@@ -75,9 +88,9 @@ class FlockYouApplication : Application(), Configuration.Provider {
             initializeOuiUpdates()
         }
 
-        // Initialize AI model if enabled
+        // Configure AI background work without eagerly loading the model.
         applicationScope.launch {
-            initializeAiModel()
+            initializeAiBackgroundWork()
         }
 
         // Initialize dead man's switch if enabled
@@ -216,24 +229,16 @@ class FlockYouApplication : Application(), Configuration.Provider {
         }
     }
 
-    private suspend fun initializeAiModel() {
+    private suspend fun initializeAiBackgroundWork() {
         val settings = aiSettingsRepository.settings.first()
 
-        // Initialize the AI model if AI analysis is enabled
-        if (settings.enabled) {
-            detectionAnalyzer.get().initializeModel()
-
-            // Schedule background analysis if FP filtering is enabled
-            if (settings.enableFalsePositiveFiltering) {
+        when (aiBackgroundWorkAction(settings.enabled, settings.enableFalsePositiveFiltering)) {
+            AiBackgroundWorkAction.SCHEDULE -> {
                 BackgroundAnalysisWorker.schedule(this)
-                // Also schedule the pending analysis worker to catch unanalyzed detections
-                // This runs more frequently (every 15 min) to ensure detections get analyzed
-                // even when screen is locked during background scanning
+                // Also schedule pending analysis to catch detections created while the UI is absent.
                 BackgroundAnalysisWorker.schedulePendingAnalysis(this)
             }
-        } else {
-            // Cancel background analysis if AI is disabled
-            BackgroundAnalysisWorker.cancel(this)
+            AiBackgroundWorkAction.CANCEL -> BackgroundAnalysisWorker.cancel(this)
         }
     }
 
