@@ -47,3 +47,13 @@ The same live scanner reported `READY`, successful raw-measurement callback regi
 - Active app build variant restored to `systemDebug` after acceptance.
 - Pinned toolchain remains AGP `9.1.1` + Gradle `9.3.1`; no IDE auto-upgrade accepted.
 - Full `systemDebug` source gate before deployment: 804 tests, 0 failures/errors/skips; APK assembly successful.
+
+## Post-reconnect revalidation
+
+After a later USB reconnect, Android Studio again performed a normal `app` deployment and activated `com.flockyou.MainActivity` at 11:09:22 local time. The active `/data/app` APK SHA-256 was `c2aaa16dbec598c92a5f3b2d229d5f2f751720507fcce6767117c05904b3c5e4`, exactly matching Studio's `app/build/intermediates/apk/system/debug/app-system-debug.apk`.
+
+The visible Settings UI still showed **Flock Boost ON**. The new live `:scanning` process repeatedly emitted the full Boost plan from 11:10:08 through at least 11:11:22:
+
+`BleRuntimeScanPlan(aggressive=true, reportDelayMs=0, aggressiveMatching=true, maxAdvertisementMatches=true, requestExtendedAdvertisements=true, phyRequest=ALL_SUPPORTED)`
+
+The privileged grant boundary remained unchanged, and GNSS raw-measurement delivery remained live with carrier frequency, baseband C/N0, AGC, code-lock and valid ADR evidence.
