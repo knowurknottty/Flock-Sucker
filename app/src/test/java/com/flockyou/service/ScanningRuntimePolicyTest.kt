@@ -43,6 +43,36 @@ class ScanningRuntimePolicyTest {
     }
 
     @Test
+    fun explicitBoost_requestsAggressiveBleWithoutChangingBatteryMode() {
+        val admitted = ScanningRuntimePolicy.toRuntimeScanConfig(ScanSettings())
+
+        assertTrue(
+            "Explicit Flock Boost should request the maximum-yield BLE mode even while battery mode remains BALANCED",
+            ScanningRuntimePolicy.shouldUseAggressiveBle(
+                admitted,
+                BatteryAdaptiveMode.BALANCED,
+                boostActive = true
+            )
+        )
+        assertFalse(
+            "Boost must not escalate the conservative pre-admission ScanConfig",
+            ScanningRuntimePolicy.shouldUseAggressiveBle(
+                ScanConfig(),
+                BatteryAdaptiveMode.BALANCED,
+                boostActive = true
+            )
+        )
+    }
+
+    @Test
+    fun boostActivation_acceptsManualOrAndroidAutoSource() {
+        assertFalse(ScanningRuntimePolicy.isBoostActive(false, 0))
+        assertTrue(ScanningRuntimePolicy.isBoostActive(true, 0))
+        assertTrue(ScanningRuntimePolicy.isBoostActive(false, 1))
+        assertTrue(ScanningRuntimePolicy.isBoostActive(true, 2))
+    }
+
+    @Test
     fun disabledCellular_neverRequestsWatchdogRestart() {
         assertFalse(ScanningRuntimePolicy.shouldRestartCellularMonitoring(
             enabled = false, monitorPresent = true, anomalyJobActive = false

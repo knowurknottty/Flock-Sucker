@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FlockYou"
+rootProject.name = "Flock-Sucker"
 include(":app")
 include(":llamaandroid")

@@ -190,6 +190,7 @@ class MainViewModel @Inject constructor(
     internal val repository: DetectionRepository,
     internal val ephemeralRepository: EphemeralDetectionRepository,
     internal val settingsRepository: DetectionSettingsRepository,
+    internal val scanSettingsRepository: com.flockyou.data.ScanSettingsRepository,
     internal val ouiSettingsRepository: OuiSettingsRepository,
     internal val networkSettingsRepository: NetworkSettingsRepository,
     internal val broadcastSettingsRepository: BroadcastSettingsRepository,
@@ -263,6 +264,13 @@ class MainViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = com.flockyou.data.DetectionSettings()
+        )
+
+    val scanSettings: StateFlow<com.flockyou.data.ScanSettings> = scanSettingsRepository.settings
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = com.flockyou.data.ScanSettings()
         )
 
     // Flipper UI Settings
@@ -1021,6 +1029,12 @@ class MainViewModel @Inject constructor(
 
     fun clearErrors() {
         serviceConnection.clearErrors()
+    }
+
+    fun setFlockBoostEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            scanSettingsRepository.setFlockBoostEnabled(enabled)
+        }
     }
 
     fun updateScanSettings(
