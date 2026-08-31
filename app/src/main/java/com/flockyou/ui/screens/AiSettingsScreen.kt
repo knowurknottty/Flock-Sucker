@@ -31,6 +31,13 @@ import com.flockyou.data.LlmEnginePreference
 import com.flockyou.ai.DetectionAnalyzer
 import com.flockyou.ui.components.SectionHeader
 
+internal fun canRunTestAnalysis(
+    modelStatus: AiModelStatus,
+    selectedModelId: String,
+    downloadedModels: Set<String>
+): Boolean = modelStatus is AiModelStatus.Ready ||
+    (modelStatus is AiModelStatus.NotDownloaded && selectedModelId in downloadedModels)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiSettingsScreen(
@@ -201,7 +208,11 @@ fun AiSettingsScreen(
                 item {
                     TestAnalysisCard(
                         isAnalyzing = isAnalyzing,
-                        modelStatus = modelStatus,
+                        canRunTest = canRunTestAnalysis(
+                            modelStatus = modelStatus,
+                            selectedModelId = settings.selectedModel,
+                            downloadedModels = downloadedModels
+                        ),
                         testResult = testResult,
                         onTest = { viewModel.testAnalysis() },
                         onCancel = { viewModel.cancelAnalysis() },
@@ -476,6 +487,7 @@ private fun ModelSelectionCard(
     onCancelDownload: () -> Unit
 ) {
     val currentModel = AiModel.fromId(settings.selectedModel)
+    val selectedArtifactInstalled = currentModel.id in downloadedModels
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -499,11 +511,18 @@ private fun ModelSelectionCard(
                         is AiModelStatus.Downloading -> "Downloading model"
                         is AiModelStatus.Initializing -> "Initializing model"
                         is AiModelStatus.Error -> "Model error"
-                        else -> "Model not downloaded"
+                        is AiModelStatus.NotDownloaded -> if (selectedArtifactInstalled)
+                            "Model installed, loads on first analysis"
+                        else
+                            "Model not downloaded"
                     },
                     tint = when (modelStatus) {
                         is AiModelStatus.Ready -> MaterialTheme.colorScheme.primary
                         is AiModelStatus.Error -> MaterialTheme.colorScheme.error
+                        is AiModelStatus.NotDownloaded -> if (selectedArtifactInstalled)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
@@ -516,7 +535,10 @@ private fun ModelSelectionCard(
                     )
                     Text(
                         text = when (modelStatus) {
-                            is AiModelStatus.NotDownloaded -> "Not downloaded"
+                            is AiModelStatus.NotDownloaded -> if (selectedArtifactInstalled)
+                                "Installed • loads on first analysis"
+                            else
+                                "Not downloaded"
                             is AiModelStatus.Downloading -> "Downloading... $downloadProgress%"
                             is AiModelStatus.Initializing -> "Initializing..."
                             is AiModelStatus.Ready -> if (settings.modelSizeMb > 0) "${settings.modelSizeMb} MB" else "Ready"
@@ -776,6 +798,19 @@ private fun ModelSelectionCard(
                                 )
                             ) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete model")
+                            }
+                        }
+                        selectedArtifactInstalled && modelStatus is AiModelStatus.NotDownloaded -> {
+                            OutlinedButton(
+                                onClick = onInitialize,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Load installed model now")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Load now")
+                            }
+                            OutlinedButton(onClick = onImport) {
+                                Icon(Icons.Default.FileOpen, contentDescription = "Import replacement model")
                             }
                         }
                         modelStatus is AiModelStatus.NotDownloaded || modelStatus is AiModelStatus.Error -> {
@@ -1764,7 +1799,7 @@ private fun HuggingFaceTokenCard(
 @Composable
 private fun TestAnalysisCard(
     isAnalyzing: Boolean,
-    modelStatus: AiModelStatus,
+    canRunTest: Boolean,
     testResult: String?,
     onTest: () -> Unit,
     onCancel: () -> Unit,
@@ -1801,7 +1836,7 @@ private fun TestAnalysisCard(
             } else {
                 Button(
                     onClick = onTest,
-                    enabled = modelStatus is AiModelStatus.Ready,
+                    enabled = canRunTest,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = "Run test analysis")

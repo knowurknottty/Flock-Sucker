@@ -1620,16 +1620,13 @@ class DetectionAnalyzer @Inject constructor(
             downloadedModels.add(AiModel.GEMINI_NANO.id)
         }
 
-        // Check for downloaded MediaPipe models
+        // Inventory file-backed models without implying runtime readiness.
+        // This includes manually provisioned GGUF artifacts as well as TASK/BIN models.
         val modelDir = context.getDir("ai_models", Context.MODE_PRIVATE)
-        AiModel.entries.filter { it.modelFormat == ModelFormat.TASK }.forEach { model ->
-            val taskFile = File(modelDir, "${model.id}.task")
-            val binFile = File(modelDir, "${model.id}.bin")
-            if ((taskFile.exists() && taskFile.length() > 10_000_000) ||
-                (binFile.exists() && binFile.length() > 10_000_000)) {
-                downloadedModels.add(model.id)
-            }
-        }
+        AiModel.entries
+            .filter { it.modelFormat == ModelFormat.TASK || it.modelFormat == ModelFormat.GGUF }
+            .filter { ModelArtifactInventory.isInstalled(it, modelDir) }
+            .forEach { downloadedModels.add(it.id) }
 
         downloadedModels
     }
