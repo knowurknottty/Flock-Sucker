@@ -147,7 +147,7 @@ jobs:
 
       - name: Attest Debug APK (oem)
         id: attest-debug
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/oem/debug/*.apk
 
@@ -313,7 +313,7 @@ jobs:
 
       - name: Attest Debug APK (sideload)
         id: attest-debug
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/sideload/debug/*.apk
 
@@ -479,7 +479,7 @@ jobs:
 
       - name: Attest Debug APK (system)
         id: attest-debug
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/system/debug/*.apk
 
@@ -827,7 +827,7 @@ jobs:
 
       - name: Attest Release APK (oem)
         id: attest-release
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/release-renamed/*.apk
 
@@ -1188,7 +1188,7 @@ jobs:
 
       - name: Attest Release APK (sideload)
         id: attest-release
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/release-renamed/*.apk
 
@@ -1549,7 +1549,7 @@ jobs:
 
       - name: Attest Release APK (system)
         id: attest-release
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: app/build/outputs/apk/release-renamed/*.apk
 
