@@ -371,7 +371,7 @@ dependencies {
     // This provides access to the on-device Gemini Nano model via AICore
     // Requires Pixel 8+ or compatible device with Android 14+
     // Note: Alpha API - not subject to SLA or deprecation policy
-    implementation("com.google.mlkit:genai-prompt:1.0.0-alpha1")
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
     
     // Testing - Unit Tests
     testImplementation("junit:junit:4.13.2")
