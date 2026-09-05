@@ -89,6 +89,18 @@ class UltrasonicDetector(
         fun getKnownBeaconFrequencies(): List<Int> {
             return TrackerDatabase.getAllUltrasonicFrequencies()
         }
+
+        fun gatedStatus(reason: String): UltrasonicStatus = UltrasonicStatus(
+            isScanning = false,
+            lastScanTime = System.currentTimeMillis(),
+            noiseFloorDb = -60.0,
+            ultrasonicActivityDetected = false,
+            activeBeaconCount = 0,
+            peakFrequency = null,
+            peakAmplitudeDb = null,
+            threatLevel = ThreatLevel.INFO,
+            gateReason = reason
+        )
     }
 
     // Use expanded frequency database
@@ -105,6 +117,13 @@ class UltrasonicDetector(
     // Error tracking for graceful restart
     private var consecutiveFailures = 0
     private val maxConsecutiveFailures = 3
+
+    // Proof-of-life counters. These are metrics only; raw PCM is never persisted.
+    @Volatile private var frameReadCount = 0L
+    @Volatile private var analysisCycleCount = 0L
+    @Volatile private var lastFrameTime: Long? = null
+    @Volatile private var lastAnalysisTime: Long? = null
+    @Volatile private var lastMonitorError: String? = null
 
     // Configurable timing
     private var scanDurationMs: Long = DEFAULT_SCAN_DURATION_MS
@@ -453,7 +472,14 @@ class UltrasonicDetector(
         val activeBeaconCount: Int,
         val peakFrequency: Int?,
         val peakAmplitudeDb: Double?,
-        val threatLevel: ThreatLevel
+        val threatLevel: ThreatLevel,
+        val frameReadCount: Long = 0L,
+        val analysisCycleCount: Long = 0L,
+        val lastFrameTime: Long? = null,
+        val lastAnalysisTime: Long? = null,
+        val gateReason: String? = null,
+        val lastError: String? = null,
+        val proofStaleAfterMs: Long = 180_000L
     )
 
     data class FrequencyBin(
@@ -467,6 +493,7 @@ class UltrasonicDetector(
 
         if (!hasPermission()) {
             Log.w(TAG, "Missing RECORD_AUDIO permission")
+            _status.value = gatedStatus("record_audio_permission_required")
             errorCallback?.onError(
                 DetectorHealthStatus.DETECTOR_ULTRASONIC,
                 "Missing RECORD_AUDIO permission",
@@ -477,6 +504,12 @@ class UltrasonicDetector(
 
         isMonitoring = true
         consecutiveFailures = 0
+        frameReadCount = 0L
+        analysisCycleCount = 0L
+        lastFrameTime = null
+        lastAnalysisTime = null
+        lastMonitorError = null
+        publishProofStatus()
         Log.d(TAG, "Starting ultrasonic beacon detection")
 
         addTimelineEvent(
@@ -518,6 +551,19 @@ class UltrasonicDetector(
 
         // Release audio resources
         releaseAudioRecord()
+        _status.value = (_status.value ?: UltrasonicStatus(
+            isScanning = false,
+            lastScanTime = System.currentTimeMillis(),
+            noiseFloorDb = noiseFloorDb,
+            ultrasonicActivityDetected = false,
+            activeBeaconCount = 0,
+            peakFrequency = null,
+            peakAmplitudeDb = null,
+            threatLevel = ThreatLevel.INFO
+        )).copy(
+            isScanning = false,
+            lastScanTime = System.currentTimeMillis()
+        )
 
         addTimelineEvent(
             type = UltrasonicEventType.MONITORING_STOPPED,
@@ -585,6 +631,8 @@ class UltrasonicDetector(
                 if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
                     Log.e(TAG, "AudioRecord failed to initialize")
                     consecutiveFailures++
+                    lastMonitorError = "AudioRecord failed to initialize"
+                    publishProofStatus()
                     errorCallback?.onError(
                         DetectorHealthStatus.DETECTOR_ULTRASONIC,
                         "AudioRecord failed to initialize (attempt $consecutiveFailures)",
@@ -605,12 +653,20 @@ class UltrasonicDetector(
                     val readCount = audioRecord?.read(tempBuffer, 0, FFT_SIZE) ?: 0
 
                     if (readCount > 0) {
+                        frameReadCount += 1
+                        lastFrameTime = System.currentTimeMillis()
+
                         // Write to secure encrypted buffer
                         secureBuffer.write(tempBuffer, readCount)
 
                         // Analyze within secure context - data decrypted only during analysis
                         val frequencyBins = secureBuffer.analyze { samples ->
                             analyzeFrequencies(samples, samples.size)
+                        }
+                        analysisCycleCount += 1
+                        lastAnalysisTime = System.currentTimeMillis()
+                        if (analysisCycleCount <= 3L || analysisCycleCount % 10L == 0L) {
+                            publishProofStatus()
                         }
 
                         // Check for ultrasonic content
@@ -659,11 +715,17 @@ class UltrasonicDetector(
 
                 // Report successful scan
                 consecutiveFailures = 0
+                lastMonitorError = null
+                publishProofStatus()
                 errorCallback?.onScanSuccess(DetectorHealthStatus.DETECTOR_ULTRASONIC)
 
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Error during ultrasonic scan", e)
                 consecutiveFailures++
+                lastMonitorError = e.message ?: e.javaClass.simpleName
+                publishProofStatus()
                 errorCallback?.onError(
                     DetectorHealthStatus.DETECTOR_ULTRASONIC,
                     "Scan error: ${e.message ?: "Unknown error"} (attempt $consecutiveFailures)",
@@ -961,6 +1023,31 @@ class UltrasonicDetector(
             .toList()
     }
 
+    private fun publishProofStatus(
+        ultrasonicActivityDetected: Boolean = _status.value?.ultrasonicActivityDetected ?: false,
+        activeBeaconCount: Int = _status.value?.activeBeaconCount ?: 0,
+        peakFrequency: Int? = _status.value?.peakFrequency,
+        peakAmplitudeDb: Double? = _status.value?.peakAmplitudeDb,
+        threatLevel: ThreatLevel = _status.value?.threatLevel ?: ThreatLevel.INFO
+    ) {
+        _status.value = UltrasonicStatus(
+            isScanning = isMonitoring,
+            lastScanTime = System.currentTimeMillis(),
+            noiseFloorDb = noiseFloorDb,
+            ultrasonicActivityDetected = ultrasonicActivityDetected,
+            activeBeaconCount = activeBeaconCount,
+            peakFrequency = peakFrequency,
+            peakAmplitudeDb = peakAmplitudeDb,
+            threatLevel = threatLevel,
+            frameReadCount = frameReadCount,
+            analysisCycleCount = analysisCycleCount,
+            lastFrameTime = lastFrameTime,
+            lastAnalysisTime = lastAnalysisTime,
+            gateReason = null,
+            lastError = lastMonitorError
+        )
+    }
+
     private fun updateStatus(detectedFrequencies: Map<Int, MutableList<Double>>) {
         val peakEntry = detectedFrequencies.maxByOrNull {
             it.value.maxOrNull() ?: Double.MIN_VALUE
@@ -977,12 +1064,9 @@ class UltrasonicDetector(
             else -> ThreatLevel.INFO
         }
 
-        _status.value = UltrasonicStatus(
-            isScanning = isMonitoring,
-            lastScanTime = System.currentTimeMillis(),
-            noiseFloorDb = noiseFloorDb,
+        publishProofStatus(
             ultrasonicActivityDetected = detectedFrequencies.isNotEmpty(),
-            activeBeaconCount = confirmedBeacons.size,  // Only count confirmed beacons
+            activeBeaconCount = confirmedBeacons.size,
             peakFrequency = peakEntry?.key,
             peakAmplitudeDb = peakEntry?.value?.maxOrNull(),
             threatLevel = threatLevel

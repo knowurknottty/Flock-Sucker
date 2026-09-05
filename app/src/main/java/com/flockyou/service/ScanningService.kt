@@ -424,15 +424,29 @@ class ScanningService : Service() {
         }
 
         override fun onDetectorStarted(detectorName: String) {
+            val now = System.currentTimeMillis()
             updateDetectorHealth(detectorName) { current ->
-                current.copy(isRunning = true)
+                current.copy(
+                    isRunning = true,
+                    isHealthy = true,
+                    expectedToRun = true,
+                    gateReason = null,
+                    hardwareAvailable = true,
+                    lastStartTime = now,
+                    lastStopReason = null
+                )
             }
             broadcastDetectorHealth()
         }
 
         override fun onDetectorStopped(detectorName: String) {
+            val now = System.currentTimeMillis()
             updateDetectorHealth(detectorName) { current ->
-                current.copy(isRunning = false)
+                current.copy(
+                    isRunning = false,
+                    lastStopTime = now,
+                    lastStopReason = "detector_callback"
+                )
             }
             broadcastDetectorHealth()
         }
@@ -885,6 +899,14 @@ class ScanningService : Service() {
                     } else {
                         Log.i(TAG, "Ultrasonic detection disabled by privacy settings")
                         stopUltrasonicDetection()
+                        val reason = if (!settings.ultrasonicConsentAcknowledged) {
+                            "consent_required"
+                        } else {
+                            "privacy_setting_disabled"
+                        }
+                        gateDetector(DetectorHealthStatus.DETECTOR_ULTRASONIC, reason)
+                        ScanningServiceState.ultrasonicStatus.value = UltrasonicDetector.gatedStatus(reason)
+                        broadcastUltrasonicData()
                     }
                 }
             }
@@ -1030,6 +1052,10 @@ class ScanningService : Service() {
             logError("Location", -1, "Location permissions not granted", recoverable = true)
         }
 
+        // Freeze detector expectations before any subsystem can emit lifecycle callbacks.
+        // This prevents late initialization from erasing legitimate RUNNING states.
+        prepareDetectorHealthForScan(config)
+
         isScanning.value = true
         scanStatus.value = ScanStatus.Active
 
@@ -1076,8 +1102,7 @@ class ScanningService : Service() {
         // startup synchronization. Later location results fan out from updateLocation().
         syncCurrentLocationToSubsystems()
 
-        // Initialize and start detector health monitoring
-        initializeDetectorHealth()
+        // Health rows were registered in onCreate and admitted before subsystem start.
         startHealthCheckJob()
 
         // Start periodic throttle cache cleanup for deduplicator
@@ -2499,6 +2524,19 @@ class ScanningService : Service() {
         for ((detectorName, status) in currentHealth) {
             if (!status.isRunning) continue
 
+            if (detectorName == DetectorHealthStatus.DETECTOR_CELLULAR) {
+                val liveness = cellularMonitor?.detectorLiveness()
+                if (liveness?.isOperational == true) {
+                    currentHealth[detectorName] = status.copy(
+                        isHealthy = true,
+                        consecutiveFailures = 0,
+                        lastHeartbeatTime = now,
+                        hardwareAvailable = true
+                    )
+                    continue
+                }
+            }
+
             val lastSuccess = status.lastSuccessfulScan
             if (lastSuccess != null && (now - lastSuccess) > DETECTOR_STALE_THRESHOLD_MS) {
                 Log.w(TAG, "Detector $detectorName appears stalled (no scan in ${(now - lastSuccess) / 1000}s)")
@@ -2680,11 +2718,14 @@ class ScanningService : Service() {
 
     private fun handleDetectorSuccess(detectorName: String) {
         detectorRestartJobs.remove(detectorName)?.cancel()
+        val now = System.currentTimeMillis()
         updateDetectorHealth(detectorName) { current ->
             current.copy(
-                lastSuccessfulScan = System.currentTimeMillis(),
+                lastSuccessfulScan = now,
+                lastHeartbeatTime = now,
                 consecutiveFailures = 0,
-                isHealthy = true
+                isHealthy = true,
+                hardwareAvailable = true
             )
         }
         broadcastDetectorHealth()
@@ -2694,8 +2735,13 @@ class ScanningService : Service() {
 
     /** Record one raw observation at scanner-callback entry, before classification. */
     fun recordRawObservation(detectorName: String) {
+        val now = System.currentTimeMillis()
         updateDetectorHealth(detectorName) { current ->
-            current.copy(rawObservationCount = current.rawObservationCount + 1)
+            current.copy(
+                rawObservationCount = current.rawObservationCount + 1,
+                lastHeartbeatTime = now,
+                hardwareAvailable = true
+            )
         }
         broadcastDetectorHealth()
     }
@@ -2723,6 +2769,138 @@ class ScanningService : Service() {
         val existing = current[detectorName] ?: DetectorHealthStatus(name = detectorName)
         current[detectorName] = transform(existing)
         detectorHealth.value = current
+    }
+
+    private fun prepareDetectorHealthForScan(config: ScanConfig) {
+        val bluetoothPermission = hasBluetoothPermissions()
+        val locationPermission = hasLocationPermissions()
+        val telephonyPermission = hasTelephonyPermissions()
+        val audioPermission = hasAudioPermissions()
+        val bluetoothReady = bluetoothAdapter != null && bluetoothAdapter?.isEnabled == true
+        val wifiReady = wifiManager.isWifiEnabled
+
+        fun configure(
+            name: String,
+            configured: Boolean,
+            permissionGranted: Boolean = true,
+            hardwareReady: Boolean = true,
+            gate: String? = null
+        ) {
+            val effectiveGate = when {
+                !configured -> gate ?: "disabled_by_settings"
+                !permissionGranted -> gate ?: "permission_required"
+                !hardwareReady -> gate ?: "hardware_unavailable"
+                else -> null
+            }
+            updateDetectorHealth(name) { current ->
+                current.copy(
+                    expectedToRun = effectiveGate == null,
+                    gateReason = effectiveGate,
+                    permissionState = if (permissionGranted) "granted" else "denied",
+                    hardwareAvailable = hardwareReady,
+                    isRunning = false,
+                    isHealthy = true,
+                    lastHeartbeatTime = null,
+                    consecutiveFailures = 0
+                )
+            }
+        }
+
+        configure(
+            DetectorHealthStatus.DETECTOR_BLE,
+            configured = config.enableBle,
+            permissionGranted = bluetoothPermission,
+            hardwareReady = bluetoothReady,
+            gate = when {
+                !config.enableBle -> "disabled_by_scan_settings"
+                !bluetoothPermission -> "bluetooth_scan_permission_required"
+                !bluetoothReady -> "bluetooth_off"
+                else -> null
+            }
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_WIFI,
+            configured = config.enableWifi,
+            permissionGranted = locationPermission,
+            hardwareReady = wifiReady,
+            gate = when {
+                !config.enableWifi -> "disabled_by_scan_settings"
+                !locationPermission -> "location_permission_required"
+                !wifiReady -> "wifi_off"
+                else -> null
+            }
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_CELLULAR,
+            configured = config.enableCellular,
+            permissionGranted = telephonyPermission,
+            gate = if (!telephonyPermission) "phone_state_permission_required" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_SATELLITE,
+            configured = true,
+            permissionGranted = telephonyPermission,
+            gate = if (!telephonyPermission) "phone_state_permission_required" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_ROGUE_WIFI,
+            configured = config.enableWifi,
+            permissionGranted = locationPermission,
+            hardwareReady = wifiReady,
+            gate = if (!config.enableWifi) "wifi_disabled" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_RF_SIGNAL,
+            configured = currentDetectionSettings.enableRfDetection,
+            permissionGranted = locationPermission,
+            hardwareReady = wifiReady,
+            gate = if (!currentDetectionSettings.enableRfDetection) "rf_detection_disabled" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_GNSS,
+            configured = currentDetectionSettings.enableGnssDetection,
+            permissionGranted = locationPermission,
+            gate = if (!currentDetectionSettings.enableGnssDetection) "gnss_detection_disabled" else null
+        )
+        val ultrasonicConfigured = currentPrivacySettings.ultrasonicDetectionEnabled &&
+            currentPrivacySettings.ultrasonicConsentAcknowledged
+        val ultrasonicGate = when {
+            !currentPrivacySettings.ultrasonicConsentAcknowledged -> "consent_required"
+            !currentPrivacySettings.ultrasonicDetectionEnabled -> "privacy_setting_disabled"
+            !audioPermission -> "record_audio_permission_required"
+            else -> null
+        }
+        configure(
+            DetectorHealthStatus.DETECTOR_ULTRASONIC,
+            configured = ultrasonicConfigured,
+            permissionGranted = audioPermission,
+            gate = ultrasonicGate
+        )
+        if (ultrasonicGate != null) {
+            ScanningServiceState.ultrasonicStatus.value = UltrasonicDetector.gatedStatus(ultrasonicGate)
+            broadcastUltrasonicData()
+        }
+        broadcastDetectorHealth()
+    }
+
+    internal fun gateDetector(
+        detectorName: String,
+        reason: String,
+        permissionState: String = "unknown",
+        hardwareAvailable: Boolean = false
+    ) {
+        updateDetectorHealth(detectorName) { current ->
+            current.copy(
+                expectedToRun = false,
+                gateReason = reason,
+                permissionState = permissionState,
+                hardwareAvailable = hardwareAvailable,
+                isRunning = false,
+                lastStopTime = System.currentTimeMillis(),
+                lastStopReason = reason
+            )
+        }
+        broadcastDetectorHealth()
     }
 
     private fun initializeDetectorHealth() {
