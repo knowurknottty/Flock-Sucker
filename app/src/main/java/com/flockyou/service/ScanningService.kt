@@ -27,6 +27,9 @@ import com.flockyou.telephony.HybridSilentSmsDetector
 import com.flockyou.R
 import com.flockyou.data.model.*
 import com.flockyou.data.repository.DetectionRepository
+import com.flockyou.evidence.AndroidObservationAdapter
+import com.flockyou.evidence.ObservationRecordResult
+import com.flockyou.evidence.ObservationRecorder
 import com.flockyou.detection.DetectionRegistry
 import com.flockyou.detection.handler.BleDetectionHandler
 import com.flockyou.detection.handler.CellularDetectionHandler
@@ -218,6 +221,9 @@ class ScanningService : Service() {
     // 2. Register LearnedSignatureHandler with DetectionRegistry
 
     @Inject
+    lateinit var observationRecorder: ObservationRecorder
+
+    @Inject
     lateinit var detectionRegistry: DetectionRegistry
 
     @Inject
@@ -283,6 +289,8 @@ class ScanningService : Service() {
     private var lastNotificationContentText: String? = null
     private val gson = Gson()
     private val bleCoTravelerAnalyzer = BleCoTravelerAnalyzer()
+    private var observationSessionId: String = UUID.randomUUID().toString()
+    private val observationPersistenceFailures = AtomicInteger(0)
 
     // Bluetooth
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -982,7 +990,8 @@ class ScanningService : Service() {
         if (isScanning.value) return
 
         scanStatus.value = ScanStatus.Starting
-        Log.d(TAG, "Starting scanning")
+        observationSessionId = UUID.randomUUID().toString()
+        Log.d(TAG, "Starting scanning (observationSession=$observationSessionId)")
 
         startSettingsCollectionJobs()
 
@@ -1605,6 +1614,30 @@ class ScanningService : Service() {
         }
     }
 
+    private suspend fun recordObservationOrReport(
+        observation: Observation,
+        lane: String
+    ): Boolean = when (val result = observationRecorder.record(observation)) {
+        is ObservationRecordResult.Recorded -> true
+        is ObservationRecordResult.Failed -> {
+            val failures = observationPersistenceFailures.incrementAndGet()
+            Log.e(
+                TAG,
+                "[$lane] Raw observation persistence failed id=${result.observationId} failures=$failures",
+                result.error
+            )
+            if (failures == 1 || failures % 50 == 0) {
+                logError(
+                    "Evidence",
+                    -2001,
+                    "$lane raw observation persistence failed ($failures total): ${result.error.message}",
+                    recoverable = true
+                )
+            }
+            false
+        }
+    }
+
     /** BLE scan callback - handles scan results for surveillance device detection */
     private val bleScanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
@@ -1662,6 +1695,14 @@ class ScanningService : Service() {
         val macAddress = device.address ?: return
         val deviceName = device.name
         val rssi = result.rssi
+
+        val rawObservation = AndroidObservationAdapter.fromBle(
+            result = result,
+            sessionId = observationSessionId,
+            location = currentLocation
+        )
+        if (!recordObservationOrReport(rawObservation, "BLE")) return
+
         val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
 
         // Extract manufacturer data for detection handlers and MAC-independent tail fingerprinting.
@@ -1955,13 +1996,27 @@ class ScanningService : Service() {
     private suspend fun processWifiScanResults() {
         if (!hasLocationPermissions()) return
 
-        val results = wifiManager.scanResults
-        Log.d(TAG, "Processing ${results.size} WiFi scan results")
+        val rawResults = wifiManager.scanResults
+        val results = mutableListOf<android.net.wifi.ScanResult>()
+        for (result in rawResults) {
+            val observation = AndroidObservationAdapter.fromWifi(
+                result = result,
+                sessionId = observationSessionId,
+                location = currentLocation
+            )
+            if (recordObservationOrReport(observation, "WIFI")) {
+                results += result
+            }
+        }
+        Log.d(
+            TAG,
+            "Processing ${results.size}/${rawResults.size} evidence-backed WiFi scan results"
+        )
 
-        // Update scan stats
+        // Update scan stats using scanner ingress count, even if evidence persistence failed.
         scanStats.update { stats ->
             stats.copy(
-                wifiNetworksSeen = stats.wifiNetworksSeen + results.size,
+                wifiNetworksSeen = stats.wifiNetworksSeen + rawResults.size,
                 lastWifiSuccessTime = System.currentTimeMillis()
             )
         }
