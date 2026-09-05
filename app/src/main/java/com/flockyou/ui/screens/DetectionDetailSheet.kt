@@ -946,6 +946,19 @@ fun DetectionDetailSheet(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
 
+                            detection.sourceObservationId?.let { observationId ->
+                                Text(
+                                    text = "Source Observation ID:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = observationId,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+
                             // Protocol and Method
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1122,6 +1135,19 @@ fun DetectionDetailSheet(
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
+                            }
+
+                            detection.rawData?.takeIf { it.isNotBlank() }?.let { rawData ->
+                                Text(
+                                    text = "Raw Packet Evidence:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = rawData,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
 
                             // Matched Patterns if present

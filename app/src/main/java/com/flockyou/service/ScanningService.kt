@@ -28,10 +28,14 @@ import com.flockyou.R
 import com.flockyou.data.model.*
 import com.flockyou.data.repository.DetectionRepository
 import com.flockyou.evidence.AndroidObservationAdapter
+import com.flockyou.evidence.BleEvidenceKind
+import com.flockyou.evidence.BleForensicSummary
+import com.flockyou.evidence.BleTrackerEvidenceClassifier
 import com.flockyou.evidence.ObservationRecordResult
 import com.flockyou.evidence.ObservationRecorder
 import com.flockyou.evidence.RemoteIdEvidence
 import com.flockyou.evidence.RemoteIdEvidenceDetector
+import com.flockyou.evidence.rethrowCancellation
 import com.flockyou.detection.DetectionRegistry
 import com.flockyou.detection.handler.BleDetectionHandler
 import com.flockyou.detection.handler.CellularDetectionHandler
@@ -71,6 +75,7 @@ class ScanningService : Service() {
 
     companion object {
         private const val TAG = "ScanningService"
+        private const val BLE_EVIDENCE_TAG = "BleEvidence"
         private const val NOTIFICATION_ID = 1001
         internal const val SATELLITE_CONNECTION_NOTIF_ID = 9999
         internal const val CHANNEL_ID = "flockyou_scanning"
@@ -1176,6 +1181,7 @@ class ScanningService : Service() {
                             Log.d(TAG, "BLE cooldown: ${effectiveBleCooldown}ms")
                             delay(effectiveBleCooldown)
                         } catch (e: Exception) {
+                            e.rethrowCancellation()
                             consecutiveBleErrors++
                             Log.e(TAG, "BLE scan error (consecutive: $consecutiveBleErrors)", e)
                             logError("BLE", -1, "Scan error: ${e.message}", recoverable = true)
@@ -1202,6 +1208,7 @@ class ScanningService : Service() {
                     try {
                         updateLocation()
                     } catch (e: Exception) {
+                        e.rethrowCancellation()
                         Log.e(TAG, "Location update error", e)
                     }
 
@@ -1212,6 +1219,7 @@ class ScanningService : Service() {
                             val inactiveThreshold = System.currentTimeMillis() - scanConfig.inactiveTimeout
                             repository.markOldInactive(inactiveThreshold)
                         } catch (e: Exception) {
+                            e.rethrowCancellation()
                             Log.e(TAG, "Error marking old detections inactive", e)
                         }
 
@@ -1219,6 +1227,7 @@ class ScanningService : Service() {
                             try {
                                 cleanupSeenDevices(scanConfig.seenDeviceTimeout)
                             } catch (e: Exception) {
+                                e.rethrowCancellation()
                                 Log.e(TAG, "Error cleaning up seen devices", e)
                             }
                         }
@@ -1250,6 +1259,7 @@ class ScanningService : Service() {
                     }
 
                 } catch (e: Exception) {
+                    e.rethrowCancellation()
                     Log.e(TAG, "Scanning error", e)
                     logError("Scanner", -1, "Scan cycle error: ${e.message}", recoverable = true)
                     // Don't let any error kill the loop - just continue to next cycle
@@ -1728,6 +1738,18 @@ class ScanningService : Service() {
                 manufacturerData[key] = value.joinToString("") { "%02X".format(it) }
                 manufacturerDataLengths[key] = value.size
             }
+        }
+
+        val trackerEvidence = BleTrackerEvidenceClassifier.classify(
+            manufacturerData = manufacturerData,
+            serviceUuids = serviceUuids.map { it.toString() }
+        )
+        if (trackerEvidence.kind != BleEvidenceKind.NONE) {
+            val ouiVendor = DetectionPatterns.getManufacturerFromOui(macAddress.take(8))
+            Log.i(
+                BLE_EVIDENCE_TAG,
+                BleForensicSummary.format(rawObservation, trackerEvidence, ouiVendor)
+            )
         }
 
         currentLocation?.let { location ->

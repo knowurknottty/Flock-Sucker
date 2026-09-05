@@ -3,6 +3,7 @@ package com.flockyou.evidence
 import com.flockyou.data.model.Observation
 import com.flockyou.data.model.ObservationIdentifierKind
 import com.flockyou.data.model.ObservationProtocol
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -15,6 +16,20 @@ class ObservationRecorderTest {
         val result = recorder.record(observation())
 
         assertEquals(ObservationRecordResult.Recorded("obs-1"), result)
+    }
+
+    @Test
+    fun `coroutine cancellation is never converted into persistence failure`() = runTest {
+        val recorder = ObservationRecorder { _ -> throw CancellationException("scan stopped") }
+
+        var thrown: CancellationException? = null
+        try {
+            recorder.record(observation())
+        } catch (error: CancellationException) {
+            thrown = error
+        }
+
+        assertEquals("scan stopped", thrown?.message)
     }
 
     @Test

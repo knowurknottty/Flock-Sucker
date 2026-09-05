@@ -1,5 +1,7 @@
 package com.flockyou.data.model
 
+import com.flockyou.evidence.BleEvidenceKind
+import com.flockyou.evidence.BleTrackerEvidenceClassifier
 import java.util.UUID
 
 /**
@@ -602,6 +604,7 @@ object DetectionPatterns {
         "28:6A:B8" to "Apple",
         "2C:BE:08" to "Apple",
         "34:23:BA" to "Xiaomi",
+        "34:FC:99" to "SJIT Co., Ltd.",
         "38:F9:D3" to "Apple",
         "3C:06:30" to "Apple",
         "40:4E:36" to "HP",
@@ -609,6 +612,7 @@ object DetectionPatterns {
         "50:29:4D" to "Quectel",
         "54:60:09" to "Google",
         "58:CB:52" to "Google",
+        "5C:C1:D7" to "Samsung Electronics Co.,Ltd",
         "5C:CF:7F" to "Espressif",
         "60:01:94" to "Espressif",
         "70:B3:D5" to "IEEE Registration",
@@ -620,6 +624,7 @@ object DetectionPatterns {
         "94:65:2D" to "OnePlus",
         "98:D6:F7" to "LG",
         "9C:8E:99" to "Hewlett Packard",
+        "A4:57:A0" to "SAMJIN Co., Ltd.",
         "A4:77:33" to "Google",
         "A4:C6:39" to "Intel",
         "AC:37:43" to "HTC",
@@ -991,25 +996,21 @@ object DetectionPatterns {
         manufacturerData: Map<Int, String>,
         advertisingRate: Float
     ): DeviceType? {
-        // Check manufacturer data for known trackers
-        if (manufacturerData.containsKey(0x004C)) {
-            // Apple - check for AirTag patterns
-            val data = manufacturerData[0x004C] ?: ""
-            if (data.startsWith("12") || data.startsWith("07")) {
-                return DeviceType.AIRTAG
-            }
+        // Tracker identity must come from protocol evidence, never company ID alone.
+        val trackerEvidence = BleTrackerEvidenceClassifier.classify(
+            manufacturerData = manufacturerData,
+            serviceUuids = serviceUuids.map { it.toString() }
+        )
+        when (trackerEvidence.kind) {
+            BleEvidenceKind.SAMSUNG_SMARTTAG_SERVICE -> return DeviceType.SAMSUNG_SMARTTAG
+            BleEvidenceKind.TILE_SERVICE -> return DeviceType.TILE_TRACKER
+            BleEvidenceKind.APPLE_FIND_MY_NETWORK,
+            BleEvidenceKind.SAMSUNG_OFFLINE_FINDING -> return DeviceType.GENERIC_BLE_TRACKER
+            else -> Unit
         }
-        if (manufacturerData.containsKey(0x00C7)) return DeviceType.TILE_TRACKER
-        if (manufacturerData.containsKey(0x0075)) return DeviceType.SAMSUNG_SMARTTAG
 
-        // Check service UUIDs
-        for (uuid in serviceUuids) {
-            val shortForm = uuid.toString().uppercase().substring(4, 8)
-            when {
-                shortForm == "FD5A" -> return DeviceType.SAMSUNG_SMARTTAG
-                shortForm.startsWith("FEED") -> return DeviceType.TILE_TRACKER
-            }
-        }
+        // Preserve the existing Tile company-ID fallback pending a dedicated Tile parser.
+        if (manufacturerData.containsKey(0x00C7)) return DeviceType.TILE_TRACKER
 
         // Check device name patterns
         deviceName?.let { name ->

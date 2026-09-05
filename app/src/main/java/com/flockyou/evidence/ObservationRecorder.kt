@@ -4,6 +4,7 @@ import android.util.Log
 import com.flockyou.data.model.Observation
 import com.flockyou.data.repository.ObservationDao
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +27,8 @@ class ObservationRecorder internal constructor(
                 )
             }
             ObservationRecordResult.Recorded(observation.id)
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Throwable) {
             ObservationRecordResult.Failed(observation.id, error)
         }
