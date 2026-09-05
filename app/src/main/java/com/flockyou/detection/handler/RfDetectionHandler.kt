@@ -204,8 +204,9 @@ class RfDetectionHandler @Inject constructor() {
             Regex("(?i)^tello[-_]?[0-9a-f]+"),
             Regex("(?i)^parrot[-_]?(anafi|bebop|disco|mambo).*"),
             Regex("(?i)^anafi[-_]?.*"),
-            Regex("(?i)^skydio[-_]?[0-9].*"),
-            Regex("(?i)^autel[-_]?(evo|robotics).*"),
+            Regex("(?i)^skydio[-_]?(?:[0-9].*|x10(?:d)?(?:[-_].*)?|r10(?:[-_].*)?)"),
+            Regex("(?i)^autel[-_]?(evo|robotics|max).*"),
+            Regex("(?i)^brinc[-_]?(lemur|responder|drone).+"),
             Regex("(?i)^yuneec[-_]?(typhoon|mantis|breeze).*")
         )
 
@@ -873,7 +874,8 @@ class RfDetectionHandler @Inject constructor() {
             THREEDR_OUIS.any { oui.startsWith(it) } -> "3D Robotics"
             // SSID-based fallback detection
             ssidLower.contains("skydio") -> "Skydio"
-            ssidLower.contains("autel") || ssidLower.contains("evo") -> "Autel"
+            ssidLower.contains("brinc") -> "BRINC"
+            ssidLower.contains("autel") || ssidLower.contains("evo") -> "Autel Robotics"
             ssidLower.contains("yuneec") || ssidLower.contains("typhoon") -> "Yuneec"
             ssidLower.contains("hubsan") -> "Hubsan"
             ssidLower.contains("holy") && ssidLower.contains("stone") -> "Holy Stone"

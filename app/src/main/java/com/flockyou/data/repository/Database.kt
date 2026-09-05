@@ -134,6 +134,13 @@ class Converters {
     @TypeConverter
     fun toObservationDisposition(value: String): ObservationDisposition =
         ObservationDisposition.entries.firstOrNull { it.name == value } ?: ObservationDisposition.LEGACY_UNVERIFIABLE
+
+    @TypeConverter
+    fun fromIdentityLinkDecision(value: IdentityLinkDecision): String = value.name
+
+    @TypeConverter
+    fun toIdentityLinkDecision(value: String): IdentityLinkDecision =
+        IdentityLinkDecision.entries.firstOrNull { it.name == value } ?: IdentityLinkDecision.DISTINCT
 }
 
 /**
@@ -204,9 +211,6 @@ interface DetectionDao {
     @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE macAddress = :macAddress")
     suspend fun updateSeenByMac(macAddress: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
     
-    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE ssid = :ssid")
-    suspend fun updateSeenBySsid(ssid: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
-    
     @Query("SELECT COUNT(*) FROM detections")
     fun getTotalDetectionCount(): Flow<Int>
     
@@ -228,14 +232,11 @@ interface DetectionDao {
     @Query("SELECT * FROM detections WHERE deviceType = :deviceType AND lastSeenTimestamp > :since ORDER BY lastSeenTimestamp DESC LIMIT 50")
     suspend fun getRecentDetectionsByType(deviceType: String, since: Long): List<Detection>
 
-    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE serviceUuids LIKE '%' || :serviceUuid || '%'")
-    suspend fun updateSeenByServiceUuid(serviceUuid: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
-
     // Related detections queries
 
     /**
      * Find detections with the same MAC address (excluding the given detection ID).
-     * Useful for tracking the same device seen at different times/locations.
+     * Useful for inspecting repeated observations of the same address; physical identity is resolved separately.
      */
     @Query("SELECT * FROM detections WHERE macAddress = :macAddress AND id != :excludeId ORDER BY lastSeenTimestamp DESC LIMIT :limit")
     suspend fun getDetectionsByMacAddressExcluding(macAddress: String, excludeId: String, limit: Int): List<Detection>
@@ -691,9 +692,10 @@ object DatabaseKeyManager {
         TrustedCellEntity::class,
         CellularEventEntity::class,
         com.flockyou.data.model.Sighting::class,
-        Observation::class
+        Observation::class,
+        IdentityLink::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -703,6 +705,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
     abstract fun cellularDao(): CellularDao
     abstract fun sightingDao(): SightingDao
     abstract fun observationDao(): ObservationDao
+    abstract fun identityLinkDao(): IdentityLinkDao
 
     companion object {
         private const val TAG = "FlockYouDatabase"
@@ -915,6 +918,36 @@ abstract class FlockYouDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 12 to 13 - append-only identity resolver decisions
+        internal val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE detections ADD COLUMN sourceObservationId TEXT DEFAULT NULL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_sourceObservationId ON detections(sourceObservationId)")
+                db.execSQL("ALTER TABLE sightings ADD COLUMN sourceObservationId TEXT DEFAULT NULL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sightings_sourceObservationId ON sightings(sourceObservationId)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS identity_links (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sourceDetectionId TEXT NOT NULL,
+                        candidateDetectionId TEXT NOT NULL,
+                        sourceObservationId TEXT,
+                        timestamp INTEGER NOT NULL,
+                        decision TEXT NOT NULL,
+                        ruleId TEXT NOT NULL,
+                        score REAL NOT NULL,
+                        evidenceJson TEXT,
+                        rejectedAlternativesJson TEXT,
+                        resolverVersion INTEGER NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_sourceDetectionId ON identity_links(sourceDetectionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_candidateDetectionId ON identity_links(candidateDetectionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_sourceObservationId ON identity_links(sourceObservationId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_decision ON identity_links(decision)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_timestamp ON identity_links(timestamp)")
+            }
+        }
+
         fun getDatabase(context: Context): FlockYouDatabase {
             return INSTANCE ?: synchronized(this) {
                 // Load SQLCipher native library
@@ -939,7 +972,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
                     // ScanningService runs in :scanning while the UI reads Room in the main process.
                     // Without multi-instance invalidation, UI Flows can remain stale until service reconnect/stop.
                     .enableMultiInstanceInvalidation()
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // Fail loudly on an unhandled UPGRADE (so we never silently destroy a user's
                     // encrypted history because a future migration was forgotten). Only a genuine
                     // DOWNGRADE (installing an older APK) falls back to destructive recreation.

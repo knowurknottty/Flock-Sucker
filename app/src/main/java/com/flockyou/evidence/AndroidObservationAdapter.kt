@@ -25,9 +25,7 @@ object AndroidObservationAdapter {
                 }
             }
         }
-        val serviceData = record?.serviceData.orEmpty()
-            .mapKeys { it.key.uuid.toString() }
-            .mapValues { it.value.copyOf() }
+        val serviceData = bleServiceData(result)
         return ObservationFactory.fromBle(
             BleObservationInput(
                 observationId = UUID.randomUUID().toString(),
@@ -66,17 +64,7 @@ object AndroidObservationAdapter {
         location: Location?,
         scannerHealthGeneration: Long = 0
     ): Observation {
-        val elements = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching {
-                result.informationElements.orEmpty().mapNotNull { ie ->
-                    val buffer = ie.bytes ?: return@mapNotNull null
-                    val duplicate = buffer.duplicate()
-                    val bytes = ByteArray(duplicate.remaining())
-                    duplicate.get(bytes)
-                    WifiInformationElementEvidence(ie.id, ie.idExt, bytes)
-                }
-            }.getOrDefault(emptyList())
-        } else emptyList()
+        val elements = wifiInformationElements(result)
         val ssid = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             result.wifiSsid?.toString()?.removeSurrounding("\"")
         } else {
@@ -108,6 +96,25 @@ object AndroidObservationAdapter {
             )
         )
     }
+
+    fun bleServiceData(result: BleScanResult): Map<String, ByteArray> =
+        result.scanRecord?.serviceData.orEmpty()
+            .mapKeys { it.key.uuid.toString() }
+            .mapValues { it.value.copyOf() }
+
+    fun wifiInformationElements(result: WifiScanResult): List<WifiInformationElementEvidence> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                result.informationElements.orEmpty().mapNotNull { ie ->
+                    val buffer = ie.bytes ?: return@mapNotNull null
+                    val duplicate = buffer.duplicate()
+                    val bytes = ByteArray(duplicate.remaining())
+                    duplicate.get(bytes)
+                    WifiInformationElementEvidence(ie.id, ie.idExt, bytes)
+                }
+            }.getOrDefault(emptyList())
+        } else emptyList()
+
     private fun wallClockFromElapsedNanos(observedElapsedNanos: Long): Long {
         val deltaNanos = SystemClock.elapsedRealtimeNanos() - observedElapsedNanos
         return System.currentTimeMillis() - (deltaNanos / 1_000_000L)

@@ -74,8 +74,9 @@ class RfSignalAnalyzer(
             Regex("(?i)^parrot[-_]?(anafi|bebop|disco|mambo).*"), // Parrot specific models
             Regex("(?i)^anafi[-_]?.*"),           // Parrot Anafi
             Regex("(?i)^bebop[-_]?[0-9].*"),      // Parrot Bebop with number
-            Regex("(?i)^skydio[-_]?[0-9].*"),     // Skydio with model
-            Regex("(?i)^autel[-_]?(evo|robotics).*"), // Autel specific
+            Regex("(?i)^skydio[-_]?(?:[0-9].*|x10(?:d)?(?:[-_].*)?|r10(?:[-_].*)?)"), // Skydio 2/X10/X10D/R10
+            Regex("(?i)^autel[-_]?(evo|robotics|max).*"), // Autel specific
+            Regex("(?i)^brinc[-_]?(lemur|responder|drone).+"), // BRINC public-safety aircraft
             Regex("(?i)^evo[-_]?(ii|2|lite)[-_].*"), // Autel EVO (require more context)
             Regex("(?i)^yuneec[-_]?(typhoon|mantis|breeze).*"), // Yuneec specific models
             Regex("(?i)^typhoon[-_]?[hq4].*"),    // Yuneec Typhoon specific

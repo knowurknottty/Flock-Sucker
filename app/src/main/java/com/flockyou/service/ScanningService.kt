@@ -30,6 +30,8 @@ import com.flockyou.data.repository.DetectionRepository
 import com.flockyou.evidence.AndroidObservationAdapter
 import com.flockyou.evidence.ObservationRecordResult
 import com.flockyou.evidence.ObservationRecorder
+import com.flockyou.evidence.RemoteIdEvidence
+import com.flockyou.evidence.RemoteIdEvidenceDetector
 import com.flockyou.detection.DetectionRegistry
 import com.flockyou.detection.handler.BleDetectionHandler
 import com.flockyou.detection.handler.CellularDetectionHandler
@@ -1703,6 +1705,17 @@ class ScanningService : Service() {
         )
         if (!recordObservationOrReport(rawObservation, "BLE")) return
 
+        RemoteIdEvidenceDetector.fromBleServiceData(AndroidObservationAdapter.bleServiceData(result))?.let { evidence ->
+            handleRemoteIdEvidence(
+                evidence = evidence,
+                protocol = DetectionProtocol.BLUETOOTH_LE,
+                observedIdentifier = macAddress,
+                ssid = null,
+                rssi = rssi,
+                sourceObservationId = rawObservation.id
+            )
+        }
+
         val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
 
         // Extract manufacturer data for detection handlers and MAC-independent tail fingerprinting.
@@ -1769,7 +1782,8 @@ class ScanningService : Service() {
                         threatScore = (alert.confidence * 100f).toInt(),
                         matchedPatterns = "fingerprint=${alert.fingerprint};macs=${alert.distinctMacs};locations=${alert.separatedLocations}",
                         rawData = "${alert.proofBoundary};maxSeparationMeters=${alert.maxSeparationMeters.toInt()}",
-                        detectionSource = DetectionSource.NATIVE_BLE
+                        detectionSource = DetectionSource.NATIVE_BLE,
+                        sourceObservationId = rawObservation.id
                     )
                 )
             }
@@ -1804,8 +1818,8 @@ class ScanningService : Service() {
             scanStats.update { stats -> stats.recordCandidate(handlerResult.detection.protocol) }
             broadcastScanStats()
 
-            // Handler found a detection - process it
-            handleDetection(handlerResult.detection)
+            // Handler found a detection - preserve exact raw-evidence lineage.
+            handleDetection(handlerResult.detection.copy(sourceObservationId = rawObservation.id))
 
             // Log AI prompt availability for debugging
             if (BuildConfig.DEBUG && handlerResult.aiPrompt.isNotEmpty()) {
@@ -1823,7 +1837,9 @@ class ScanningService : Service() {
 
         // ==================== Learned Signature Detection ====================
         if (learnedSignatureHandler.learningModeEnabled.value) {
-            checkLearnedSignaturesViaHandler(macAddress, deviceName, rssi, serviceUuids, manufacturerData)
+            checkLearnedSignaturesViaHandler(
+                macAddress, deviceName, rssi, serviceUuids, manufacturerData, rawObservation.id
+            )
         }
     }
 
@@ -1835,7 +1851,8 @@ class ScanningService : Service() {
         deviceName: String?,
         rssi: Int,
         serviceUuids: List<java.util.UUID>,
-        manufacturerData: Map<Int, String>
+        manufacturerData: Map<Int, String>,
+        sourceObservationId: String
     ) {
         val context = com.flockyou.detection.handler.LearnedSignatureContext.Ble(
             macAddress = macAddress,
@@ -1847,8 +1864,45 @@ class ScanningService : Service() {
 
         val detection = learnedSignatureHandler.processBleDevice(context)
         if (detection != null) {
-            handleDetection(detection)
+            handleDetection(detection.copy(sourceObservationId = sourceObservationId))
         }
+    }
+
+    private suspend fun handleRemoteIdEvidence(
+        evidence: RemoteIdEvidence,
+        protocol: DetectionProtocol,
+        observedIdentifier: String?,
+        ssid: String?,
+        rssi: Int,
+        sourceObservationId: String
+    ) {
+        val uasId = evidence.uasIds.firstOrNull()
+        val broadcastLocation = if (evidence.droneLatitude != null && evidence.droneLongitude != null) {
+            "${String.format(Locale.US, "%.7f", evidence.droneLatitude)},${String.format(Locale.US, "%.7f", evidence.droneLongitude)}"
+        } else "not-present-in-decoded-message"
+        val source = if (protocol == DetectionProtocol.BLUETOOTH_LE) DetectionSource.NATIVE_BLE else DetectionSource.NATIVE_WIFI
+        handleDetection(
+            Detection(
+                protocol = protocol,
+                detectionMethod = DetectionMethod.RF_DRONE,
+                deviceType = DeviceType.DRONE,
+                deviceName = uasId?.let { "Remote ID UAS $it" } ?: "Remote ID transmitter / possible drone",
+                macAddress = observedIdentifier,
+                ssid = ssid,
+                rssi = rssi,
+                signalStrength = rssiToSignalStrength(rssi),
+                latitude = currentLocation?.latitude,
+                longitude = currentLocation?.longitude,
+                threatLevel = ThreatLevel.INFO,
+                threatScore = 25,
+                manufacturer = "ASTM F3411 / OpenDroneID",
+                matchedPatterns = "exactRemoteIdSignature=${evidence.signature}; transport=${evidence.transport}; protocolVersion=${evidence.protocolVersion}; messageTypes=${evidence.messageTypes.joinToString(",")}; messageCount=${evidence.messageCount}",
+                rawData = "uasIds=${evidence.uasIds.joinToString(",")}; broadcastDroneLocation=$broadcastLocation; evidenceClass=REMOTE_ID_TRANSMITTER; visualAircraftConfirmationRequired=true",
+                detectionSource = source,
+                sourceObservationId = sourceObservationId
+            )
+        )
+        Log.i(TAG, "Remote ID evidence: transport=${evidence.transport} id=${uasId ?: "unknown"} broadcastLocation=$broadcastLocation")
     }
 
     // ==================== WiFi Scanning ====================
@@ -1998,6 +2052,7 @@ class ScanningService : Service() {
 
         val rawResults = wifiManager.scanResults
         val results = mutableListOf<android.net.wifi.ScanResult>()
+        val observationIdsByBssid = mutableMapOf<String, String>()
         for (result in rawResults) {
             val observation = AndroidObservationAdapter.fromWifi(
                 result = result,
@@ -2006,6 +2061,21 @@ class ScanningService : Service() {
             )
             if (recordObservationOrReport(observation, "WIFI")) {
                 results += result
+                result.BSSID?.uppercase()?.let { observationIdsByBssid[it] = observation.id }
+                RemoteIdEvidenceDetector.fromWifiInformationElements(
+                    AndroidObservationAdapter.wifiInformationElements(result)
+                )?.let { evidence ->
+                    @Suppress("DEPRECATION")
+                    val ssid = result.SSID?.takeIf { it.isNotBlank() }
+                    handleRemoteIdEvidence(
+                        evidence = evidence,
+                        protocol = DetectionProtocol.WIFI,
+                        observedIdentifier = result.BSSID?.uppercase(),
+                        ssid = ssid,
+                        rssi = result.level,
+                        sourceObservationId = observation.id
+                    )
+                }
             }
         }
         Log.d(
@@ -2060,7 +2130,10 @@ class ScanningService : Service() {
 
                 // Handle each detection
                 for (detection in detections) {
-                    handleDetection(detection)
+                    val sourceObservationId = detection.macAddress
+                        ?.uppercase()
+                        ?.let { observationIdsByBssid[it] }
+                    handleDetection(detection.copy(sourceObservationId = sourceObservationId))
                 }
 
                 // Track unmatched networks if enabled

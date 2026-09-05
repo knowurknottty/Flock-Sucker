@@ -196,8 +196,8 @@ object ProbeCatalog {
         category = ProbeCategory.INFRASTRUCTURE,
         type = ProbeType.PASSIVE,
         hardware = ProbeHardware.WIFI,
-        targetSystem = "UAVs",
-        mechanism = "Decode ASTM F3411 Remote ID to locate Pilot & Drone"
+        targetSystem = "UAVs / Remote ID broadcast modules",
+        mechanism = "Decode ASTM F3411 Remote ID over BLE and Wi-Fi Beacon; Wi-Fi NAN requires a separate receiver lane"
     )
 
     val INDUCTIVE_LOOP = ProbeDefinition(

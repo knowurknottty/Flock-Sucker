@@ -19,7 +19,8 @@ import java.util.UUID
         Index(value = ["timestamp"]),
         Index(value = ["lastSeenTimestamp"]),
         Index(value = ["isActive"]),
-        Index(value = ["serviceUuids"])
+        Index(value = ["serviceUuids"]),
+        Index(value = ["sourceObservationId"])
     ]
 )
 data class Detection(
@@ -68,7 +69,11 @@ data class Detection(
     @ColumnInfo(name = "userNote", defaultValue = "NULL")
     val userNote: String? = null,            // User-added note about this detection
     @ColumnInfo(name = "confirmedThreat", defaultValue = "0")
-    val confirmedThreat: Boolean = false     // User confirmed this as a real threat
+    val confirmedThreat: Boolean = false,    // User confirmed this as a real threat
+
+    // Evidence-core lineage. Null only for legacy/non-radio-derived detections.
+    @ColumnInfo(name = "sourceObservationId", defaultValue = "NULL")
+    val sourceObservationId: String? = null
 )
 
 /** Most recent trustworthy observation timestamp for recency UI/query semantics. */

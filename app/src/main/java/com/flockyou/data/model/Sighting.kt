@@ -24,7 +24,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["detectionId"]),
         Index(value = ["timestamp"]),
-        Index(value = ["detectionId", "timestamp"])
+        Index(value = ["detectionId", "timestamp"]),
+        Index(value = ["sourceObservationId"])
     ]
 )
 data class Sighting(
@@ -51,7 +52,9 @@ data class Sighting(
     val rawMetadata: String? = null,
     val disposition: String,
     /** Provenance needed to reconstruct the decision (JSON). */
-    val provenance: String? = null
+    val provenance: String? = null,
+    /** Exact immutable Observation row that produced this compatibility sighting. */
+    val sourceObservationId: String? = null
 )
 
 /** Funnel dispositions for a sighting row. */

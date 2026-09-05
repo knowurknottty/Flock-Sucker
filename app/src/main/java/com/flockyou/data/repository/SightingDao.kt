@@ -36,10 +36,10 @@ interface SightingDao {
     @Query(
         "INSERT INTO sightings (id, detectionId, timestamp, sequence, protocol, sourceScanner, " +
         "detectorHealthGeneration, rssi, latitude, longitude, accuracyMeters, matchedRuleIds, " +
-        "confidence, rawMetadata, disposition, provenance) " +
+        "confidence, rawMetadata, disposition, provenance, sourceObservationId) " +
         "SELECT :id, :detectionId, :timestamp, COALESCE(MAX(sequence), 0) + 1, :protocol, :sourceScanner, " +
         ":detectorHealthGeneration, :rssi, :latitude, :longitude, NULL, :matchedRuleIds, " +
-        ":confidence, NULL, :disposition, NULL FROM sightings WHERE detectionId = :detectionId"
+        ":confidence, NULL, :disposition, NULL, :sourceObservationId FROM sightings WHERE detectionId = :detectionId"
     )
     suspend fun insertWithNextSequence(
         id: String,
@@ -53,7 +53,8 @@ interface SightingDao {
         longitude: Double?,
         matchedRuleIds: String?,
         confidence: Float?,
-        disposition: String
+        disposition: String,
+        sourceObservationId: String?
     )
 
     @Query("SELECT * FROM sightings WHERE detectionId = :detectionId ORDER BY timestamp DESC, sequence DESC LIMIT :limit")
