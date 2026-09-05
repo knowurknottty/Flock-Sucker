@@ -96,9 +96,9 @@ object CameraSignatures {
         ),
         CameraVendor(
             vendor = "Verkada",
-            ouiPrefixes = listOf("64:16:F0", "8C:85:90"),
+            ouiPrefixes = listOf("E0:A7:00"),
             defaultPorts = listOf(443, 554),
-            notes = "Cloud-managed enterprise cameras; all traffic to Verkada cloud"
+            notes = "Cloud-managed enterprise cameras; Verkada documents E0:A7:00 as the camera MAC OUI"
         ),
         CameraVendor(
             vendor = "Mobotix",

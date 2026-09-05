@@ -98,6 +98,40 @@ internal object SsidPatterns {
             threatScore = 85,
             description = "Vigilant ALPR (Motorola) - competitor to Flock"
         ),
+        // Public-safety drones and law-enforcement video systems. These SSID
+        // matches are intentionally vendor/model-specific; generic terms are excluded.
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^skydio[_-]?(x10d?|r10)(?:[_-].*)?$",
+            deviceType = DeviceType.DRONE,
+            manufacturer = "Skydio",
+            threatScore = 75,
+            description = "Skydio X10/X10D/R10 public-safety drone radio identifier"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^autel[_-]?(evo|max|robotics).*$",
+            deviceType = DeviceType.DRONE,
+            manufacturer = "Autel Robotics",
+            threatScore = 75,
+            description = "Autel Robotics drone radio identifier"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^brinc[_-]?(lemur|responder|drone).*$",
+            deviceType = DeviceType.DRONE,
+            manufacturer = "BRINC",
+            threatScore = 80,
+            description = "BRINC public-safety drone radio identifier"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^(coban[_-]?)?(focus[_-]?)?x[123][-_]?(bwc|amc)?(?:[_-].*)?$",
+            deviceType = DeviceType.BODY_CAMERA,
+            manufacturer = "COBAN Technologies / Safe Fleet",
+            threatScore = 75,
+            description = "COBAN FOCUS X1/X2/X3 law-enforcement body camera identifier"
+        ),
         
         // ==================== Police Technology Patterns ====================
         
