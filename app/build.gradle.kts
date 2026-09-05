@@ -119,6 +119,10 @@ android {
             "\"${project.findProperty("URL_OUI_DATABASE") ?: "https://standards-oui.ieee.org/oui/oui.csv"}\"")
     }
 
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     // Product flavors for different installation modes
     flavorDimensions += "installMode"
     productFlavors {
@@ -389,6 +393,7 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("io.mockk:mockk-android:1.13.8")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 

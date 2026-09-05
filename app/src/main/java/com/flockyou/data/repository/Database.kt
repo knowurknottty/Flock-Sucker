@@ -106,6 +106,34 @@ class Converters {
             Log.w(TAG, "Invalid DetectionSource '$value', using default UNKNOWN")
             DetectionSource.UNKNOWN
         }
+
+    @TypeConverter
+    fun fromObservationProtocol(value: ObservationProtocol): String = value.name
+
+    @TypeConverter
+    fun toObservationProtocol(value: String): ObservationProtocol =
+        ObservationProtocol.entries.firstOrNull { it.name == value } ?: ObservationProtocol.OTHER
+
+    @TypeConverter
+    fun fromObservationIdentifierKind(value: ObservationIdentifierKind): String = value.name
+
+    @TypeConverter
+    fun toObservationIdentifierKind(value: String): ObservationIdentifierKind =
+        ObservationIdentifierKind.entries.firstOrNull { it.name == value } ?: ObservationIdentifierKind.NONE
+
+    @TypeConverter
+    fun fromBleAddressType(value: BleAddressType?): String? = value?.name
+
+    @TypeConverter
+    fun toBleAddressType(value: String?): BleAddressType? =
+        value?.let { stored -> BleAddressType.entries.firstOrNull { it.name == stored } ?: BleAddressType.UNKNOWN }
+
+    @TypeConverter
+    fun fromObservationDisposition(value: ObservationDisposition): String = value.name
+
+    @TypeConverter
+    fun toObservationDisposition(value: String): ObservationDisposition =
+        ObservationDisposition.entries.firstOrNull { it.name == value } ?: ObservationDisposition.LEGACY_UNVERIFIABLE
 }
 
 /**
@@ -662,9 +690,10 @@ object DatabaseKeyManager {
         SeenCellTowerEntity::class,
         TrustedCellEntity::class,
         CellularEventEntity::class,
-        com.flockyou.data.model.Sighting::class
+        com.flockyou.data.model.Sighting::class,
+        Observation::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -673,6 +702,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
     abstract fun ouiDao(): OuiDao
     abstract fun cellularDao(): CellularDao
     abstract fun sightingDao(): SightingDao
+    abstract fun observationDao(): ObservationDao
 
     companion object {
         private const val TAG = "FlockYouDatabase"
@@ -837,6 +867,54 @@ abstract class FlockYouDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 11 to 12 - authoritative immutable observation evidence
+        internal val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS observations (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sessionId TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        elapsedRealtimeNanos INTEGER,
+                        protocol TEXT NOT NULL,
+                        sourceScanner TEXT NOT NULL,
+                        scannerHealthGeneration INTEGER NOT NULL,
+                        observedIdentifier TEXT,
+                        identifierKind TEXT NOT NULL,
+                        bleAddressType TEXT,
+                        deviceName TEXT,
+                        ssid TEXT,
+                        rssi INTEGER,
+                        txPower INTEGER,
+                        primaryPhy INTEGER,
+                        secondaryPhy INTEGER,
+                        advertisingSid INTEGER,
+                        periodicAdvertisingInterval INTEGER,
+                        frequencyMhz INTEGER,
+                        channelWidth INTEGER,
+                        manufacturerDataJson TEXT,
+                        serviceUuidsJson TEXT,
+                        serviceDataJson TEXT,
+                        informationElementsJson TEXT,
+                        rawPayloadSha256 TEXT NOT NULL,
+                        rawMetadata TEXT,
+                        latitude REAL,
+                        longitude REAL,
+                        altitudeMeters REAL,
+                        accuracyMeters REAL,
+                        parserVersion INTEGER NOT NULL,
+                        schemaVersion INTEGER NOT NULL,
+                        disposition TEXT NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_sessionId ON observations(sessionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_timestamp ON observations(timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_protocol_timestamp ON observations(protocol, timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_observedIdentifier ON observations(observedIdentifier)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_rawPayloadSha256 ON observations(rawPayloadSha256)")
+            }
+        }
+
         fun getDatabase(context: Context): FlockYouDatabase {
             return INSTANCE ?: synchronized(this) {
                 // Load SQLCipher native library
@@ -861,7 +939,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
                     // ScanningService runs in :scanning while the UI reads Room in the main process.
                     // Without multi-instance invalidation, UI Flows can remain stale until service reconnect/stop.
                     .enableMultiInstanceInvalidation()
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // Fail loudly on an unhandled UPGRADE (so we never silently destroy a user's
                     // encrypted history because a future migration was forgotten). Only a genuine
                     // DOWNGRADE (installing an older APK) falls back to destructive recreation.
