@@ -41,7 +41,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Test Mode Orchestrator for the Flock-You Android app.
+ * Test Mode Orchestrator for the Flock-Sucker Android app.
  *
  * This service coordinates test mode operation by:
  * 1. Managing test mode state (enabled/disabled)

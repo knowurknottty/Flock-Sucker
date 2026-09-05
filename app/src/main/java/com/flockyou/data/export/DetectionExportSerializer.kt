@@ -96,7 +96,7 @@ object DetectionExportSerializer {
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         sb.append("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n")
         sb.append("  <Document>\n")
-        sb.append("    <name>Flock-You Detections</name>\n")
+        sb.append("    <name>Flock-Sucker Detections</name>\n")
         sb.append("    <description>Local surveillance-device detection export</description>\n")
         appendKmlThreatStyles(sb)
 
@@ -231,7 +231,7 @@ object DetectionExportSerializer {
     private fun buildGpx(request: ExportRequest, detections: List<Detection>): String {
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        sb.append("<gpx version=\"1.1\" creator=\"Flock-You\" ")
+        sb.append("<gpx version=\"1.1\" creator=\"Flock-Sucker\" ")
         sb.append("xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
 
         detections.forEach { d ->

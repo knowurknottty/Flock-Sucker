@@ -321,7 +321,7 @@
     <string name="app_title_flock">FLOCK</string>
     <string name="app_title_you">YOU</string>
     <string name="app_title_full">Flock-Sucker</string>
-    <string name="app_title_full_spaced">FLOCK YOU</string>
+    <string name="app_title_full_spaced">Flock-Sucker</string>
 
     <!-- Brand Strings for UI -->
     <string name="lock_screen_title">Flock-Sucker is Locked</string>
@@ -338,10 +338,10 @@
     <string name="share_detection_export_subject">Flock-Sucker Detection Export</string>
     <string name="share_detection_alert_title">Flock-Sucker Detection Alert</string>
     <string name="share_detection_signature">-- Shared from Flock-Sucker app</string>
-    <string name="debug_export_subject">Flock-You Debug Export</string>
-    <string name="debug_export_header">FLOCK-YOU DETECTION DEBUG EXPORT</string>
-    <string name="rf_debug_export_header">FLOCK-YOU RF DETECTION DEBUG EXPORT</string>
-    <string name="rf_signal_analyzer_export_header">FLOCK-YOU RF SIGNAL ANALYZER DEBUG EXPORT</string>
+    <string name="debug_export_subject">Flock-Sucker Debug Export</string>
+    <string name="debug_export_header">Flock-Sucker Detection Debug Export</string>
+    <string name="rf_debug_export_header">Flock-Sucker RF Detection Debug Export</string>
+    <string name="rf_signal_analyzer_export_header">Flock-Sucker RF Signal Analyzer Debug Export</string>
     <string name="kml_export_name">Flock-Sucker Detections</string>
 
     <!-- Quick Wipe -->

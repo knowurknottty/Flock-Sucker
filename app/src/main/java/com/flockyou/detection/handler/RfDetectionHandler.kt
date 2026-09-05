@@ -11,7 +11,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * RF Detection Handler for the Flock-You surveillance detection system.
+ * RF Detection Handler for the Flock-Sucker surveillance detection system.
  *
  * Handles all RF-based detection methods by analyzing WiFi scan results
  * for anomalies that indicate surveillance, jamming, or covert activity.

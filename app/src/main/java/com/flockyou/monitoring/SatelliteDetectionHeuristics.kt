@@ -1971,7 +1971,7 @@ Gaming/Location Spoofer (software-based):
     }
 
     // ========================================================================
-    // DETECTION RULES FOR FLOCK-YOU
+    // DETECTION RULES FOR FLOCK-SUCKER
     // ========================================================================
 
     /**
