@@ -318,8 +318,6 @@
     <string name="content_desc_collapse">Collapse details</string>
 
     <!-- App Title -->
-    <string name="app_title_flock">FLOCK</string>
-    <string name="app_title_you">YOU</string>
     <string name="app_title_full">Flock-Sucker</string>
     <string name="app_title_full_spaced">Flock-Sucker</string>
 

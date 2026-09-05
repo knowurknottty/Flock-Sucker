@@ -12,7 +12,8 @@ class ProductBrandingRegressionTest {
     fun `visible and exported branding is permanently Flock-Sucker`() {
         val visibleSources = listOf(
             File("src/main/res/values/strings.xml"),
-            File("src/main/java/com/flockyou/data/export/DetectionExportSerializer.kt")
+            File("src/main/java/com/flockyou/data/export/DetectionExportSerializer.kt"),
+            File("src/main/java/com/flockyou/ui/screens/MainScreen.kt")
         )
 
         visibleSources.forEach { file ->
@@ -25,5 +26,12 @@ class ProductBrandingRegressionTest {
 
         val strings = visibleSources.first().readText()
         assertTrue(strings.contains("Flock-Sucker"))
+        assertFalse(strings.contains("app_title_flock"))
+        assertFalse(strings.contains("app_title_you"))
+
+        val mainScreen = visibleSources.last().readText()
+        assertTrue(mainScreen.contains("R.string.app_title_full"))
+        assertFalse(mainScreen.contains("R.string.app_title_flock"))
+        assertFalse(mainScreen.contains("R.string.app_title_you"))
     }
 }
