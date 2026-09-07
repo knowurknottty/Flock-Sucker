@@ -1,0 +1,17 @@
+Flock-Sucker bleeding-edge systemDebug
+Built: 2026-09-07
+GitHub repository: knowurknottty/Flock-Sucker
+GitHub main SHA: bb7546d47a397ec7a20896008290a46ad3fce3fb
+Pinned llama.cpp SHA: f5e85d43a048f3d5adefb4c5e29867d8077fba62
+Variant: systemDebug
+Package: com.flockyou.debug
+Version: 1.0.0-system-debug (1)
+APK bytes: 118958745
+SHA-256: 50e051bf81fb51065b198fe0e08983f6cae527b02513760ad050336128e9c833
+Unit tests: 865
+Failures: 0
+Errors: 0
+Skipped: 0
+Gradle gate: :app:testSystemDebugUnitTest :app:assembleSystemDebug — BUILD SUCCESSFUL
+Emulator smoke: API 34 / Pixel 7 AVD — install SUCCESS; cold launch SUCCESS; onboarding rendered; permission-flow navigation SUCCESS; crash buffer empty
+Physical Moto gate: NOT RUN — no physical Android device enumerated by adb during this build
