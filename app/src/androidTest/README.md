@@ -45,19 +45,19 @@ androidTest/
 ### Run Specific Test Suite
 ```bash
 # OEM readiness tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.oem.OemReadinessE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.oem.OemReadinessE2ETest
 
 # Security tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.security.SecurityFeaturesE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.security.SecurityFeaturesE2ETest
 
 # Privacy tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.privacy.PrivacyFeaturesE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.privacy.PrivacyFeaturesE2ETest
 
 # Detection system tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.detection.DetectionSystemE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.detection.DetectionSystemE2ETest
 
 # Data management tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.data.DataManagementE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.data.DataManagementE2ETest
 ```
 
 ### Run Tests for Specific Build Flavor

@@ -9,8 +9,8 @@ plugins {
 
 // OEM configurable application ID
 // OEM partners can set OEM_PACKAGE_NAME in gradle.properties to use their own package name
-val oemPackageName: String = project.findProperty("OEM_PACKAGE_NAME")?.toString() ?: "com.flockyou"
-val defaultPackageName = "com.flockyou"
+val oemPackageName: String = project.findProperty("OEM_PACKAGE_NAME")?.toString() ?: "com.inversionlabs.flocksucker"
+val defaultPackageName = "com.inversionlabs.flocksucker"
 
 // ================================================================
 // OEM Feature Flags Configuration
@@ -55,11 +55,11 @@ val deploymentProfile = when (deploymentProfileId) {
 }
 
 android {
-    namespace = "com.flockyou"
+    namespace = "com.inversionlabs.flocksucker"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.flockyou"
+        applicationId = "com.inversionlabs.flocksucker"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -83,7 +83,7 @@ android {
             }
         }
 
-        testInstrumentationRunner = "com.flockyou.HiltTestRunner"
+        testInstrumentationRunner = "com.inversionlabs.flocksucker.HiltTestRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -220,7 +220,7 @@ android {
         // OEM partners can customize the application ID via OEM_PACKAGE_NAME in gradle.properties
         create("oem") {
             dimension = "installMode"
-            // Use OEM-specified package name if provided, otherwise default to com.flockyou
+            // Use OEM-specified package name if provided, otherwise default to com.inversionlabs.flocksucker
             applicationId = oemPackageName
             applicationIdSuffix = ""
             versionNameSuffix = "-oem"
@@ -828,10 +828,10 @@ tasks.register("generatePrivappPermissions") {
     /system_ext/etc/permissions/privapp-permissions-flockyou.xml
 
     The APK should be installed to:
-    /system/priv-app/FlockYou/FlockYou.apk
+    /system/priv-app/FlockSucker/FlockSucker.apk
 
     or for newer Android versions:
-    /system_ext/priv-app/FlockYou/FlockYou.apk
+    /system_ext/priv-app/FlockSucker/FlockSucker.apk
 -->
 <permissions>
     <privapp-permissions package="$oemPackageName">
@@ -1012,9 +1012,9 @@ echo ""
 echo "Files copied successfully!"
 echo ""
 echo "Next steps:"
-echo "1. Copy your signed APK to: ${'$'}TARGET_DIR/FlockYou.apk"
+echo "1. Copy your signed APK to: ${'$'}TARGET_DIR/FlockSucker.apk"
 echo "2. Update Android.bp/Android.mk in ${'$'}TARGET_DIR if needed"
-echo "3. Add 'FlockYou' to PRODUCT_PACKAGES in your device.mk"
+echo "3. Add 'FlockSucker' to PRODUCT_PACKAGES in your device.mk"
 echo "4. Build your ROM"
 """
         scriptFile.writeText(scriptContent)

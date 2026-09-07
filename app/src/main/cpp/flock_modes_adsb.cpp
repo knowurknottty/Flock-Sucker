@@ -2,7 +2,7 @@
 #include "modes_demod_core.hpp"
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_flockyou_adversarial_ModeSNativeBridge_nativeDemodulate(
+Java_com_inversionlabs_flocksucker_adversarial_ModeSNativeBridge_nativeDemodulate(
     JNIEnv* env, jobject, jbyteArray iqArray, jint validLength) {
     if (!iqArray || validLength <= 0) return env->NewByteArray(0);
     const jsize arrayLength = env->GetArrayLength(iqArray);

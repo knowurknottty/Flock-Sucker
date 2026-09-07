@@ -37,19 +37,19 @@
 # ============================================================
 # R8 can obfuscate field names which breaks Gson reflection
 # Keep all field names in data classes used for serialization
--keepclassmembers class com.flockyou.**.* {
+-keepclassmembers class com.inversionlabs.flocksucker.**.* {
     <fields>;
 }
 # Keep all enum entries
--keepclassmembers enum com.flockyou.** {
+-keepclassmembers enum com.inversionlabs.flocksucker.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
     **[] $VALUES;
     public *;
 }
 # Keep sealed class subclasses
--keep class * extends com.flockyou.service.ScanningService$ScanStatus { *; }
--keep class * extends com.flockyou.service.ScanningService$SubsystemStatus { *; }
+-keep class * extends com.inversionlabs.flocksucker.service.ScanningService$ScanStatus { *; }
+-keep class * extends com.inversionlabs.flocksucker.service.ScanningService$SubsystemStatus { *; }
 
 # ============================================================
 # KOTLIN INTRINSICS - Prevent R8 from removing null checks
@@ -70,12 +70,12 @@
 # This ensures no class/method/field names are changed, preventing
 # any serialization, reflection, or callback registration issues.
 # Trade-off: Slightly larger APK, but guaranteed to work.
--keepnames class com.flockyou.** { *; }
--keepnames interface com.flockyou.** { *; }
--keepclassmembernames class com.flockyou.** { *; }
+-keepnames class com.inversionlabs.flocksucker.** { *; }
+-keepnames interface com.inversionlabs.flocksucker.** { *; }
+-keepclassmembernames class com.inversionlabs.flocksucker.** { *; }
 
 # Keep ALL anonymous inner classes in the app (callbacks, etc.)
--keepclassmembers class com.flockyou.** {
+-keepclassmembers class com.inversionlabs.flocksucker.** {
     *** $*;
 }
 
@@ -84,36 +84,36 @@
 # ============================================================
 # Multiple classes create anonymous ScanCallback objects that
 # R8 might strip or rename, breaking BLE scanning
--keepclassmembers class com.flockyou.service.ScanningService {
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService {
     private *** bleScanCallback;
     private *** wifiScanReceiver;
 }
--keepclassmembers class com.flockyou.scanner.standard.StandardBluetoothScanner {
+-keepclassmembers class com.inversionlabs.flocksucker.scanner.standard.StandardBluetoothScanner {
     private *** scanCallbackImpl;
 }
--keepclassmembers class com.flockyou.scanner.system.SystemBluetoothScanner {
+-keepclassmembers class com.inversionlabs.flocksucker.scanner.system.SystemBluetoothScanner {
     private *** scanCallbackImpl;
 }
--keepclassmembers class com.flockyou.scanner.flipper.FlipperBluetoothClient {
+-keepclassmembers class com.inversionlabs.flocksucker.scanner.flipper.FlipperBluetoothClient {
     private *** scanCallback;
     private *** gattCallback;
 }
--keepclassmembers class com.flockyou.ui.screens.FlipperSettingsViewModel {
+-keepclassmembers class com.inversionlabs.flocksucker.ui.screens.FlipperSettingsViewModel {
     private *** scanCallback;
 }
 
 # ============================================================
 # GNSS/TELEPHONY CALLBACKS - Anonymous implementations
 # ============================================================
--keepclassmembers class com.flockyou.monitoring.GnssSatelliteMonitor {
+-keepclassmembers class com.inversionlabs.flocksucker.monitoring.GnssSatelliteMonitor {
     private *** gnssStatusCallback;
     private *** measurementsCallback;
     private *** locationCallback;
 }
--keepclassmembers class com.flockyou.monitoring.SatelliteMonitor {
+-keepclassmembers class com.inversionlabs.flocksucker.monitoring.SatelliteMonitor {
     private *** telephonyCallback;
 }
--keepclassmembers class com.flockyou.service.CellularMonitor {
+-keepclassmembers class com.inversionlabs.flocksucker.service.CellularMonitor {
     private *** telephonyCallback;
     private *** phoneStateListener;
 }
@@ -121,141 +121,141 @@
 # ============================================================
 # APPLICATION CORE CLASSES
 # ============================================================
--keep class com.flockyou.FlockYouApplication { *; }
--keep class com.flockyou.MainActivity { *; }
+-keep class com.inversionlabs.flocksucker.FlockSuckerApplication { *; }
+-keep class com.inversionlabs.flocksucker.MainActivity { *; }
 
 # ============================================================
 # ALL SERVICES (Manifest-declared, must keep names)
 # ============================================================
--keep class com.flockyou.service.ScanningService { *; }
--keep class com.flockyou.service.ScanningService$* { *; }
--keep class com.flockyou.service.ServiceRestartJobService { *; }
--keep class com.flockyou.service.QuickWipeTileService { *; }
--keep class com.flockyou.auto.FlockYouCarAppService { *; }
+-keep class com.inversionlabs.flocksucker.service.ScanningService { *; }
+-keep class com.inversionlabs.flocksucker.service.ScanningService$* { *; }
+-keep class com.inversionlabs.flocksucker.service.ServiceRestartJobService { *; }
+-keep class com.inversionlabs.flocksucker.service.QuickWipeTileService { *; }
+-keep class com.inversionlabs.flocksucker.auto.FlockSuckerCarAppService { *; }
 
 # ============================================================
 # ALL BROADCAST RECEIVERS (Manifest-declared)
 # ============================================================
--keep class com.flockyou.service.BootReceiver { *; }
--keep class com.flockyou.service.ServiceRestartReceiver { *; }
--keep class com.flockyou.service.ScreenLockReceiver { *; }
--keep class com.flockyou.service.QuickWipeReceiver { *; }
--keep class com.flockyou.service.nuke.BootWatcher { *; }
--keep class com.flockyou.service.nuke.UsbWatchdogReceiver { *; }
--keep class com.flockyou.service.nuke.SimStateReceiver { *; }
--keep class com.flockyou.service.nuke.NetworkIsolationReceiver { *; }
--keep class com.flockyou.scanner.flipper.FlipperAlertBroadcastReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.BootReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.ServiceRestartReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.ScreenLockReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.QuickWipeReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.nuke.BootWatcher { *; }
+-keep class com.inversionlabs.flocksucker.service.nuke.UsbWatchdogReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.nuke.SimStateReceiver { *; }
+-keep class com.inversionlabs.flocksucker.service.nuke.NetworkIsolationReceiver { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperAlertBroadcastReceiver { *; }
 
 # ============================================================
 # ALL ACTIVITIES
 # ============================================================
--keep class com.flockyou.ui.EmergencyAlertActivity { *; }
--keep class com.flockyou.service.QuickWipeConfirmationActivity { *; }
--keep class com.flockyou.debug.ScreenshotHelperActivity { *; }
+-keep class com.inversionlabs.flocksucker.ui.EmergencyAlertActivity { *; }
+-keep class com.inversionlabs.flocksucker.service.QuickWipeConfirmationActivity { *; }
+-keep class com.inversionlabs.flocksucker.debug.ScreenshotHelperActivity { *; }
 
 # ============================================================
 # SERVICE MONITORING CLASSES - CRITICAL
 # ============================================================
 # These classes handle sensor data collection - if obfuscated,
 # no BT/WiFi/GNSS/Cell data will appear in the UI
--keep class com.flockyou.service.CellularMonitor { *; }
--keep class com.flockyou.service.CellularMonitor$* { *; }
--keep class com.flockyou.service.RogueWifiMonitor { *; }
--keep class com.flockyou.service.RogueWifiMonitor$* { *; }
--keep class com.flockyou.service.RfSignalAnalyzer { *; }
--keep class com.flockyou.service.RfSignalAnalyzer$* { *; }
--keep class com.flockyou.service.UltrasonicDetector { *; }
--keep class com.flockyou.service.UltrasonicDetector$* { *; }
+-keep class com.inversionlabs.flocksucker.service.CellularMonitor { *; }
+-keep class com.inversionlabs.flocksucker.service.CellularMonitor$* { *; }
+-keep class com.inversionlabs.flocksucker.service.RogueWifiMonitor { *; }
+-keep class com.inversionlabs.flocksucker.service.RogueWifiMonitor$* { *; }
+-keep class com.inversionlabs.flocksucker.service.RfSignalAnalyzer { *; }
+-keep class com.inversionlabs.flocksucker.service.RfSignalAnalyzer$* { *; }
+-keep class com.inversionlabs.flocksucker.service.UltrasonicDetector { *; }
+-keep class com.inversionlabs.flocksucker.service.UltrasonicDetector$* { *; }
 
 # ============================================================
 # MONITORING PACKAGE - GNSS/Satellite detection
 # ============================================================
--keep class com.flockyou.monitoring.** { *; }
+-keep class com.inversionlabs.flocksucker.monitoring.** { *; }
 
 # ============================================================
 # SCANNER PACKAGE - All scanner implementations
 # ============================================================
 # Scanner interfaces and base classes
--keep class com.flockyou.scanner.ScannerInterfaces { *; }
--keep class com.flockyou.scanner.ScannerInterfaces$* { *; }
--keep class com.flockyou.scanner.ScannerFactory { *; }
--keep class com.flockyou.scanner.ScannerFactory$* { *; }
--keep class com.flockyou.scanner.ScannerModeHelper { *; }
+-keep class com.inversionlabs.flocksucker.scanner.ScannerInterfaces { *; }
+-keep class com.inversionlabs.flocksucker.scanner.ScannerInterfaces$* { *; }
+-keep class com.inversionlabs.flocksucker.scanner.ScannerFactory { *; }
+-keep class com.inversionlabs.flocksucker.scanner.ScannerFactory$* { *; }
+-keep class com.inversionlabs.flocksucker.scanner.ScannerModeHelper { *; }
 
 # Standard API scanners
--keep class com.flockyou.scanner.standard.** { *; }
+-keep class com.inversionlabs.flocksucker.scanner.standard.** { *; }
 
 # System-level scanners (privileged)
--keep class com.flockyou.scanner.system.** { *; }
+-keep class com.inversionlabs.flocksucker.scanner.system.** { *; }
 
 # ============================================================
 # FLIPPER ZERO INTEGRATION - COMPREHENSIVE
 # ============================================================
--keep class com.flockyou.scanner.flipper.** { *; }
--keepclassmembers class com.flockyou.scanner.flipper.** { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.scanner.flipper.** { *; }
 
 # Flipper Protocol - Binary parsing requires exact field names
--keep class com.flockyou.scanner.flipper.FlipperProtocol { *; }
--keep class com.flockyou.scanner.flipper.FlipperProtocol$* { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperProtocol { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperProtocol$* { *; }
 
 # Flipper Models - Data classes for protocol communication
--keep class com.flockyou.scanner.flipper.FlipperWifiScanResult { *; }
--keep class com.flockyou.scanner.flipper.FlipperWifiNetwork { *; }
--keep class com.flockyou.scanner.flipper.FlipperSubGhzScanResult { *; }
--keep class com.flockyou.scanner.flipper.FlipperSubGhzDetection { *; }
--keep class com.flockyou.scanner.flipper.FlipperSubGhzScanStatus { *; }
--keep class com.flockyou.scanner.flipper.FlipperBleScanResult { *; }
--keep class com.flockyou.scanner.flipper.FlipperBleDevice { *; }
--keep class com.flockyou.scanner.flipper.FlipperIrScanResult { *; }
--keep class com.flockyou.scanner.flipper.FlipperIrDetection { *; }
--keep class com.flockyou.scanner.flipper.FlipperNfcScanResult { *; }
--keep class com.flockyou.scanner.flipper.FlipperNfcDetection { *; }
--keep class com.flockyou.scanner.flipper.FlipperStatusResponse { *; }
--keep class com.flockyou.scanner.flipper.FlipperWipsAlert { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperWifiScanResult { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperWifiNetwork { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperSubGhzScanResult { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperSubGhzDetection { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperSubGhzScanStatus { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperBleScanResult { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperBleDevice { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperIrScanResult { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperIrDetection { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperNfcScanResult { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperNfcDetection { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperStatusResponse { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperWipsAlert { *; }
 
 # Flipper Enums - Must preserve names for protocol parsing
--keepclassmembers enum com.flockyou.scanner.flipper.** {
+-keepclassmembers enum com.inversionlabs.flocksucker.scanner.flipper.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
     **[] $VALUES;
     public *;
 }
--keep enum com.flockyou.scanner.flipper.WifiSecurityType { *; }
--keep enum com.flockyou.scanner.flipper.SubGhzModulation { *; }
--keep enum com.flockyou.scanner.flipper.BleDeviceType { *; }
--keep enum com.flockyou.scanner.flipper.IrProtocol { *; }
--keep enum com.flockyou.scanner.flipper.NfcType { *; }
--keep enum com.flockyou.scanner.flipper.FlipperConnectionState { *; }
--keep enum com.flockyou.scanner.flipper.FlipperConnectionPreference { *; }
--keep enum com.flockyou.scanner.flipper.FlipperHapticPattern { *; }
--keep enum com.flockyou.scanner.flipper.FlipperAlertSound { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.WifiSecurityType { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.SubGhzModulation { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.BleDeviceType { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.IrProtocol { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.NfcType { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.FlipperConnectionState { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.FlipperConnectionPreference { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.FlipperHapticPattern { *; }
+-keep enum com.inversionlabs.flocksucker.scanner.flipper.FlipperAlertSound { *; }
 
 # Flipper Settings - DataStore serialization requires field names
--keep class com.flockyou.scanner.flipper.FlipperSettings { *; }
--keepclassmembers class com.flockyou.scanner.flipper.FlipperSettings { *; }
--keep class com.flockyou.scanner.flipper.FlipperSettingsRepository { *; }
--keep class com.flockyou.scanner.flipper.RecentFlipperDevice { *; }
--keep class com.flockyou.scanner.flipper.AutoReconnectState { *; }
--keep class com.flockyou.scanner.flipper.DiscoveredFlipperDevice { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperSettings { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.scanner.flipper.FlipperSettings { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperSettingsRepository { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.RecentFlipperDevice { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.AutoReconnectState { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.DiscoveredFlipperDevice { *; }
 
 # Flipper BLE Client - GATT callbacks
--keepclassmembers class com.flockyou.scanner.flipper.FlipperBluetoothClient {
+-keepclassmembers class com.inversionlabs.flocksucker.scanner.flipper.FlipperBluetoothClient {
     private *** gattCallback;
     private *** scanCallback;
     private *** connectionStateCallback;
 }
 
 # Active probes
--keep class com.flockyou.scanner.probes.** { *; }
+-keep class com.inversionlabs.flocksucker.scanner.probes.** { *; }
 
 # ============================================================
 # DATA MODELS - All serialized via Gson/Room
 # ============================================================
--keep class com.flockyou.data.** { *; }
--keepclassmembers class com.flockyou.data.** { *; }
+-keep class com.inversionlabs.flocksucker.data.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.data.** { *; }
 
 # Ensure enum valueOf works
--keepclassmembers enum com.flockyou.** {
+-keepclassmembers enum com.inversionlabs.flocksucker.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
@@ -264,25 +264,25 @@
 # ============================================================
 # DETECTION FRAMEWORK - COMPREHENSIVE
 # ============================================================
--keep class com.flockyou.detection.** { *; }
--keepclassmembers class com.flockyou.detection.** { *; }
--keep class com.flockyou.detection.handler.** { *; }
--keepclassmembers class com.flockyou.detection.handler.** { *; }
--keep class com.flockyou.detection.framework.** { *; }
--keepclassmembers class com.flockyou.detection.framework.** { *; }
--keep class com.flockyou.detection.config.** { *; }
--keepclassmembers class com.flockyou.detection.config.** { *; }
--keep class com.flockyou.detection.profile.** { *; }
--keepclassmembers class com.flockyou.detection.profile.** { *; }
+-keep class com.inversionlabs.flocksucker.detection.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.detection.** { *; }
+-keep class com.inversionlabs.flocksucker.detection.handler.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.detection.handler.** { *; }
+-keep class com.inversionlabs.flocksucker.detection.framework.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.detection.framework.** { *; }
+-keep class com.inversionlabs.flocksucker.detection.config.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.detection.config.** { *; }
+-keep class com.inversionlabs.flocksucker.detection.profile.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.detection.profile.** { *; }
 
 # Detection Handler inner classes and callbacks
--keep class com.flockyou.detection.handler.*$* { *; }
--keep class com.flockyou.detection.framework.*$* { *; }
--keep class com.flockyou.detection.config.DetectionConfig { *; }
--keep class com.flockyou.detection.config.DetectionConfig$* { *; }
+-keep class com.inversionlabs.flocksucker.detection.handler.*$* { *; }
+-keep class com.inversionlabs.flocksucker.detection.framework.*$* { *; }
+-keep class com.inversionlabs.flocksucker.detection.config.DetectionConfig { *; }
+-keep class com.inversionlabs.flocksucker.detection.config.DetectionConfig$* { *; }
 
 # Detection enums
--keepclassmembers enum com.flockyou.detection.** {
+-keepclassmembers enum com.inversionlabs.flocksucker.detection.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
     **[] $VALUES;
@@ -294,29 +294,29 @@
 # AI/LLM CLASSES - COMPREHENSIVE
 # ============================================================
 # MediaPipe LLM inference requires all classes preserved
--keep class com.flockyou.ai.** { *; }
--keepclassmembers class com.flockyou.ai.** { *; }
+-keep class com.inversionlabs.flocksucker.ai.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.ai.** { *; }
 
 # AI Correlation Analysis subpackage
--keep class com.flockyou.ai.correlation.** { *; }
--keepclassmembers class com.flockyou.ai.correlation.** { *; }
--keep class com.flockyou.ai.correlation.CorrelatedThreatAnalysis$* { *; }
--keep class com.flockyou.ai.correlation.CrossDomainAnalyzer$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.correlation.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.ai.correlation.** { *; }
+-keep class com.inversionlabs.flocksucker.ai.correlation.CorrelatedThreatAnalysis$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.correlation.CrossDomainAnalyzer$* { *; }
 
 # AI sealed classes and their subclasses
--keep class com.flockyou.ai.ProgressiveAnalysisResult { *; }
--keep class com.flockyou.ai.ProgressiveAnalysisResult$* { *; }
--keep class com.flockyou.ai.AiAnalysisResult { *; }
--keep class com.flockyou.ai.AiAnalysisResult$* { *; }
--keep class com.flockyou.ai.LlmEngineManager$* { *; }
--keep class com.flockyou.ai.MediaPipeLlmClient$* { *; }
--keep class com.flockyou.ai.GeminiNanoClient$* { *; }
--keep class com.flockyou.ai.DetectionAnalyzer$* { *; }
--keep class com.flockyou.ai.RuleBasedAnalyzer$* { *; }
--keep class com.flockyou.ai.LlmOutputParser$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.ProgressiveAnalysisResult { *; }
+-keep class com.inversionlabs.flocksucker.ai.ProgressiveAnalysisResult$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.AiAnalysisResult { *; }
+-keep class com.inversionlabs.flocksucker.ai.AiAnalysisResult$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.LlmEngineManager$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.MediaPipeLlmClient$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.GeminiNanoClient$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.DetectionAnalyzer$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.RuleBasedAnalyzer$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.LlmOutputParser$* { *; }
 
 # AI enums
--keepclassmembers enum com.flockyou.ai.** {
+-keepclassmembers enum com.inversionlabs.flocksucker.ai.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
     **[] $VALUES;
@@ -325,68 +325,68 @@
 
 # AI/LLM CLASSES
 # ============================================================
--keep class com.flockyou.ai.** { *; }
+-keep class com.inversionlabs.flocksucker.ai.** { *; }
 
 # ============================================================
 # SECURITY/NUKE CLASSES
 # ============================================================
--keep class com.flockyou.security.** { *; }
--keep class com.flockyou.service.nuke.** { *; }
+-keep class com.inversionlabs.flocksucker.security.** { *; }
+-keep class com.inversionlabs.flocksucker.service.nuke.** { *; }
 
 # ============================================================
 # NETWORK CLASSES (Tor support)
 # ============================================================
--keep class com.flockyou.network.** { *; }
+-keep class com.inversionlabs.flocksucker.network.** { *; }
 
 # ============================================================
 # PRIVILEGE/SYSTEM INTEGRATION
 # ============================================================
--keep class com.flockyou.privilege.** { *; }
+-keep class com.inversionlabs.flocksucker.privilege.** { *; }
 
 # ============================================================
 # ============================================================
 # ANDROID AUTO - COMPREHENSIVE
 # ============================================================
--keep class com.flockyou.auto.** { *; }
--keepclassmembers class com.flockyou.auto.** { *; }
+-keep class com.inversionlabs.flocksucker.auto.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.auto.** { *; }
 
 # Car App Screens and Sessions
--keep class com.flockyou.auto.FlockYouCarAppService { *; }
--keep class com.flockyou.auto.FlockYouSession { *; }
--keep class com.flockyou.auto.*Screen { *; }
--keep class com.flockyou.auto.*Screen$* { *; }
+-keep class com.inversionlabs.flocksucker.auto.FlockSuckerCarAppService { *; }
+-keep class com.inversionlabs.flocksucker.auto.FlockSuckerSession { *; }
+-keep class com.inversionlabs.flocksucker.auto.*Screen { *; }
+-keep class com.inversionlabs.flocksucker.auto.*Screen$* { *; }
 
 # Android Auto data models
--keep class com.flockyou.auto.*State { *; }
--keep class com.flockyou.auto.*Data { *; }
--keep class com.flockyou.auto.*Model { *; }
+-keep class com.inversionlabs.flocksucker.auto.*State { *; }
+-keep class com.inversionlabs.flocksucker.auto.*Data { *; }
+-keep class com.inversionlabs.flocksucker.auto.*Model { *; }
 
 # ============================================================
 # TEST MODE (Debug/Testing support)
 # ============================================================
--keep class com.flockyou.testmode.** { *; }
+-keep class com.inversionlabs.flocksucker.testmode.** { *; }
 
 # ============================================================
 # CONFIG CLASSES
 # ============================================================
--keep class com.flockyou.config.** { *; }
+-keep class com.inversionlabs.flocksucker.config.** { *; }
 
 # ============================================================
 # DOMAIN/USE CASES
 # ============================================================
--keep class com.flockyou.domain.** { *; }
+-keep class com.inversionlabs.flocksucker.domain.** { *; }
 
 # ============================================================
 # UTILITY CLASSES
 # ============================================================
--keep class com.flockyou.util.** { *; }
+-keep class com.inversionlabs.flocksucker.util.** { *; }
 
 # ============================================================
 # UI VIEWMODELS - Hilt injection requires names
 # ============================================================
--keep class com.flockyou.ui.screens.**ViewModel { *; }
--keep class com.flockyou.ui.screens.**UiState { *; }
--keep class com.flockyou.ui.components.**ViewModel { *; }
+-keep class com.inversionlabs.flocksucker.ui.screens.**ViewModel { *; }
+-keep class com.inversionlabs.flocksucker.ui.screens.**UiState { *; }
+-keep class com.inversionlabs.flocksucker.ui.components.**ViewModel { *; }
 
 # ============================================================
 # WORKER CLASSES (WorkManager)
@@ -395,65 +395,65 @@
 -keep class * extends androidx.work.ListenableWorker {
     public <init>(android.content.Context,androidx.work.WorkerParameters);
 }
--keep class com.flockyou.worker.** { *; }
+-keep class com.inversionlabs.flocksucker.worker.** { *; }
 
 # ============================================================
 # IPC/MESSENGER - Critical for inter-process communication
 # ============================================================
--keep class com.flockyou.service.ScanningServiceIpc { *; }
--keep class com.flockyou.service.ScanningServiceIpc$* { *; }
--keep class com.flockyou.service.ScanningServiceConnection { *; }
--keep class com.flockyou.service.ScanningServiceConnection$* { *; }
+-keep class com.inversionlabs.flocksucker.service.ScanningServiceIpc { *; }
+-keep class com.inversionlabs.flocksucker.service.ScanningServiceIpc$* { *; }
+-keep class com.inversionlabs.flocksucker.service.ScanningServiceConnection { *; }
+-keep class com.inversionlabs.flocksucker.service.ScanningServiceConnection$* { *; }
 
 # Keep ALL members of classes used in IPC serialization (Gson needs field names)
--keepclassmembers class com.flockyou.service.ScanningService$SeenDevice { *; }
--keepclassmembers class com.flockyou.service.ScanningService$ScanConfig { *; }
--keepclassmembers class com.flockyou.service.ScanningService$ScanStatistics { *; }
--keepclassmembers class com.flockyou.service.ScanningService$ScanError { *; }
--keepclassmembers class com.flockyou.service.ScanningService$DetectorHealthStatus { *; }
--keepclassmembers class com.flockyou.service.ScanningService$LearnedSignature { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService$SeenDevice { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService$ScanConfig { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService$ScanStatistics { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService$ScanError { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService$DetectorHealthStatus { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningService$LearnedSignature { *; }
 
 # Monitoring package data classes - CRITICAL for GNSS/Satellite/Cellular data
--keepclassmembers class com.flockyou.monitoring.GnssSatelliteMonitor$* { *; }
--keepclassmembers class com.flockyou.monitoring.SatelliteMonitor$* { *; }
--keepclassmembers class com.flockyou.monitoring.SatelliteDetectionHeuristics$* { *; }
--keepclassmembers class com.flockyou.service.CellularMonitor$* { *; }
--keepclassmembers class com.flockyou.service.RogueWifiMonitor$* { *; }
--keepclassmembers class com.flockyou.service.UltrasonicDetector$* { *; }
--keepclassmembers class com.flockyou.service.RfSignalAnalyzer$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.monitoring.GnssSatelliteMonitor$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.monitoring.SatelliteMonitor$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.monitoring.SatelliteDetectionHeuristics$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.CellularMonitor$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.RogueWifiMonitor$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.UltrasonicDetector$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.RfSignalAnalyzer$* { *; }
 
 # Data model classes - used throughout IPC
--keepclassmembers class com.flockyou.data.model.** { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.data.model.** { *; }
 
 # ============================================================
 # CALLBACK INTERFACES
 # ============================================================
--keep interface com.flockyou.** { *; }
--keepclassmembers class * implements com.flockyou.service.ScanningService$DetectorCallback { *; }
+-keep interface com.inversionlabs.flocksucker.** { *; }
+-keepclassmembers class * implements com.inversionlabs.flocksucker.service.ScanningService$DetectorCallback { *; }
 
 # ============================================================
 # SEALED CLASSES - Subclasses must be kept for type checking
 # ============================================================
--keep class com.flockyou.privilege.PrivilegeMode { *; }
--keep class com.flockyou.privilege.PrivilegeMode$* { *; }
--keep class com.flockyou.ai.MediaPipeLlmStatus { *; }
--keep class com.flockyou.ai.MediaPipeLlmStatus$* { *; }
--keep class com.flockyou.ai.GeminiNanoStatus { *; }
--keep class com.flockyou.ai.GeminiNanoStatus$* { *; }
--keep class com.flockyou.ai.LlmEngineManager$EngineStatus { *; }
--keep class com.flockyou.ai.LlmEngineManager$EngineStatus$* { *; }
--keep class com.flockyou.data.ProtectionPreset { *; }
--keep class com.flockyou.data.ProtectionPreset$* { *; }
--keep class com.flockyou.scanner.flipper.FlipperMessage { *; }
--keep class com.flockyou.scanner.flipper.FlipperMessage$* { *; }
--keep class com.flockyou.testmode.TestScenario { *; }
--keep class com.flockyou.testmode.TestScenario$* { *; }
--keep class com.flockyou.security.DuressAuthenticator$DuressCheckResult { *; }
--keep class com.flockyou.security.DuressAuthenticator$DuressCheckResult$* { *; }
--keep class com.flockyou.scanner.probes.ActiveProbeSettings$ProbeAllowedResult { *; }
--keep class com.flockyou.scanner.probes.ActiveProbeSettings$ProbeAllowedResult$* { *; }
--keep class com.flockyou.ui.screens.ActiveProbesViewModel$ProbeExecutionState { *; }
--keep class com.flockyou.ui.screens.ActiveProbesViewModel$ProbeExecutionState$* { *; }
+-keep class com.inversionlabs.flocksucker.privilege.PrivilegeMode { *; }
+-keep class com.inversionlabs.flocksucker.privilege.PrivilegeMode$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.MediaPipeLlmStatus { *; }
+-keep class com.inversionlabs.flocksucker.ai.MediaPipeLlmStatus$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.GeminiNanoStatus { *; }
+-keep class com.inversionlabs.flocksucker.ai.GeminiNanoStatus$* { *; }
+-keep class com.inversionlabs.flocksucker.ai.LlmEngineManager$EngineStatus { *; }
+-keep class com.inversionlabs.flocksucker.ai.LlmEngineManager$EngineStatus$* { *; }
+-keep class com.inversionlabs.flocksucker.data.ProtectionPreset { *; }
+-keep class com.inversionlabs.flocksucker.data.ProtectionPreset$* { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperMessage { *; }
+-keep class com.inversionlabs.flocksucker.scanner.flipper.FlipperMessage$* { *; }
+-keep class com.inversionlabs.flocksucker.testmode.TestScenario { *; }
+-keep class com.inversionlabs.flocksucker.testmode.TestScenario$* { *; }
+-keep class com.inversionlabs.flocksucker.security.DuressAuthenticator$DuressCheckResult { *; }
+-keep class com.inversionlabs.flocksucker.security.DuressAuthenticator$DuressCheckResult$* { *; }
+-keep class com.inversionlabs.flocksucker.scanner.probes.ActiveProbeSettings$ProbeAllowedResult { *; }
+-keep class com.inversionlabs.flocksucker.scanner.probes.ActiveProbeSettings$ProbeAllowedResult$* { *; }
+-keep class com.inversionlabs.flocksucker.ui.screens.ActiveProbesViewModel$ProbeExecutionState { *; }
+-keep class com.inversionlabs.flocksucker.ui.screens.ActiveProbesViewModel$ProbeExecutionState$* { *; }
 
 # ============================================================
 # HILT DEPENDENCY INJECTION
@@ -474,7 +474,7 @@
 -keepclasseswithmembers class * {
     @javax.inject.* <fields>;
 }
--keep class com.flockyou.di.** { *; }
+-keep class com.inversionlabs.flocksucker.di.** { *; }
 
 # ============================================================
 # ROOM DATABASE
@@ -484,8 +484,8 @@
 -keepclassmembers @androidx.room.Entity class * { *; }
 -keep @androidx.room.Dao interface *
 -keepclassmembers @androidx.room.Dao interface * { *; }
--keep class com.flockyou.data.repository.Converters { *; }
--keep class com.flockyou.data.repository.FlockYouDatabase { *; }
+-keep class com.inversionlabs.flocksucker.data.repository.Converters { *; }
+-keep class com.inversionlabs.flocksucker.data.repository.FlockSuckerDatabase { *; }
 
 # ============================================================
 # GSON SERIALIZATION
@@ -507,8 +507,8 @@
 
 # Keep anonymous TypeToken instances used in IPC serialization
 # These are created inline in ScanningServiceIpc and ScanningServiceConnection
--keepclassmembers class com.flockyou.service.ScanningServiceIpc$* { *; }
--keepclassmembers class com.flockyou.service.ScanningServiceConnection$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningServiceIpc$* { *; }
+-keepclassmembers class com.inversionlabs.flocksucker.service.ScanningServiceConnection$* { *; }
 
 # ============================================================
 # ANDROID SYSTEM CALLBACKS - CRITICAL FOR RELEASE BUILDS
@@ -562,7 +562,7 @@
 -keep class android.media.AudioFormat$Builder { *; }
 
 # Keep lambda implementations used as callbacks
--keepclassmembers class com.flockyou.** {
+-keepclassmembers class com.inversionlabs.flocksucker.** {
     private static synthetic void lambda$*(...);
 }
 
@@ -683,30 +683,30 @@
 # R8 OPTIMIZATION OVERRIDES - PREVENT AGGRESSIVE OPTIMIZATIONS
 # ============================================================
 # Prevent R8 from removing "unused" code that's actually used via reflection
--keepclassmembers,allowshrinking class com.flockyou.** {
+-keepclassmembers,allowshrinking class com.inversionlabs.flocksucker.** {
     <methods>;
 }
 
 # Prevent R8 from inlining methods that are called via reflection
--keepclassmembers class com.flockyou.** {
+-keepclassmembers class com.inversionlabs.flocksucker.** {
     public <methods>;
     protected <methods>;
 }
 
 # Keep constructors for dependency injection
--keepclassmembers class com.flockyou.** {
+-keepclassmembers class com.inversionlabs.flocksucker.** {
     public <init>(...);
     @javax.inject.Inject <init>(...);
 }
 
 # Prevent R8 from removing companion objects
--keepclassmembers class com.flockyou.** {
+-keepclassmembers class com.inversionlabs.flocksucker.** {
     public static ** Companion;
     ** INSTANCE;
 }
 
 # Keep object singletons
--keepclassmembers class com.flockyou.**$Companion {
+-keepclassmembers class com.inversionlabs.flocksucker.**$Companion {
     *;
 }
 

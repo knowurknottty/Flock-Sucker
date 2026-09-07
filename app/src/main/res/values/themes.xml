@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FlockYou" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.FlockSucker" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@color/md_theme_dark_background</item>
         <item name="android:navigationBarColor">@color/md_theme_dark_background</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <!-- Transparent theme for Quick Wipe confirmation dialog -->
-    <style name="Theme.FlockYou.Transparent" parent="Theme.FlockYou">
+    <style name="Theme.FlockSucker.Transparent" parent="Theme.FlockSucker">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
@@ -18,7 +18,7 @@
 
     <!-- CMAS/WEA-style Emergency Alert theme - full screen, above keyguard -->
     <!-- Note: window*WhenLocked attributes are in values-v27/themes.xml for API 27+ -->
-    <style name="Theme.FlockYou.EmergencyAlert" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.FlockSucker.EmergencyAlert" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowBackground">@android:color/black</item>

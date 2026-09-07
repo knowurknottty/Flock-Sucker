@@ -1,0 +1,114 @@
+package com.inversionlabs.flocksucker.data.repository
+
+import com.inversionlabs.flocksucker.data.model.Detection
+import com.inversionlabs.flocksucker.data.model.DetectionMethod
+import com.inversionlabs.flocksucker.data.model.DetectionProtocol
+import com.inversionlabs.flocksucker.data.model.DeviceType
+import com.inversionlabs.flocksucker.data.model.SignalStrength
+import com.inversionlabs.flocksucker.data.model.ThreatLevel
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Tests for the ACTIVE deduplicator wired into the persistence layer
+ * ([com.inversionlabs.flocksucker.data.repository.DetectionDeduplicator]).
+ *
+ * Note: a similarly-named class exists in `com.inversionlabs.flocksucker.detection` but is not wired into DI and
+ * is not used by any repository; this test targets the one actually injected via AppModule.
+ */
+class DetectionDeduplicatorTest {
+
+    private lateinit var deduplicator: DetectionDeduplicator
+
+    @Before
+    fun setUp() {
+        deduplicator = DetectionDeduplicator()
+    }
+
+    @Test
+    fun `shouldThrottle returns false first then true for rapid duplicate`() {
+        val d = detection(mac = "AA:BB:CC:DD:EE:FF")
+        assertFalse(deduplicator.shouldThrottle(d))
+        assertTrue(deduplicator.shouldThrottle(d))
+    }
+
+    @Test
+    fun `shouldThrottle uses protocol-specific windows`() {
+        val ble = detection(mac = "AA:BB:CC:DD:EE:01", protocol = DetectionProtocol.BLUETOOTH_LE)
+        val wifi = detection(ssid = "Net", protocol = DetectionProtocol.WIFI)
+        assertFalse(deduplicator.shouldThrottle(ble))
+        assertFalse(deduplicator.shouldThrottle(wifi))
+    }
+
+    @Test
+    fun `findMatch does not merge different MACs from weak similarity`() {
+        val candidate = detection(mac = "10:22:33:44:55:66", deviceName = "FlockCam", manufacturer = "Flock Safety", serviceUuids = "FD6F")
+        val incoming = detection(mac = "20:BB:CC:DD:EE:FF", deviceName = "FlockCam", manufacturer = "Flock Safety", serviceUuids = "FD6F")
+        val match = deduplicator.findMatch(incoming, listOf(candidate))
+        assertNull(match)
+    }
+
+
+    @Test
+    fun `same service UUID never canonicalizes different devices`() {
+        val candidate = detection(deviceName = "Accessory A", manufacturer = "Vendor", serviceUuids = "FD6F")
+        val incoming = detection(deviceName = "Accessory B", manufacturer = "Vendor", serviceUuids = "FD6F")
+        assertNull(deduplicator.findMatch(incoming, listOf(candidate)))
+    }
+
+    @Test
+    fun `anonymous same-type devices do not throttle each other`() {
+        val first = detection(deviceName = null, manufacturer = "Vendor")
+        val second = detection(deviceName = null, manufacturer = "Vendor")
+        assertFalse(deduplicator.shouldThrottle(first))
+        assertFalse(deduplicator.shouldThrottle(second))
+    }
+
+    @Test
+    fun `findMatch returns null when device types differ`() {
+        val candidate = detection(deviceType = DeviceType.RING_DOORBELL, deviceName = "Cam", manufacturer = "X")
+        val incoming = detection(deviceType = DeviceType.FLOCK_SAFETY_CAMERA, deviceName = "Cam", manufacturer = "X")
+        assertNull(deduplicator.findMatch(incoming, listOf(candidate)))
+    }
+
+    @Test
+    fun `findMatch returns null for empty candidates`() {
+        assertNull(deduplicator.findMatch(detection(mac = "AA:BB:CC:DD:EE:FF"), emptyList()))
+    }
+
+    @Test
+    fun `clearThrottleState resets throttle cache`() {
+        val d = detection(mac = "AA:BB:CC:DD:EE:FF")
+        deduplicator.shouldThrottle(d)
+        deduplicator.clearThrottleState()
+        assertEquals(0, deduplicator.getThrottleCacheSize())
+    }
+
+    private fun detection(
+        mac: String? = null,
+        ssid: String? = null,
+        deviceName: String? = null,
+        manufacturer: String? = null,
+        deviceType: DeviceType = DeviceType.FLOCK_SAFETY_CAMERA,
+        protocol: DetectionProtocol = DetectionProtocol.WIFI,
+        serviceUuids: String? = null,
+    ): Detection = Detection(
+        id = java.util.UUID.randomUUID().toString(),
+        timestamp = System.currentTimeMillis(),
+        protocol = protocol,
+        detectionMethod = DetectionMethod.SSID_PATTERN,
+        deviceType = deviceType,
+        rssi = -60,
+        signalStrength = SignalStrength.GOOD,
+        threatLevel = ThreatLevel.HIGH,
+        macAddress = mac,
+        ssid = ssid,
+        deviceName = deviceName,
+        manufacturer = manufacturer,
+        serviceUuids = serviceUuids,
+    )
+}

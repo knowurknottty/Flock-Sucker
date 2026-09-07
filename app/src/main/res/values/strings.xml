@@ -358,7 +358,7 @@
     <string name="permission_wizard_app_description">Flock-Sucker detects surveillance devices around you, including:\n\n• ALPR cameras (license plate readers)\n• Gunshot detectors that also listen for screams\n• Cell site simulators (StingRay/IMSI catchers)\n• Rogue WiFi access points\n• Hidden cameras and tracking beacons\n• Police body cameras and vehicle systems</string>
 
     <!-- User-Agent Header -->
-    <string name="user_agent">FlockYou/1.0</string>
+    <string name="user_agent">FlockSucker/1.0</string>
 
     <!-- Quick Settings -->
     <string name="quick_wipe_label">Quick Wipe</string>
