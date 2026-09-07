@@ -1,0 +1,8 @@
+Flock-Sucker deployment artifact receipt
+source_sha=abe1a5e97cb0272a19806df3ee265897390cc903
+profile=tonga-root
+install_mode=sideload
+sha256=d51e659166fbdf1c24c2f21a77d897c61f277fd2c8f10335b1b90975cf1c9d18
+unit_tests_tests_failures_errors_skipped=868/0/0/0
+package: name='com.flockyou.debug' versionCode='1' versionName='1.0.0-tonga-root-debug' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+sdkVersion:'26'
