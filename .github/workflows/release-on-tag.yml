@@ -43,7 +43,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: 📦 Cache Gradle packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
@@ -53,7 +53,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 📦 Cache Android build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.android/build-cache
