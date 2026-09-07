@@ -13,7 +13,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define SOCKET_NAME "flockyou_diag"
+#define SOCKET_NAME "flocksucker_diag"
 #define SHANNON_PATH "/dev/umts_dm0"
 static const char *CCCI_PATHS[] = {"/dev/ccci_raw_dhl", "/dev/ccci_ccb_dhl", NULL};
 #define PACKAGES_LIST "/data/system/packages.list"
@@ -198,7 +198,7 @@ int main(int argc, char **argv) {
     signal(SIGCHLD, SIG_IGN);
     int server = create_server();
     if (server < 0) return 1;
-    fprintf(stderr, "flockyou-diagd ready on abstract @%s\n", SOCKET_NAME);
+    fprintf(stderr, "flocksucker-diagd ready on abstract @%s\n", SOCKET_NAME);
     for (;;) {
         int client = accept4(server, NULL, NULL, SOCK_CLOEXEC);
         if (client < 0) {

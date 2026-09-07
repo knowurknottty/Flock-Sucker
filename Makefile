@@ -1,4 +1,4 @@
-# Flock You Android - Makefile
+# Flock-Sucker Android - Makefile
 # ============================
 
 .PHONY: help build build-debug build-release clean test lint \
@@ -12,8 +12,8 @@
 # Configuration
 GRADLE := ./gradlew
 ADB := adb
-PACKAGE := com.flockyou
-PACKAGE_DEBUG := com.flockyou.debug
+PACKAGE := com.inversionlabs.flocksucker
+PACKAGE_DEBUG := com.inversionlabs.flocksucker.debug
 
 # APK paths
 APK_SIDELOAD_DEBUG := app/build/outputs/apk/sideload/debug/app-sideload-debug.apk
@@ -28,7 +28,7 @@ APK_OEM_RELEASE := app/build/outputs/apk/oem/release/app-oem-release.apk
 # ============================================================================
 
 help:
-	@echo "Flock You Android - Build & Install Commands"
+	@echo "Flock-Sucker Android - Build & Install Commands"
 	@echo "============================================="
 	@echo ""
 	@echo "Build Commands:"
@@ -94,13 +94,13 @@ sideload: build-debug
 	@echo "Installing sideload debug APK..."
 	$(ADB) install -r $(APK_SIDELOAD_DEBUG)
 	@echo "Installed successfully. Launching app..."
-	$(ADB) shell am start -n $(PACKAGE_DEBUG)/com.flockyou.MainActivity
+	$(ADB) shell am start -n $(PACKAGE_DEBUG)/com.inversionlabs.flocksucker.MainActivity
 
 sideload-release: build-release
 	@echo "Installing sideload release APK..."
 	$(ADB) install -r $(APK_SIDELOAD_RELEASE)
 	@echo "Installed successfully. Launching app..."
-	$(ADB) shell am start -n $(PACKAGE)/com.flockyou.MainActivity
+	$(ADB) shell am start -n $(PACKAGE)/com.inversionlabs.flocksucker.MainActivity
 
 install: sideload
 
@@ -135,7 +135,7 @@ devices:
 	$(ADB) devices -l
 
 logcat:
-	$(ADB) logcat -v time | grep -E "(FlockYou|$(PACKAGE))"
+	$(ADB) logcat -v time | grep -E "(FlockSucker|$(PACKAGE))"
 
 logcat-all:
 	$(ADB) logcat -v time *:V

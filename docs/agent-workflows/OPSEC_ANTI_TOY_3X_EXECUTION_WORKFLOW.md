@@ -1,7 +1,7 @@
 # OPSEC Anti-Toy 3× Recursive Execution Workflow
 
 **Status:** EXECUTION WORKFLOW / REVIEW-READY DESIGN
-**Repository:** `knowurknottty/Flock-You-Android`
+**Repository:** `knowurknottty/Flock-Sucker`
 **Branch:** `design/opsec-anti-toy-hardening-r1`
 **Companion authority:** `docs/agent-workflows/OPSEC_ANTI_TOY_HARDENING_WORKFLOW.md`
 **Mission:** Convert the current application from a strong enthusiast/open-source scanner into an evidence-backed field instrument whose scanner, detector, ranging, mapping, storage, runtime, and operator claims can survive hostile technical review — while deliberately laying the trustworthy observation/world-graph foundation later consumed by the Inversion Labs location game.
@@ -1424,7 +1424,7 @@ When CAPT is used on the stabilized codebase, map this workflow directly into go
 
 ```text
 MISSION
-    Flock-You OPSEC Anti-Toy Operational Hardening
+    Flock-Sucker OPSEC Anti-Toy Operational Hardening
 
 SUBMISSIONS / TASKS
     one domain recursion

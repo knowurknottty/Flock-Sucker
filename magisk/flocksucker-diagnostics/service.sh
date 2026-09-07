@@ -1,7 +1,7 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
 LOG="$MODDIR/daemon.log"
-BIN="$MODDIR/bin/arm64-v8a/flockyou-diagd"
+BIN="$MODDIR/bin/arm64-v8a/flocksucker-diagd"
 ALLOW="$MODDIR/allowed_packages"
 
 # The current module packages arm64-v8a because the validated target device is arm64.

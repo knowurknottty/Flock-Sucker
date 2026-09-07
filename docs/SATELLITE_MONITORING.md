@@ -205,7 +205,7 @@ object ModemState {
 
 ```
 Flock-Sucker/
-└── app/src/main/java/com/flockyou/android/
+└── app/src/main/java/com/inversionlabs/flocksucker/android/
     ├── monitoring/
     │   ├── SatelliteMonitor.kt           # Core monitoring service
     │   └── SatelliteDetectionHeuristics.kt # Detection rules & specs

@@ -7,6 +7,6 @@ ZIP="$DIST/Flock-Sucker-Diagnostics-Magisk-1.1.0.zip"
 mkdir -p "$DIST"
 rm -f "$ZIP"
 cd "$ROOT"
-zip -q -r "$ZIP" module.prop customize.sh service.sh sepolicy.rule allowed_packages bin/arm64-v8a/flockyou-diagd
+zip -q -r "$ZIP" module.prop customize.sh service.sh sepolicy.rule allowed_packages bin/arm64-v8a/flocksucker-diagd
 unzip -t "$ZIP"
 echo "$ZIP"

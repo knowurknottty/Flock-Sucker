@@ -45,8 +45,8 @@ services:
       # step-ca (optional)
       - STEP_CA_URL=${STEP_CA_URL:-}
       - STEP_CA_FINGERPRINT=${STEP_CA_FINGERPRINT:-}
-      # Flock-You source
-      - FLOCKYOU_SRC=/flockyou-src
+      # Flock-Sucker source
+      - FLOCKSUCKER_SRC=/flocksucker-src
 
     volumes:
       # GrapheneOS source tree
@@ -61,8 +61,8 @@ services:
       - grapheneos-repo:/root/.repoconfig
       # Build scripts
       - ./scripts:/scripts:ro
-      # Flock-You OEM app source
-      - ${FLOCKYOU_SRC_PATH:-..}:/flockyou-src:ro
+      # Flock-Sucker OEM app source
+      - ${FLOCKSUCKER_SRC_PATH:-..}:/flocksucker-src:ro
       # OEM apps output directory
       - ./oem-apps:/oem-apps
 

@@ -1,19 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build the Flock-You APK from source and prepare for OEM integration
+# Build the Flock-Sucker APK from source and prepare for OEM integration
 
-FLOCKYOU_SRC="${FLOCKYOU_SRC:-/flockyou-src}"
+FLOCKSUCKER_SRC="${FLOCKSUCKER_SRC:-/flocksucker-src}"
 OUTPUT_DIR="${OUTPUT_DIR:-/oem-apps}"
-BUILD_DIR="${BUILD_DIR:-/tmp/flockyou-build}"
+BUILD_DIR="${BUILD_DIR:-/tmp/flocksucker-build}"
 
-echo "=== Building Flock-You APK for OEM Integration ==="
-echo "Source: ${FLOCKYOU_SRC}"
+echo "=== Building Flock-Sucker APK for OEM Integration ==="
+echo "Source: ${FLOCKSUCKER_SRC}"
 echo "Build dir: ${BUILD_DIR}"
 echo "Output: ${OUTPUT_DIR}"
 
-if [ ! -d "${FLOCKYOU_SRC}" ]; then
-    echo "ERROR: Flock-You source not found at ${FLOCKYOU_SRC}"
+if [ ! -d "${FLOCKSUCKER_SRC}" ]; then
+    echo "ERROR: Flock-Sucker source not found at ${FLOCKSUCKER_SRC}"
     echo "Mount the source directory when running the container"
     exit 1
 fi
@@ -21,7 +21,7 @@ fi
 # Source is mounted read-only, so copy to a writable location
 echo "Copying source to build directory..."
 rm -rf "${BUILD_DIR}"
-cp -a "${FLOCKYOU_SRC}" "${BUILD_DIR}"
+cp -a "${FLOCKSUCKER_SRC}" "${BUILD_DIR}"
 
 cd "${BUILD_DIR}"
 
@@ -78,12 +78,12 @@ if [ -z "${APK_PATH}" ]; then
 fi
 
 mkdir -p "${OUTPUT_DIR}"
-cp "${APK_PATH}" "${OUTPUT_DIR}/flock-you.apk"
+cp "${APK_PATH}" "${OUTPUT_DIR}/flock-sucker.apk"
 
 # Cleanup build directory to save space
 echo "Cleaning up build directory..."
 rm -rf "${BUILD_DIR}"
 
 echo "=== APK Build Complete ==="
-echo "APK: ${OUTPUT_DIR}/flock-you.apk"
-ls -la "${OUTPUT_DIR}/flock-you.apk"
+echo "APK: ${OUTPUT_DIR}/flock-sucker.apk"
+ls -la "${OUTPUT_DIR}/flock-sucker.apk"

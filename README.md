@@ -11,6 +11,12 @@ Flock-Sucker is an Android counter-surveillance and wireless situational-awarene
 
 The project is deliberately irreverent. Its evidence model is not: a match is a **candidate observation with a confidence boundary**, not an accusation that a person or device is surveilling you.
 
+## Project identity and attribution
+
+**Flock-Sucker is the independently maintained Inversion Labs variant.** It was inspired by `MaxwellDPS/Flock-You-Android`, whose contribution as the starting idea and historical foundation is credited in [NOTICE.md](NOTICE.md). Flock-Sucker is not an official upstream release and the Inversion Labs project identity does not imply upstream affiliation or endorsement.
+
+Current Android releases use the canonical package identity `com.inversionlabs.flocksucker`. This is an intentional clean break from the former package identity: Android treats it as a different application, so private app data is not migrated between those package sandboxes automatically. Export any history you need from an older installation before replacing it.
+
 ## Source-truth snapshot
 
 | Area | Current behavior |
@@ -356,6 +362,7 @@ Until the authoritative upstream license and derivative obligations are reconstr
 
 ## Acknowledgments
 
+- The original `MaxwellDPS/Flock-You-Android` project for the inspiration and historical starting point documented in [NOTICE.md](NOTICE.md).
 - [Flipper Zero](https://flipperzero.one) and the `ufbt`/Flipper developer ecosystem.
 - [SQLCipher](https://www.zetetic.net/sqlcipher/) for encrypted SQLite storage.
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) for the native GGUF runtime integrated through the pinned submodule.

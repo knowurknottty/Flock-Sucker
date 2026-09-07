@@ -1,6 +1,6 @@
 # IMSI Catcher / Cell-Site Simulator Detection System
 
-> Comprehensive documentation for Flock-You's cellular network anomaly detection system designed to identify IMSI catchers (StingRay), cell-site simulators, and other cellular surveillance equipment.
+> Comprehensive documentation for Flock-Sucker's cellular network anomaly detection system designed to identify IMSI catchers (StingRay), cell-site simulators, and other cellular surveillance equipment.
 
 ---
 
@@ -172,11 +172,11 @@ gantt
 
 ## 2. Detection Methods
 
-Flock-You implements multiple detection methods based on documented IMSI catcher behavior. Each method has a **base score** that contributes to the overall IMSI catcher likelihood score.
+Flock-Sucker implements multiple detection methods based on documented IMSI catcher behavior. Each method has a **base score** that contributes to the overall IMSI catcher likelihood score.
 
 ### Detection Decision Flowchart
 
-The following flowchart shows how Flock-You evaluates potential IMSI catcher activity:
+The following flowchart shows how Flock-Sucker evaluates potential IMSI catcher activity:
 
 ```mermaid
 flowchart TD

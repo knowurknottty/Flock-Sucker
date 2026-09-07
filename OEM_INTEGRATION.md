@@ -24,12 +24,12 @@ The app uses Gradle product flavors to create different builds:
 
 | Variant | Output APK | Application ID |
 |---------|-----------|----------------|
-| Sideload Debug | `sideloadDebug/app-sideload-debug.apk` | com.flockyou.debug |
-| Sideload Release | `sideloadRelease/app-sideload-release.apk` | com.flockyou |
-| System Debug | `systemDebug/app-system-debug.apk` | com.flockyou.debug |
-| System Release | `systemRelease/app-system-release.apk` | com.flockyou |
-| OEM Debug | `oemDebug/app-oem-debug.apk` | com.flockyou.debug |
-| OEM Release | `oemRelease/app-oem-release.apk` | com.flockyou |
+| Sideload Debug | `sideloadDebug/app-sideload-debug.apk` | com.inversionlabs.flocksucker.debug |
+| Sideload Release | `sideloadRelease/app-sideload-release.apk` | com.inversionlabs.flocksucker |
+| System Debug | `systemDebug/app-system-debug.apk` | com.inversionlabs.flocksucker.debug |
+| System Release | `systemRelease/app-system-release.apk` | com.inversionlabs.flocksucker |
+| OEM Debug | `oemDebug/app-oem-debug.apk` | com.inversionlabs.flocksucker.debug |
+| OEM Release | `oemRelease/app-oem-release.apk` | com.inversionlabs.flocksucker |
 
 ## Permission Differences by Mode
 
@@ -70,32 +70,32 @@ Copy the permission whitelist file to the device:
 
 ```bash
 # For Android 10 and earlier
-adb push system/privapp-permissions-flockyou.xml /system/etc/permissions/
+adb push system/privapp-permissions-flocksucker.xml /system/etc/permissions/
 
 # For Android 11+
-adb push system/privapp-permissions-flockyou.xml /system_ext/etc/permissions/
+adb push system/privapp-permissions-flocksucker.xml /system_ext/etc/permissions/
 ```
 
 ### 3. Install the APK
 
 ```bash
 # For Android 10 and earlier
-adb push app/build/outputs/apk/system/release/app-system-release.apk /system/priv-app/FlockYou/FlockYou.apk
+adb push app/build/outputs/apk/system/release/app-system-release.apk /system/priv-app/FlockSucker/FlockSucker.apk
 
 # For Android 11+
-adb push app/build/outputs/apk/system/release/app-system-release.apk /system_ext/priv-app/FlockYou/FlockYou.apk
+adb push app/build/outputs/apk/system/release/app-system-release.apk /system_ext/priv-app/FlockSucker/FlockSucker.apk
 ```
 
 ### 4. Set Permissions
 
 ```bash
 # Set correct permissions
-adb shell chmod 644 /system/priv-app/FlockYou/FlockYou.apk
-adb shell chmod 644 /system/etc/permissions/privapp-permissions-flockyou.xml
+adb shell chmod 644 /system/priv-app/FlockSucker/FlockSucker.apk
+adb shell chmod 644 /system/etc/permissions/privapp-permissions-flocksucker.xml
 
 # For Android 11+
-adb shell chmod 644 /system_ext/priv-app/FlockYou/FlockYou.apk
-adb shell chmod 644 /system_ext/etc/permissions/privapp-permissions-flockyou.xml
+adb shell chmod 644 /system_ext/priv-app/FlockSucker/FlockSucker.apk
+adb shell chmod 644 /system_ext/etc/permissions/privapp-permissions-flocksucker.xml
 ```
 
 ### 5. Reboot
@@ -112,10 +112,10 @@ Pre-built integration files are available in the `system/` directory:
 |------|---------|
 | `system/Android.bp` | Soong build system module (recommended) |
 | `system/Android.mk` | Legacy Make build system module |
-| `system/flockyou.mk` | Device makefile include |
+| `system/flocksucker.mk` | Device makefile include |
 | `system/integrate-grapheneos.sh` | Automated integration script |
-| `system/privapp-permissions-flockyou.xml` | Privileged permissions whitelist |
-| `system/default-permissions-flockyou.xml` | Runtime permissions pre-grant |
+| `system/privapp-permissions-flocksucker.xml` | Privileged permissions whitelist |
+| `system/default-permissions-flocksucker.xml` | Runtime permissions pre-grant |
 
 ### Quick Integration (Automated)
 
@@ -131,7 +131,7 @@ Use the provided helper script:
 
 The script will:
 1. Build the appropriate APK if not already built
-2. Copy all necessary files to `vendor/flockyou/`
+2. Copy all necessary files to `vendor/flocksucker/`
 3. Configure signing mode
 4. Display next steps
 
@@ -140,24 +140,24 @@ The script will:
 #### 1. Copy integration files to your source tree
 
 ```bash
-mkdir -p ~/grapheneos/vendor/flockyou
-cp system/Android.bp ~/grapheneos/vendor/flockyou/
-cp system/privapp-permissions-flockyou.xml ~/grapheneos/vendor/flockyou/
-cp system/default-permissions-flockyou.xml ~/grapheneos/vendor/flockyou/
+mkdir -p ~/grapheneos/vendor/flocksucker
+cp system/Android.bp ~/grapheneos/vendor/flocksucker/
+cp system/privapp-permissions-flocksucker.xml ~/grapheneos/vendor/flocksucker/
+cp system/default-permissions-flocksucker.xml ~/grapheneos/vendor/flocksucker/
 
 # Build and copy the APK
 ./gradlew assembleOemRelease
-cp app/build/outputs/apk/oem/release/app-oem-release.apk ~/grapheneos/vendor/flockyou/FlockYou.apk
+cp app/build/outputs/apk/oem/release/app-oem-release.apk ~/grapheneos/vendor/flocksucker/FlockSucker.apk
 ```
 
 #### 2. Add to device.mk
 
 ```makefile
 # Option A: Include the makefile
-$(call inherit-product, vendor/flockyou/flockyou.mk)
+$(call inherit-product, vendor/flocksucker/flocksucker.mk)
 
 # Option B: Add directly
-PRODUCT_PACKAGES += FlockYou
+PRODUCT_PACKAGES += FlockSucker
 ```
 
 #### 3. Build your ROM
@@ -246,7 +246,7 @@ The app uses a factory pattern to create appropriate scanners based on the detec
 
 After installation, verify the mode in the app:
 
-1. Open Flock You
+1. Open Flock-Sucker
 2. Go to Settings
 3. Check "About" section for:
    - Build Mode (sideload/system/oem)
@@ -257,7 +257,7 @@ Or programmatically:
 
 ```kotlin
 val summary = SystemPermissionHelper.getPermissionSummary(context)
-Log.d("FlockYou", summary.toDisplayString())
+Log.d("FlockSucker", summary.toDisplayString())
 ```
 
 ## Troubleshooting
@@ -271,7 +271,7 @@ If privileged permissions aren't granted:
 3. Ensure the APK is in priv-app, not regular app directory
 4. Check logcat for permission denial messages:
    ```bash
-   adb logcat | grep -i "permission\|flockyou"
+   adb logcat | grep -i "permission\|flocksucker"
    ```
 
 ### WiFi Throttling Not Disabled
@@ -287,7 +287,7 @@ The hidden API `setScanThrottleEnabled` may not be available on all ROMs:
 Without BLUETOOTH_PRIVILEGED, the OS will still duty-cycle scans:
 
 1. Verify BLUETOOTH_PRIVILEGED is in the whitelist
-2. Check it's actually granted: `dumpsys package com.flockyou | grep BLUETOOTH`
+2. Check it's actually granted: `dumpsys package com.inversionlabs.flocksucker | grep BLUETOOTH`
 3. Some ROMs may override this behavior
 
 ## Security Considerations
@@ -296,7 +296,7 @@ Without BLUETOOTH_PRIVILEGED, the OS will still duty-cycle scans:
 
 ### The Privilege Paradox
 
-Installing Flock You as a system or OEM app creates a security trade-off:
+Installing Flock-Sucker as a system or OEM app creates a security trade-off:
 
 | Capability | Benefit (Detection) | Risk (If Compromised) |
 |------------|---------------------|----------------------|
@@ -353,7 +353,7 @@ Vector: Compromised build system, dependency poisoning, or malicious contributor
 Impact: Attacker gains whatever privileges the app has
 ```
 **Mitigations**:
-- Verify SLSA attestation on all APKs: `gh attestation verify FlockYou-v*.apk --owner MaxwellDPS`
+- Verify SLSA attestation on all APKs: `gh attestation verify FlockSucker-v*.apk --owner knowurknottty`
 - Build from source and audit changes
 - Use reproducible builds when possible
 - Pin dependency versions in build.gradle
@@ -415,7 +415,7 @@ Impact: Attacker gains access beyond app's intended scope
 3. **Restrict permissions further** by modifying the whitelist:
    ```xml
    <!-- Minimal whitelist for detection without sensitive access -->
-   <privapp-permissions package="com.flockyou">
+   <privapp-permissions package="com.inversionlabs.flocksucker">
        <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
        <permission name="android.permission.CONNECTIVITY_INTERNAL"/>
        <!-- Omit READ_PRIVILEGED_PHONE_STATE if IMSI catcher detection not needed -->
@@ -425,10 +425,10 @@ Impact: Attacker gains access beyond app's intended scope
 4. **SELinux policy** (advanced): Create a custom SELinux domain:
    ```
    # Restrict network access
-   neverallow flockyou_app { domain -flockyou_app }:tcp_socket *;
+   neverallow flocksucker_app { domain -flocksucker_app }:tcp_socket *;
 
    # Restrict file access
-   neverallow flockyou_app system_data_file:file write;
+   neverallow flocksucker_app system_data_file:file write;
    ```
 
 #### For End Users
@@ -441,16 +441,16 @@ Impact: Attacker gains access beyond app's intended scope
    apksigner verify --print-certs app-release.apk
 
    # Verify attestation
-   gh attestation verify app-release.apk --owner MaxwellDPS
+   gh attestation verify app-release.apk --owner knowurknottty
    ```
 
 3. **Monitor app behavior**:
    ```bash
    # Watch for unexpected network activity
-   adb shell dumpsys netstats detail | grep flockyou
+   adb shell dumpsys netstats detail | grep flocksucker
 
    # Check what the app is accessing
-   adb shell dumpsys package com.flockyou | grep -A20 "granted=true"
+   adb shell dumpsys package com.inversionlabs.flocksucker | grep -A20 "granted=true"
    ```
 
 4. **Use a dedicated device** for high-risk scenarios rather than your primary phone
@@ -469,14 +469,14 @@ If you suspect the app has been compromised:
 
 **Sideload Mode**:
 ```bash
-adb uninstall com.flockyou
-adb shell pm clear com.flockyou  # Clear any residual data
+adb uninstall com.inversionlabs.flocksucker
+adb shell pm clear com.inversionlabs.flocksucker  # Clear any residual data
 ```
 
 **System Mode**:
 ```bash
-adb shell pm disable-user --user 0 com.flockyou
-adb shell pm uninstall -k --user 0 com.flockyou
+adb shell pm disable-user --user 0 com.inversionlabs.flocksucker
+adb shell pm uninstall -k --user 0 com.inversionlabs.flocksucker
 # Full removal requires reflashing system partition
 ```
 
@@ -524,7 +524,7 @@ This is exactly the kind of data law enforcement, border agents, or adversaries 
 The persistent Room database uses SQLCipher 4.x page encryption (AES-256-CBC with per-page HMAC). The database passphrase is separately wrapped with Android Keystore AES/GCM:
 
 ```
-Database: flockyou_database_encrypted
+Database: flocksucker_database_encrypted
 Cipher: AES/GCM/NoPadding (256-bit)
 Key Storage: Android Keystore (hardware-backed if available)
 ```
@@ -647,7 +647,7 @@ Audit: Regular log review
 
 ### Implementation Recommendations
 
-If you're building a custom ROM with Flock You, consider these enhancements:
+If you're building a custom ROM with Flock-Sucker, consider these enhancements:
 
 #### 1. Add Memory-Only Mode
 ```kotlin

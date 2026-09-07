@@ -1,7 +1,7 @@
 # Detection Info Page UX Improvement Plan
 
 ## Overview
-Comprehensive UX improvements for the Flock-You detection info page to enhance usability, information hierarchy, and user engagement.
+Comprehensive UX improvements for the Flock-Sucker detection info page to enhance usability, information hierarchy, and user engagement.
 
 ---
 
@@ -155,7 +155,7 @@ composable("detection/{detectionId}") { backStackEntry ->
 **Files:** `AndroidManifest.xml`, `MainActivity.kt`
 
 **Changes:**
-- Add intent filter for `flockyou://detection/{id}`
+- Add intent filter for `flocksucker://detection/{id}`
 - Handle deep link navigation
 - Share detection link functionality
 
@@ -234,20 +234,20 @@ fun getDetectionsInTimeRange(start: Long, end: Long): Flow<List<Detection>>
 ## File Changes Summary
 
 ### New Files
-- `app/src/main/java/com/flockyou/ui/components/DetectionTimeline.kt`
-- `app/src/main/java/com/flockyou/ui/components/ThreatHeader.kt`
-- `app/src/main/java/com/flockyou/ui/components/CollapsibleSection.kt`
-- `app/src/main/java/com/flockyou/ui/components/DetectionActionBar.kt`
-- `app/src/main/java/com/flockyou/ui/components/RelatedDetections.kt`
-- `app/src/main/java/com/flockyou/ui/screens/DetectionDetailScreen.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/components/DetectionTimeline.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/components/ThreatHeader.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/components/CollapsibleSection.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/components/DetectionActionBar.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/components/RelatedDetections.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/screens/DetectionDetailScreen.kt`
 
 ### Modified Files
-- `app/src/main/java/com/flockyou/ui/screens/MainScreen.kt`
-- `app/src/main/java/com/flockyou/ui/components/Components.kt`
-- `app/src/main/java/com/flockyou/data/Detection.kt`
-- `app/src/main/java/com/flockyou/data/DetectionDao.kt`
-- `app/src/main/java/com/flockyou/data/DetectionRepository.kt`
-- `app/src/main/java/com/flockyou/MainActivity.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/screens/MainScreen.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/components/Components.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/data/Detection.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/data/DetectionDao.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/data/DetectionRepository.kt`
+- `app/src/main/java/com/inversionlabs/flocksucker/MainActivity.kt`
 - `app/src/main/AndroidManifest.xml`
 
 ---

@@ -471,7 +471,7 @@ All vendor implementations surface through standard Android `SatelliteManager` a
 
 ---
 
-## 11. Flock-You Implications
+## 11. Flock-Sucker Implications
 
 ### Detection Challenges by Provider
 

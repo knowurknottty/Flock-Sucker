@@ -1,8 +1,8 @@
-# CAPT Bootstrap Packet — Flock-You OPSEC / Anti-Toy Campaign
+# CAPT Bootstrap Packet — Flock-Sucker OPSEC / Anti-Toy Campaign
 
 **Status:** BOOTSTRAP / MORNING HANDOFF
 **Date:** 2026-08-18
-**Repository:** `knowurknottty/Flock-You-Android`
+**Repository:** `knowurknottty/Flock-Sucker`
 **Purpose:** Give CAPT a compact, durable authority packet so the first campaign run starts from GitHub truth rather than reconstructing state from chat history.
 
 ---
@@ -275,7 +275,7 @@ It should not require raw personal identifiers or precise private player trails.
 
 Suggested mission:
 
-**Flock-You OPSEC Anti-Toy Operational Hardening**
+**Flock-Sucker OPSEC Anti-Toy Operational Hardening**
 
 Do not begin by editing source.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Flock-You is a privacy-first surveillance detection Android app ("Watch the Watchers"). All processing is 100% on-device with zero cloud connectivity. The app detects nearby surveillance equipment, trackers, IMSI catchers, and monitoring devices across 7 detection protocols and 75+ device signatures.
+Flock-Sucker is a privacy-first surveillance detection Android app ("Watch the Watchers"). All processing is 100% on-device with zero cloud connectivity. The app detects nearby surveillance equipment, trackers, IMSI catchers, and monitoring devices across 7 detection protocols and 75+ device signatures.
 
 ## Build Commands
 
@@ -80,7 +80,7 @@ Compose Navigation in `MainActivity.kt` (`AppNavigation()` composable). Routes i
 
 ## File Map (files >300 lines)
 
-All paths relative to `app/src/main/java/com/flockyou/`.
+All paths relative to `app/src/main/java/com/inversionlabs/flocksucker/`.
 
 ### Detection Handlers & Framework
 
@@ -378,12 +378,12 @@ Additional pattern types in `DetectionPatterns.kt`:
 **Main detection display** (split across `MainScreen.kt`, `MainScreenFlipperTab.kt`, `DetectionDetailSheet.kt`, `FilterBottomSheet.kt`, `MainScreenDialogs.kt`): History tab with `SwipeableDetectionCard` list (in `ui/components/SwipeableDetectionCard.kt`; swipe for Mark Reviewed / Mark False Positive), filter chips in `FilterBottomSheet.kt` (threat level, device type, protocol, time range, signal strength, FP hiding threshold), pull-to-refresh. Map tab shows clustered markers color-coded by threat level via OSMDroid. Detection details in `DetectionDetailSheet.kt`. Flipper tab in `MainScreenFlipperTab.kt`.
 
 **Broadcast intents** for automation (Tasker/Automate integration):
-- `com.flockyou.DETECTION` - BLE/WiFi device
-- `com.flockyou.CELLULAR_ANOMALY` - IMSI catcher/cell anomaly
-- `com.flockyou.SATELLITE_ANOMALY` - NTN/satellite threat
-- `com.flockyou.WIFI_ANOMALY` - Evil twin/deauth
-- `com.flockyou.RF_ANOMALY` - Jammer/drone
-- `com.flockyou.ULTRASONIC` - Ultrasonic beacon
+- `com.inversionlabs.flocksucker.DETECTION` - BLE/WiFi device
+- `com.inversionlabs.flocksucker.CELLULAR_ANOMALY` - IMSI catcher/cell anomaly
+- `com.inversionlabs.flocksucker.SATELLITE_ANOMALY` - NTN/satellite threat
+- `com.inversionlabs.flocksucker.WIFI_ANOMALY` - Evil twin/deauth
+- `com.inversionlabs.flocksucker.RF_ANOMALY` - Jammer/drone
+- `com.inversionlabs.flocksucker.ULTRASONIC` - Ultrasonic beacon
 
 ### LLM Assessment System (`ai/`)
 

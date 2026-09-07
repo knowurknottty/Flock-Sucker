@@ -1,7 +1,7 @@
 # OPSEC Anti-Toy Hardening & Operational Admission Workflow
 
 **Status:** DESIGN / GOVERNANCE SPEC — REVIEW REQUIRED BEFORE EXECUTION
-**Repository:** `knowurknottty/Flock-You-Android`
+**Repository:** `knowurknottty/Flock-Sucker`
 **Branch:** `design/opsec-anti-toy-hardening-r1`
 **Date:** 2026-08-18
 **Purpose:** Audit the complete product for toy-grade assumptions and drive each operationally relevant feature toward evidence-backed, resilient, privacy-preserving, security-hardened behavior.
@@ -10,7 +10,7 @@
 
 ## 0. Mission
 
-Flock-You started as a strong open-source idea. Inversion Labs is not treating it as a novelty scanner, demo, advocacy toy, or collection of impressive heuristics.
+The upstream project supplied the initial inspiration. Flock-Sucker is the independently maintained Inversion Labs derivative, and Inversion Labs is not treating it as a novelty scanner, demo, advocacy toy, or collection of impressive heuristics.
 
 The target is an **operationally trustworthy Android field instrument** whose claims, measurements, security properties, lifecycle behavior, and failure modes remain defensible under hostile review.
 
