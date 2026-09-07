@@ -367,10 +367,10 @@ dependencies {
     // 0.10.24 has fixes for DetokenizerCalculator native crash (RET_CHECK id >= 0)
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
 
-    // ML Kit GenAI Prompt API for Gemini Nano on-device inference (Alpha)
+    // ML Kit GenAI Prompt API for Gemini Nano on-device inference (Beta)
     // This provides access to the on-device Gemini Nano model via AICore
     // Requires Pixel 8+ or compatible device with Android 14+
-    // Note: Alpha API - not subject to SLA or deprecation policy
+    // Note: Beta API - verify device/AICore compatibility before relying on availability
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
     
     // Testing - Unit Tests
@@ -380,7 +380,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("app.cash.turbine:turbine:1.0.0")
     testImplementation("androidx.arch.core:core-testing:2.2.0")
-    testImplementation("io.mockk:mockk:1.13.8")
+    testImplementation("io.mockk:mockk:1.14.11")
     
     // Testing - Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
@@ -389,7 +389,7 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
-    androidTestImplementation("io.mockk:mockk-android:1.13.8")
+    androidTestImplementation("io.mockk:mockk-android:1.14.11")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 
     // Hilt Testing
