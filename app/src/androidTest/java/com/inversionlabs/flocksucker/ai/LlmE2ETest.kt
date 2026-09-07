@@ -11,7 +11,6 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
@@ -69,6 +68,10 @@ class LlmE2ETest {
     @Before
     fun setup() {
         hiltRule.inject()
+        runBlocking {
+            // Analyzer E2E assertions are about analyzer behavior, not model download state.
+            aiSettingsRepository.setSelectedModel("rule-based")
+        }
         Log.i(TAG, "Test setup complete")
     }
 
@@ -83,7 +86,7 @@ class LlmE2ETest {
     // ==================== LlmEngineManager Tests ====================
 
     @Test
-    fun engineManager_initializesSuccessfully() = runTest {
+    fun engineManager_initializesSuccessfully(): Unit = runBlocking {
         val settings = aiSettingsRepository.settings.first()
         val settingsWithAiEnabled = settings.copy(enabled = true)
 
@@ -95,7 +98,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun engineManager_fallsBackToRuleBasedWhenNoLlmAvailable() = runTest {
+    fun engineManager_fallsBackToRuleBasedWhenNoLlmAvailable(): Unit = runBlocking {
         val settings = AiSettings(enabled = true, selectedModel = "rule-based")
 
         val initialized = llmEngineManager.initialize(AiModel.RULE_BASED, settings)
@@ -106,7 +109,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun engineManager_reportsEngineStatus() = runTest {
+    fun engineManager_reportsEngineStatus(): Unit = runBlocking {
         val status = llmEngineManager.engineStatus.value
 
         assertNotNull("Engine status should be available", status)
@@ -114,7 +117,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun engineManager_tracksEngineHealth() = runTest {
+    fun engineManager_tracksEngineHealth(): Unit = runBlocking {
         val ruleBasedHealth = llmEngineManager.getEngineHealth(LlmEngine.RULE_BASED)
         val geminiHealth = llmEngineManager.getEngineHealth(LlmEngine.GEMINI_NANO)
         val mediaPipeHealth = llmEngineManager.getEngineHealth(LlmEngine.MEDIAPIPE)
@@ -135,7 +138,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun geminiNano_checksModelAvailability() = runTest {
+    fun geminiNano_checksModelAvailability(): Unit = runBlocking {
         val status = geminiNanoClient.checkModelAvailability()
         Log.i(TAG, "Gemini Nano model availability: $status")
         // Status could be AVAILABLE, DOWNLOADABLE, DOWNLOADING, or UNAVAILABLE
@@ -173,7 +176,7 @@ class LlmE2ETest {
     // ==================== DetectionAnalyzer Tests ====================
 
     @Test
-    fun detectionAnalyzer_initializesModel() = runTest {
+    fun detectionAnalyzer_initializesModel(): Unit = runBlocking {
         // Enable AI in settings first
         aiSettingsRepository.setEnabled(true)
 
@@ -184,7 +187,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_analyzesFlockSafetyCamera() = runTest {
+    fun detectionAnalyzer_analyzesFlockSafetyCamera(): Unit = runBlocking {
         // Enable AI
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
@@ -212,7 +215,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_analyzesStingray() = runTest {
+    fun detectionAnalyzer_analyzesStingray(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -235,7 +238,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_analyzesDrone() = runTest {
+    fun detectionAnalyzer_analyzesDrone(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -254,7 +257,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_analyzesUltrasonicBeacon() = runTest {
+    fun detectionAnalyzer_analyzesUltrasonicBeacon(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -273,7 +276,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_analyzesSatellite() = runTest {
+    fun detectionAnalyzer_analyzesSatellite(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -291,7 +294,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_providesStructuredData() = runTest {
+    fun detectionAnalyzer_providesStructuredData(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -315,7 +318,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_returnsWhenAiDisabled() = runTest {
+    fun detectionAnalyzer_returnsWhenAiDisabled(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(false)
 
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
@@ -329,7 +332,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun detectionAnalyzer_cachesPreviousAnalysis() = runTest {
+    fun detectionAnalyzer_cachesPreviousAnalysis(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -356,7 +359,7 @@ class LlmE2ETest {
     // ==================== FalsePositiveAnalyzer Tests ====================
 
     @Test
-    fun falsePositiveAnalyzer_analyzesConsumerDevice() = runTest {
+    fun falsePositiveAnalyzer_analyzesConsumerDevice(): Unit = runBlocking {
         // Create a likely false positive (consumer router)
         val detection = TestDataFactory.createTestDetection(
             deviceType = DeviceType.RING_DOORBELL,
@@ -374,7 +377,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun falsePositiveAnalyzer_identifiesBenignSsid() = runTest {
+    fun falsePositiveAnalyzer_identifiesBenignSsid(): Unit = runBlocking {
         val detection = TestDataFactory.createTestDetection(
             deviceType = DeviceType.UNKNOWN_SURVEILLANCE,
             threatLevel = ThreatLevel.LOW,
@@ -390,7 +393,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun falsePositiveAnalyzer_respectsHighThreatDevices() = runTest {
+    fun falsePositiveAnalyzer_respectsHighThreatDevices(): Unit = runBlocking {
         val detection = TestDataFactory.createStingrayDetection()
 
         val result = falsePositiveAnalyzer.analyzeForFalsePositive(detection, null, tryLazyInit = false)
@@ -403,7 +406,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun falsePositiveAnalyzer_filtersBatchDetections() = runTest {
+    fun falsePositiveAnalyzer_filtersBatchDetections(): Unit = runBlocking {
         val detections = listOf(
             TestDataFactory.createFlockSafetyCameraDetection(), // Real threat
             TestDataFactory.createStingrayDetection(),          // Critical threat
@@ -429,7 +432,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun falsePositiveAnalyzer_providesUserFriendlyBanner() = runTest {
+    fun falsePositiveAnalyzer_providesUserFriendlyBanner(): Unit = runBlocking {
         val detection = TestDataFactory.createTestDetection(
             deviceType = DeviceType.RING_DOORBELL,
             threatLevel = ThreatLevel.INFO,
@@ -449,7 +452,7 @@ class LlmE2ETest {
     // ==================== Cross-Module Integration Tests ====================
 
     @Test
-    fun integration_allProtocolsCanBeAnalyzed() = runTest {
+    fun integration_allProtocolsCanBeAnalyzed(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
@@ -475,7 +478,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun integration_detectionAndFpAnalysisTogether() = runTest {
+    fun integration_detectionAndFpAnalysisTogether(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         aiSettingsRepository.setAnalyzeDetections(true)
         aiSettingsRepository.setFalsePositiveFiltering(true)
@@ -502,7 +505,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun integration_modelStatusReflectsRealState() = runTest {
+    fun integration_modelStatusReflectsRealState(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         detectionAnalyzer.initializeModel()
 
@@ -518,7 +521,7 @@ class LlmE2ETest {
     // ==================== Error Handling Tests ====================
 
     @Test
-    fun errorHandling_handlesNullInputGracefully() = runTest {
+    fun errorHandling_handlesNullInputGracefully(): Unit = runBlocking {
         aiSettingsRepository.setEnabled(true)
         detectionAnalyzer.initializeModel()
 
@@ -550,7 +553,7 @@ class LlmE2ETest {
     }
 
     @Test
-    fun errorHandling_engineRecoveryWorks() = runTest {
+    fun errorHandling_engineRecoveryWorks(): Unit = runBlocking {
         val settings = AiSettings(enabled = true, selectedModel = "rule-based")
 
         // Initialize

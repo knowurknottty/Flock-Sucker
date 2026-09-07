@@ -322,17 +322,17 @@ class DetectionSystemE2ETest {
 
     @Test
     fun deduplication_sameMACreusesDetection() = runTest {
-        val mac = "AA:BB:CC:DD:EE:FF"
+        val mac = "B4:A3:82:11:22:33"
         val detection1 = TestDataFactory.createFlockSafetyCameraDetection().copy(
             macAddress = mac,
             seenCount = 1
         )
 
-        // Insert first detection
-        val isNew1 = detectionRepository.upsertDetection(detection1)
-        assertTrue("First detection should be new", isNew1)
+        // Seed persistence directly so the single upsert below exercises identity reuse
+        // without priming the rapid-observation throttle cache.
+        detectionRepository.insertDetection(detection1)
 
-        // Insert same MAC again
+        // Upsert the same stable MAC once; this should reuse the persisted identity.
         val detection2 = detection1.copy(rssi = -55, seenCount = 1)
         val isNew2 = detectionRepository.upsertDetection(detection2)
         assertFalse("Second detection should update existing", isNew2)
@@ -391,13 +391,13 @@ class DetectionSystemE2ETest {
 
         // Insert detections with different timestamps
         detectionRepository.insertDetection(
-            TestDataFactory.createFlockSafetyCameraDetection().copy(timestamp = twoDaysAgo)
+            TestDataFactory.createFlockSafetyCameraDetection().copy(timestamp = twoDaysAgo, lastSeenTimestamp = twoDaysAgo)
         )
         detectionRepository.insertDetection(
-            TestDataFactory.createStingrayDetection().copy(timestamp = oneHourAgo)
+            TestDataFactory.createStingrayDetection().copy(timestamp = oneHourAgo, lastSeenTimestamp = oneHourAgo)
         )
         detectionRepository.insertDetection(
-            TestDataFactory.createDroneDetection().copy(timestamp = now)
+            TestDataFactory.createDroneDetection().copy(timestamp = now, lastSeenTimestamp = now)
         )
 
         // Query detections from last day

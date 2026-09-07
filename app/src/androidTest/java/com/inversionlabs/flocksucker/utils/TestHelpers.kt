@@ -44,28 +44,15 @@ object TestHelpers {
     }
 
     /**
-     * Clear all app data for a fresh test state.
+     * Clear transient cache only. Persistent stores must be reset through their live owners.
+     *
+     * Deleting Room/DataStore/EncryptedSharedPreferences files after Hilt injection creates
+     * split-brain singletons. Strict instrumentation uses Test Orchestrator + clearPackageData
+     * for a fresh process/package; individual tests reset repository state explicitly.
      */
     fun clearAppData(context: Context) {
-        // Clear databases
-        context.databaseList().forEach { dbName ->
-            context.deleteDatabase(dbName)
-        }
-
-        // Clear shared preferences
-        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        if (prefsDir.exists() && prefsDir.isDirectory) {
-            prefsDir.listFiles()?.forEach { it.delete() }
-        }
-
-        // Clear DataStore
-        val datastoreDir = File(context.filesDir, "datastore")
-        if (datastoreDir.exists()) {
-            datastoreDir.deleteRecursively()
-        }
-
-        // Clear cache
-        context.cacheDir.deleteRecursively()
+        context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+        context.externalCacheDir?.listFiles()?.forEach { it.deleteRecursively() }
     }
 
     /**

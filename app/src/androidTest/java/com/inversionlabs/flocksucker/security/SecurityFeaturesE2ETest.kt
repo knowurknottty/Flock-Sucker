@@ -7,7 +7,9 @@ import com.inversionlabs.flocksucker.utils.TestDataFactory
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -56,15 +58,51 @@ class SecurityFeaturesE2ETest {
     @Before
     fun setup() {
         hiltRule.inject()
-        TestHelpers.clearAppData(context)
+        runBlocking { resetNukeSettings() }
+        secureKeyManager.deleteKey(TEST_ENCRYPTION_KEY_ALIAS)
     }
 
     @After
     fun cleanup() {
-        runBlocking {
-            // Disable nuke after tests
-            nukeSettingsRepository.setNukeEnabled(false)
+        runBlocking { resetNukeSettings() }
+        secureKeyManager.deleteKey(TEST_ENCRYPTION_KEY_ALIAS)
+    }
+
+    private suspend fun resetNukeSettings() {
+        nukeSettingsRepository.setNukeEnabled(false)
+        nukeSettingsRepository.updateUsbTriggerSettings(
+            enabled = false,
+            onDataConnection = true,
+            onAdbConnection = true,
+            delaySeconds = 5
+        )
+        nukeSettingsRepository.updateFailedAuthSettings(
+            enabled = false,
+            threshold = 10,
+            resetHours = 24
+        )
+        nukeSettingsRepository.updateDeadManSwitchSettings(
+            enabled = false,
+            hours = 72,
+            warningEnabled = true,
+            warningHours = 12
+        )
+        nukeSettingsRepository.setNetworkIsolationTriggerEnabled(false)
+        nukeSettingsRepository.setSimRemovalTriggerEnabled(false)
+        nukeSettingsRepository.setRapidRebootTriggerEnabled(false)
+        nukeSettingsRepository.setGeofenceTriggerEnabled(false)
+        nukeSettingsRepository.settings.first().getDangerZones().forEach { zone ->
+            nukeSettingsRepository.removeDangerZone(zone.id)
         }
+        nukeSettingsRepository.clearDuressPin()
+        nukeSettingsRepository.setDuressPinShowFakeApp(true)
+        nukeSettingsRepository.updateWipeOptions(
+            wipeDatabase = true,
+            wipeSettings = true,
+            wipeCache = true,
+            secureWipe = true,
+            secureWipePasses = 3
+        )
     }
 
     // ==================== Nuke Manager Tests ====================
@@ -182,7 +220,9 @@ class SecurityFeaturesE2ETest {
         nukeSettingsRepository.setNukeEnabled(true)
         nukeSettingsRepository.updateWipeOptions(
             wipeDatabase = true,
-            wipeCache = true
+            wipeSettings = false,
+            wipeCache = true,
+            secureWipe = false
         )
 
         val triggers = listOf(
@@ -196,10 +236,7 @@ class SecurityFeaturesE2ETest {
         )
 
         triggers.forEach { trigger ->
-            // Clean up between tests
-            TestHelpers.clearAppData(context)
-
-            // Create test data
+            // Keep the injected graph alive; recreate only the disposable cache fixture.
             val testFile = context.cacheDir.resolve("test_$trigger")
             testFile.writeText("test")
 
@@ -504,7 +541,7 @@ class SecurityFeaturesE2ETest {
 
     @Test
     fun secureKeyManager_generatesEncryptionKey() = runTest {
-        val key = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
+        val key = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS, SecureKeyManager.KeyProtectionConfig(requireUnlockedDevice = false))
 
         assertNotNull("Encryption key should be generated", key)
         assertEquals("Key algorithm should be AES", "AES", key.algorithm)
@@ -512,8 +549,8 @@ class SecurityFeaturesE2ETest {
 
     @Test
     fun secureKeyManager_keysArePersistent() = runTest {
-        val key1 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
-        val key2 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
+        val key1 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS, SecureKeyManager.KeyProtectionConfig(requireUnlockedDevice = false))
+        val key2 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS, SecureKeyManager.KeyProtectionConfig(requireUnlockedDevice = false))
 
         assertTrue("Key alias should remain present", secureKeyManager.keyExists(TEST_ENCRYPTION_KEY_ALIAS))
         assertEquals("Repeated lookup should preserve key algorithm", key1.algorithm, key2.algorithm)
@@ -521,12 +558,12 @@ class SecurityFeaturesE2ETest {
 
     @Test
     fun secureKeyManager_canDeleteKeys() = runTest {
-        val key1 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
+        val key1 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS, SecureKeyManager.KeyProtectionConfig(requireUnlockedDevice = false))
         assertNotNull("Key should exist", key1)
 
         secureKeyManager.deleteKey(TEST_ENCRYPTION_KEY_ALIAS)
 
-        val key2 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
+        val key2 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS, SecureKeyManager.KeyProtectionConfig(requireUnlockedDevice = false))
         assertNotNull("New key should be generated", key2)
 
         assertTrue("Recreated key alias should exist", secureKeyManager.keyExists(TEST_ENCRYPTION_KEY_ALIAS))
@@ -552,12 +589,14 @@ class SecurityFeaturesE2ETest {
         val checkResult = duressAuthenticator.checkPin("9999", "normal_hash", "normal_salt")
         assertTrue("Duress PIN should be detected", checkResult is DuressCheckResult.DuressPin)
 
-        // Give nuke time to execute (it runs in background)
-        TestHelpers.waitForCondition(timeoutMs = 3000) {
-            !testFile.exists()
+        // Nuke runs on real IO dispatchers with real delays; poll using wall-clock time.
+        val wiped = withContext(Dispatchers.IO) {
+            TestHelpers.waitForCondition(timeoutMs = 6_000) {
+                !testFile.exists()
+            }
         }
 
-        // Verify data is wiped
+        assertTrue("Sensitive data should be wiped", wiped)
         assertFalse("Sensitive data should be wiped", testFile.exists())
     }
 

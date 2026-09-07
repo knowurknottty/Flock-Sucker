@@ -11,6 +11,7 @@ plugins {
 // OEM partners can set OEM_PACKAGE_NAME in gradle.properties to use their own package name
 val oemPackageName: String = project.findProperty("OEM_PACKAGE_NAME")?.toString() ?: "com.inversionlabs.flocksucker"
 val defaultPackageName = "com.inversionlabs.flocksucker"
+val useTestOrchestrator = providers.gradleProperty("useTestOrchestrator").orNull?.toBoolean() == true
 
 // ================================================================
 // OEM Feature Flags Configuration
@@ -84,6 +85,9 @@ android {
         }
 
         testInstrumentationRunner = "com.inversionlabs.flocksucker.HiltTestRunner"
+        if (useTestOrchestrator) {
+            testInstrumentationRunnerArguments["clearPackageData"] = "true"
+        }
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -301,6 +305,9 @@ android {
     // Robolectric. This does not affect production code or instrumented tests.
     testOptions {
         unitTests.isReturnDefaultValues = true
+        if (useTestOrchestrator) {
+            execution = "ANDROIDX_TEST_ORCHESTRATOR"
+        }
     }
 
     // Ensure all build variants are visible in Android Studio
@@ -349,6 +356,8 @@ dependencies {
     // Room with SQLCipher encryption
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
+    // Room 2.8.4 migration tooling uses serialization 1.8.1; align core/json ABI.
+    implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1"))
     ksp("androidx.room:room-compiler:2.8.4")
     implementation("net.zetetic:sqlcipher-android:4.12.0@aar")
     implementation("androidx.sqlite:sqlite-ktx:2.7.0")
@@ -433,6 +442,7 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestUtil("androidx.test:orchestrator:1.6.1")
     androidTestImplementation("androidx.test:rules:1.7.0")
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("io.mockk:mockk-android:1.14.11")

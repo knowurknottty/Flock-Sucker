@@ -336,7 +336,7 @@ class AppLockE2ETest {
     }
 
     @Test
-    fun lockout_escalatesDuration() = runTest {
+    fun lockout_escalatesDuration() = runBlocking {
         appLockManager.setPin("5937")
 
         // Configure escalating lockout
@@ -354,7 +354,7 @@ class AppLockE2ETest {
         val firstLockoutTime = appLockManager.getRemainingLockoutTime()
 
         // Wait for lockout to expire (simulate with test helper)
-        TestHelpers.simulateTimePass(2)
+        kotlinx.coroutines.delay(2_000)
 
         // Trigger second lockout
         repeat(3) {

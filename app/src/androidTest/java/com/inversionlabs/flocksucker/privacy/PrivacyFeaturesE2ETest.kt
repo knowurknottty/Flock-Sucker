@@ -53,20 +53,26 @@ class PrivacyFeaturesE2ETest {
     @Before
     fun setup() {
         hiltRule.inject()
-        TestHelpers.clearAppData(context)
+        runBlocking { resetPrivacyState() }
     }
 
     @After
     fun cleanup() {
-        runBlocking {
-            // Reset to defaults
-            privacySettingsRepository.updateSettings(
-                ephemeralModeEnabled = false,
-                storeLocationWithDetections = true
-            )
-            detectionRepository.deleteAllDetections()
-            ephemeralRepository.deleteAllDetections()
-        }
+        runBlocking { resetPrivacyState() }
+    }
+
+    private suspend fun resetPrivacyState() {
+        privacySettingsRepository.updateSettings(
+            ephemeralModeEnabled = false,
+            retentionPeriod = RetentionPeriod.THREE_DAYS,
+            storeLocationWithDetections = true,
+            autoPurgeOnScreenLock = false,
+            quickWipeRequiresConfirmation = true
+        )
+        privacySettingsRepository.setUltrasonicDetectionEnabled(false)
+        privacySettingsRepository.setUltrasonicConsentAcknowledged(false)
+        detectionRepository.deleteAllDetections()
+        ephemeralRepository.deleteAllDetections()
     }
 
     // ==================== Ephemeral Mode Tests ====================
@@ -180,8 +186,10 @@ class PrivacyFeaturesE2ETest {
     @Test
     fun dataRetention_deletesOldDetections() = runTest {
         // Insert old detection
+        val oldTimestamp = System.currentTimeMillis() - (8 * 24 * 60 * 60 * 1000L)
         val oldDetection = TestDataFactory.createFlockSafetyCameraDetection().copy(
-            timestamp = System.currentTimeMillis() - (8 * 24 * 60 * 60 * 1000L) // 8 days ago
+            timestamp = oldTimestamp,
+            lastSeenTimestamp = oldTimestamp
         )
         detectionRepository.insertDetection(oldDetection)
 
@@ -454,16 +462,16 @@ class PrivacyFeaturesE2ETest {
         val sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000L)
 
         detectionRepository.insertDetection(
-            TestDataFactory.createFlockSafetyCameraDetection().copy(timestamp = sevenDaysAgo)
+            TestDataFactory.createFlockSafetyCameraDetection().copy(timestamp = sevenDaysAgo, lastSeenTimestamp = sevenDaysAgo)
         )
         detectionRepository.insertDetection(
-            TestDataFactory.createStingrayDetection().copy(timestamp = threeDaysAgo)
+            TestDataFactory.createStingrayDetection().copy(timestamp = threeDaysAgo, lastSeenTimestamp = threeDaysAgo)
         )
         detectionRepository.insertDetection(
-            TestDataFactory.createDroneDetection().copy(timestamp = oneDayAgo)
+            TestDataFactory.createDroneDetection().copy(timestamp = oneDayAgo, lastSeenTimestamp = oneDayAgo)
         )
         detectionRepository.insertDetection(
-            TestDataFactory.createUltrasonicBeaconDetection().copy(timestamp = now)
+            TestDataFactory.createUltrasonicBeaconDetection().copy(timestamp = now, lastSeenTimestamp = now)
         )
 
         // Query recent detections (last 2 days)

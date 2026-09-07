@@ -236,8 +236,10 @@ class SecurityFlowE2ETest {
 
         appLockManager.onBiometricFailure()
 
-        val afterCount = failedAuthWatcher.getFailedAttemptCount()
-        assertTrue("Biometric failure should be recorded", afterCount > initialCount)
+        val recorded = TestHelpers.waitForCondition(timeoutMs = 2_000) {
+            failedAuthWatcher.getFailedAttemptCount() > initialCount
+        }
+        assertTrue("Biometric failure should be recorded", recorded)
     }
 
     // ==================== Security Settings Integration Tests ====================

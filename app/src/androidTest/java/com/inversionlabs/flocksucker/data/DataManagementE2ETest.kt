@@ -55,7 +55,12 @@ class DataManagementE2ETest {
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAllDetections()
+            var db = FlockSuckerDatabase.getDatabase(context)
+            if (!db.isOpen) {
+                FlockSuckerDatabase.clearInstance()
+                db = FlockSuckerDatabase.getDatabase(context)
+            }
+            db.detectionDao().deleteAllDetections()
         }
         TestHelpers.clearAppData(context)
     }
@@ -184,18 +189,17 @@ class DataManagementE2ETest {
 
     @Test
     fun repository_upsertCreatesOrUpdates() = runTest {
-        val mac = "AA:BB:CC:DD:EE:FF"
+        val mac = "B4:A3:82:DD:EE:FF"
         val detection1 = TestDataFactory.createFlockSafetyCameraDetection().copy(
             macAddress = mac,
             seenCount = 1
         )
 
-        // First upsert creates
-        val isNew1 = detectionRepository.upsertDetection(detection1)
-        assertTrue("First should be new", isNew1)
+        // Seed without priming the rapid-scan upsert throttle.
+        detectionRepository.insertDetection(detection1)
         assertEquals("Should have 1", 1, detectionRepository.getTotalDetectionCount())
 
-        // Second upsert updates
+        // Upsert a matching stable identity and verify it updates.
         val detection2 = detection1.copy(rssi = -55, seenCount = 1)
         val isNew2 = detectionRepository.upsertDetection(detection2)
         assertFalse("Second should update", isNew2)
@@ -215,7 +219,7 @@ class DataManagementE2ETest {
         val result = exportDetectionsUseCase.exportToCsv()
         assertTrue("Export should succeed", result.isSuccess)
         val content = readExport(result.getOrThrow())
-        assertTrue("Should have header", content.contains("id"))
+        assertTrue("Should have canonical CSV header", content.startsWith("ID,Timestamp"))
         assertTrue("Should have data", content.lines().size > 1)
     }
 
@@ -250,7 +254,7 @@ class DataManagementE2ETest {
         val result = exportDetectionsUseCase.exportToCsv()
         assertTrue("Export should succeed even with no data", result.isSuccess)
         val content = readExport(result.getOrThrow())
-        assertTrue("Should have header", content.contains("id") || content.isEmpty())
+        assertTrue("Should have header", content.contains("ID,") || content.isEmpty())
     }
 
     @Test
@@ -394,14 +398,12 @@ class DataManagementE2ETest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
         detectionRepository.insertDetection(detection)
 
-        // Close database
+        // Closing a Room singleton requires clearing the singleton before reopening.
         FlockSuckerDatabase.getDatabase(context).close()
+        FlockSuckerDatabase.clearInstance()
 
-        // Wait a moment
-        kotlinx.coroutines.delay(100)
-
-        // Reopen and query (implicit in next operation)
-        val retrieved = detectionRepository.getDetectionById(detection.id)
+        val reopened = FlockSuckerDatabase.getDatabase(context)
+        val retrieved = reopened.detectionDao().getDetectionById(detection.id)
 
         assertNotNull("Detection should still exist after reopen", retrieved)
         assertEquals("Data should be intact", detection.id, retrieved?.id)

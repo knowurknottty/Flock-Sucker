@@ -342,9 +342,21 @@ class AppLockManager @Inject constructor(
             return PinVerificationResult.LockedOut
         }
 
+        val storedHash = encryptedPrefs.getString(KEY_PIN_HASH, null)
+        val storedSalt = encryptedPrefs.getString(KEY_PIN_SALT, null)
+
+        // Reject malformed input before PBKDF2/duress derivation. Android's PBKDF2
+        // provider rejects an empty password with an exception, which is an invalid PIN,
+        // not an internal error. If a PIN is configured, still account for the attempt.
+        if (pin.length !in 4..8 || !pin.all { it.isDigit() }) {
+            if (storedHash != null && storedSalt != null) {
+                recordFailedAttempt()
+                failedAuthWatcher.recordFailedAttemptAsync()
+            }
+            return PinVerificationResult.InvalidPin
+        }
+
         return try {
-            val storedHash = encryptedPrefs.getString(KEY_PIN_HASH, null)
-            val storedSalt = encryptedPrefs.getString(KEY_PIN_SALT, null)
 
             // Check for duress PIN first
             val duressResult = duressAuthenticator.checkPin(pin, storedHash, storedSalt)
@@ -391,14 +403,14 @@ class AppLockManager @Inject constructor(
                 PinVerificationResult.Success
             } else {
                 recordFailedAttempt()
-                failedAuthWatcher.recordFailedAttempt()
+                failedAuthWatcher.recordFailedAttemptAsync()
                 Log.w(TAG, "PIN verification failed")
                 PinVerificationResult.InvalidPin
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error verifying PIN", e)
             recordFailedAttempt()
-            failedAuthWatcher.recordFailedAttempt()
+            failedAuthWatcher.recordFailedAttemptAsync()
             PinVerificationResult.Error(e.message ?: "Unknown error")
         }
     }

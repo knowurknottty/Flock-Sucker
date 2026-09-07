@@ -50,7 +50,14 @@ class FailedAuthE2ETest {
     @Before
     fun setup() {
         hiltRule.inject()
-        TestHelpers.clearAppData(context)
+        runBlocking {
+            nukeSettingsRepository.setNukeEnabled(false)
+            nukeSettingsRepository.updateFailedAuthSettings(
+                enabled = false,
+                threshold = 10,
+                resetHours = 24
+            )
+        }
         failedAuthWatcher.reset()
     }
 
@@ -336,16 +343,17 @@ class FailedAuthE2ETest {
         nukeSettingsRepository.setNukeEnabled(true)
         nukeSettingsRepository.updateFailedAuthSettings(
             enabled = true,
-            threshold = 2,
+            threshold = 3,
             resetHours = 24
         )
 
         // Reset counter to start fresh
         failedAuthWatcher.reset()
 
-        // Now failures should count
-        failedAuthWatcher.recordFailedAttemptAsync()
-        failedAuthWatcher.recordFailedAttemptAsync()
+        // Now failures should count at the minimum supported threshold.
+        repeat(3) {
+            failedAuthWatcher.recordFailedAttemptAsync()
+        }
 
         assertTrue("Trigger should work when enabled", failedAuthWatcher.isNukeTriggered())
     }
