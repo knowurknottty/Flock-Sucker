@@ -3,11 +3,11 @@
 This document describes the comprehensive end-to-end test suite for the MainScreen component.
 
 ## Test File Location
-`/Users/maxwatermolen/source/Flock-You-Android/app/src/androidTest/java/com/flockyou/ui/screens/MainScreenTest.kt`
+`/Users/maxwatermolen/source/Flock-Sucker-Android/app/src/androidTest/java/com/inversionlabs/flocksucker/ui/screens/MainScreenTest.kt`
 
 ## Overview
 
-The MainScreenTest suite provides 50+ comprehensive E2E tests covering all critical user journeys and edge cases for the main screen of the Flock You Android application. These tests are designed to ensure OEM-ready quality and validate that all features work correctly across different data states and user interactions.
+The MainScreenTest suite provides 50+ comprehensive E2E tests covering all critical user journeys and edge cases for the main screen of the Flock-Sucker Android application. These tests are designed to ensure OEM-ready quality and validate that all features work correctly across different data states and user interactions.
 
 ## Test Categories
 

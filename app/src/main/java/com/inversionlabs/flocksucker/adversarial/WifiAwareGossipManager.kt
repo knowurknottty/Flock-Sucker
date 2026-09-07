@@ -82,7 +82,7 @@ class BloomSummary(private val bytes: ByteArray = ByteArray(BYTE_COUNT)) {
  */
 class WifiAwareGossipManager(private val context: Context) {
     companion object {
-        private const val SERVICE_NAME = "flockyou-alpr-v1"
+        private const val SERVICE_NAME = "flocksucker-alpr-v1"
         private const val MSG_HELLO = 1
         private const val MSG_BLOOM = 2
     }

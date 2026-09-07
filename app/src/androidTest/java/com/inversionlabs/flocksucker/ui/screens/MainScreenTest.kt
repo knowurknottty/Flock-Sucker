@@ -796,7 +796,7 @@ class MainScreenTest {
     fun mainScreen_showsAppTitle() {
         composeTestRule.waitForIdle()
 
-        // App title "FLOCK YOU" should be visible in top bar
+        // App title "FLOCK-SUCKER" should be visible in top bar
         composeTestRule.onNodeWithText("FLOCK", substring = true).assertExists()
         composeTestRule.onNodeWithText("YOU", substring = true).assertExists()
     }

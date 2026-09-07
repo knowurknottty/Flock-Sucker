@@ -320,7 +320,7 @@ class OemReadinessE2ETest {
     fun multiTenant_dataIsolationViaDatabaseEncryption() {
         // Verify database uses encryption (SQLCipher)
         // This ensures data isolation between different OEM deployments
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         // Database may not exist yet in test, but path should be valid
         assertNotNull("Database path must be defined", dbPath)
@@ -532,7 +532,7 @@ class OemReadinessE2ETest {
     @Test
     fun oemRequirement_databaseEncryptionIsEnforced() {
         // Verify database encryption cannot be disabled
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
         assertTrue(
             "Database must use encrypted storage",
             dbPath.name.contains("encrypted")

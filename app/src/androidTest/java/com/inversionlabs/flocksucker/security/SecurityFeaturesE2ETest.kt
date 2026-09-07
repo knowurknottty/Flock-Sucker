@@ -91,7 +91,7 @@ class SecurityFeaturesE2ETest {
         nukeSettingsRepository.setNukeEnabled(true)
 
         // Create a test database entry
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
         dbPath.parentFile?.mkdirs()
         dbPath.createNewFile()
         dbPath.writeText("test data")
@@ -153,7 +153,7 @@ class SecurityFeaturesE2ETest {
         nukeSettingsRepository.setNukeEnabled(true)
 
         // Create test files in all locations
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
         dbPath.parentFile?.mkdirs()
         dbPath.createNewFile()
 

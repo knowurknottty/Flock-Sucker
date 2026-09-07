@@ -102,12 +102,12 @@ jobs:
       - name: 📝 Rename APK
         run: |
           APK_PATH=$(find app/build/outputs/apk/sideload/release -name "*.apk" | head -1)
-          mv "$APK_PATH" "app/build/outputs/apk/sideload/release/FlockYou-${{ steps.version.outputs.tag }}.apk"
+          mv "$APK_PATH" "app/build/outputs/apk/sideload/release/FlockSucker-${{ steps.version.outputs.tag }}.apk"
       
       - name: 🚀 Create Release
         uses: softprops/action-gh-release@v3
         with:
-          name: "Flock You ${{ steps.version.outputs.tag }}"
+          name: "Flock-Sucker ${{ steps.version.outputs.tag }}"
           draft: false
           prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
           generate_release_notes: true

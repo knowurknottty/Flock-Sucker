@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Flock You - GrapheneOS Integration Helper Script
+# Flock-Sucker - GrapheneOS Integration Helper Script
 #
-# This script automates the integration of Flock You into a GrapheneOS
+# This script automates the integration of Flock-Sucker into a GrapheneOS
 # (or other AOSP-based ROM) build tree.
 #
 # Usage:
@@ -56,7 +56,7 @@ fi
 
 AOSP_ROOT="$1"
 SIGNING_MODE="${2:-platform}"
-TARGET_DIR="$AOSP_ROOT/vendor/flockyou"
+TARGET_DIR="$AOSP_ROOT/vendor/flocksucker"
 
 # Validate AOSP source tree
 if [ ! -f "$AOSP_ROOT/build/envsetup.sh" ]; then
@@ -72,7 +72,7 @@ if [ "$SIGNING_MODE" != "platform" ] && [ "$SIGNING_MODE" != "presigned" ]; then
     exit 1
 fi
 
-print_info "Flock You - GrapheneOS Integration"
+print_info "Flock-Sucker - GrapheneOS Integration"
 print_info "==================================="
 print_info "Source path: $AOSP_ROOT"
 print_info "Target path: $TARGET_DIR"
@@ -119,9 +119,9 @@ mkdir -p "$TARGET_DIR"
 print_info "Copying integration files..."
 cp "$SCRIPT_DIR/Android.bp" "$TARGET_DIR/"
 cp "$SCRIPT_DIR/Android.mk" "$TARGET_DIR/"
-cp "$SCRIPT_DIR/flockyou.mk" "$TARGET_DIR/"
-cp "$SCRIPT_DIR/privapp-permissions-flockyou.xml" "$TARGET_DIR/"
-cp "$APK_PATH" "$TARGET_DIR/FlockYou.apk"
+cp "$SCRIPT_DIR/flocksucker.mk" "$TARGET_DIR/"
+cp "$SCRIPT_DIR/privapp-permissions-flocksucker.xml" "$TARGET_DIR/"
+cp "$APK_PATH" "$TARGET_DIR/FlockSucker.apk"
 
 # Modify Android.bp for signing mode if presigned
 if [ "$SIGNING_MODE" = "presigned" ]; then
@@ -139,18 +139,18 @@ print_info "Integration complete!"
 echo ""
 echo "Next steps:"
 echo ""
-echo "1. Add FlockYou to your device configuration. Edit your device.mk:"
-echo "   ${YELLOW}PRODUCT_PACKAGES += FlockYou${NC}"
+echo "1. Add FlockSucker to your device configuration. Edit your device.mk:"
+echo "   ${YELLOW}PRODUCT_PACKAGES += FlockSucker${NC}"
 echo ""
 echo "   Or include the makefile:"
-echo "   ${YELLOW}\$(call inherit-product, vendor/flockyou/flockyou.mk)${NC}"
+echo "   ${YELLOW}\$(call inherit-product, vendor/flocksucker/flocksucker.mk)${NC}"
 echo ""
 echo "2. Build your ROM as usual:"
 echo "   ${YELLOW}source build/envsetup.sh${NC}"
 echo "   ${YELLOW}lunch <target>${NC}"
 echo "   ${YELLOW}m${NC}"
 echo ""
-echo "The app will be installed to /system_ext/priv-app/FlockYou/"
+echo "The app will be installed to /system_ext/priv-app/FlockSucker/"
 echo "with privileged permissions pre-granted."
 echo ""
 

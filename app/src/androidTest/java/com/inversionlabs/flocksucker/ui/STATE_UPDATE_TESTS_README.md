@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `StateUpdateIntegrationTest.kt` file contains comprehensive E2E tests for state management and real-time updates in the Flock You Android app. These tests validate the entire data flow from the service layer through IPC to the ViewModel and UI.
+The `StateUpdateIntegrationTest.kt` file contains comprehensive E2E tests for state management and real-time updates in the Flock-Sucker Android app. These tests validate the entire data flow from the service layer through IPC to the ViewModel and UI.
 
 ## Architecture Tested
 

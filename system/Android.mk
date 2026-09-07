@@ -1,13 +1,13 @@
-# Flock You - Android.mk for legacy AOSP build systems
+# Flock-Sucker - Android.mk for legacy AOSP build systems
 #
 # This file provides compatibility with older make-based build systems.
 # For Soong (Android.bp) based builds, use Android.bp instead.
 #
 # Usage:
-#   1. Copy this directory to vendor/flockyou/ or packages/apps/FlockYou/
+#   1. Copy this directory to vendor/flocksucker/ or packages/apps/FlockSucker/
 #   2. Build the APK: ./gradlew assembleOemRelease (or assembleSystemRelease)
-#   3. Copy the APK to this directory as FlockYou.apk
-#   4. Add "FlockYou" to PRODUCT_PACKAGES in your device.mk
+#   3. Copy the APK to this directory as FlockSucker.apk
+#   4. Add "FlockSucker" to PRODUCT_PACKAGES in your device.mk
 #
 # OEM Package Name Configuration:
 # ================================
@@ -19,17 +19,17 @@
 # package name. Copy those files to this directory to replace the default ones.
 #
 # Alternatively, you can manually update the package attribute in:
-#   - privapp-permissions-flockyou.xml
-#   - default-permissions-flockyou.xml
+#   - privapp-permissions-flocksucker.xml
+#   - default-permissions-flocksucker.xml
 
 LOCAL_PATH := $(call my-dir)
 
 #
-# FlockYou privileged system app
+# FlockSucker privileged system app
 #
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := FlockYou
+LOCAL_MODULE := FlockSucker
 LOCAL_MODULE_CLASS := APPS
 LOCAL_MODULE_TAGS := optional
 
@@ -45,7 +45,7 @@ LOCAL_SYSTEM_EXT_MODULE := true
 LOCAL_CERTIFICATE := platform
 
 # APK source
-LOCAL_SRC_FILES := FlockYou.apk
+LOCAL_SRC_FILES := FlockSucker.apk
 LOCAL_MODULE_SUFFIX := $(COMMON_ANDROID_PACKAGE_SUFFIX)
 
 # DEX optimization
@@ -53,11 +53,11 @@ LOCAL_DEX_PREOPT := true
 
 # Required modules
 LOCAL_REQUIRED_MODULES := \
-    privapp-permissions-flockyou.xml \
-    default-permissions-flockyou.xml
+    privapp-permissions-flocksucker.xml \
+    default-permissions-flocksucker.xml
 
 # Replace any existing installation
-LOCAL_OVERRIDES_PACKAGES := FlockYou
+LOCAL_OVERRIDES_PACKAGES := FlockSucker
 
 include $(BUILD_PREBUILT)
 
@@ -66,7 +66,7 @@ include $(BUILD_PREBUILT)
 #
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := privapp-permissions-flockyou.xml
+LOCAL_MODULE := privapp-permissions-flocksucker.xml
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_TAGS := optional
 
@@ -74,7 +74,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SYSTEM_EXT_MODULE := true
 LOCAL_MODULE_PATH := $(TARGET_OUT_SYSTEM_EXT_ETC)/permissions
 
-LOCAL_SRC_FILES := privapp-permissions-flockyou.xml
+LOCAL_SRC_FILES := privapp-permissions-flocksucker.xml
 
 include $(BUILD_PREBUILT)
 
@@ -83,7 +83,7 @@ include $(BUILD_PREBUILT)
 #
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := default-permissions-flockyou.xml
+LOCAL_MODULE := default-permissions-flocksucker.xml
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_TAGS := optional
 
@@ -91,7 +91,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SYSTEM_EXT_MODULE := true
 LOCAL_MODULE_PATH := $(TARGET_OUT_SYSTEM_EXT_ETC)/default-permissions
 
-LOCAL_SRC_FILES := default-permissions-flockyou.xml
+LOCAL_SRC_FILES := default-permissions-flocksucker.xml
 
 include $(BUILD_PREBUILT)
 

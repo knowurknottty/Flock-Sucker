@@ -28,10 +28,10 @@ import javax.inject.Inject
  *
  * 3. Using deep links:
  *    adb shell am start -a android.intent.action.VIEW \
- *        -d "flockyou://testmode?scenario=high_threat_environment"
+ *        -d "flocksucker://testmode?scenario=high_threat_environment"
  *
  *    adb shell am start -a android.intent.action.VIEW \
- *        -d "flockyou://navigate?route=settings"
+ *        -d "flocksucker://navigate?route=settings"
  *
  * Available Scenarios:
  *   - tracker_following (HIGH threat)
@@ -106,7 +106,7 @@ class ScreenshotHelperActivity : ComponentActivity() {
         when {
             intent.action == ACTION_TEST_MODE -> handleTestModeIntent(intent)
             intent.action == ACTION_NAVIGATE -> handleNavigateIntent(intent)
-            intent.data?.scheme == "flockyou" -> handleDeepLink(intent)
+            intent.data?.scheme == "flocksucker" -> handleDeepLink(intent)
             else -> Log.w(TAG, "Unknown intent: ${intent.action}")
         }
     }

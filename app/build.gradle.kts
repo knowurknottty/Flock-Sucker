@@ -822,10 +822,10 @@ tasks.register("generatePrivappPermissions") {
     Package: $oemPackageName
 
     This file should be placed in:
-    /system/etc/permissions/privapp-permissions-flockyou.xml
+    /system/etc/permissions/privapp-permissions-flocksucker.xml
 
     or for newer Android versions:
-    /system_ext/etc/permissions/privapp-permissions-flockyou.xml
+    /system_ext/etc/permissions/privapp-permissions-flocksucker.xml
 
     The APK should be installed to:
     /system/priv-app/FlockSucker/FlockSucker.apk
@@ -872,7 +872,7 @@ tasks.register("generatePrivappPermissions") {
         if (oemPackageName != defaultPackageName) {
             println("")
             println("NOTE: Copy this file to your system integration:")
-            println("  cp ${outputFile.absolutePath} /path/to/aosp/vendor/flockyou/privapp-permissions-flockyou.xml")
+            println("  cp ${outputFile.absolutePath} /path/to/aosp/vendor/flocksucker/privapp-permissions-flocksucker.xml")
         }
     }
 }
@@ -908,7 +908,7 @@ tasks.register("generateDefaultPermissions") {
     for OEM/system app deployments.
 
     Installation path:
-    /system_ext/etc/default-permissions/default-permissions-flockyou.xml
+    /system_ext/etc/default-permissions/default-permissions-flocksucker.xml
 
     Note: This requires the ROM to support default permission grants.
     GrapheneOS and most AOSP-based ROMs support this.
@@ -984,16 +984,16 @@ if [ -z "${'$'}1" ]; then
     echo ""
     echo "Arguments:"
     echo "  aosp-root    - Path to AOSP source tree"
-    echo "  vendor-path  - Optional: vendor directory name (default: flockyou)"
+    echo "  vendor-path  - Optional: vendor directory name (default: flocksucker)"
     echo ""
     echo "Example:"
-    echo "  ${'$'}0 /path/to/aosp flockyou"
+    echo "  ${'$'}0 /path/to/aosp flocksucker"
     echo "  ${'$'}0 /path/to/grapheneos partner_security"
     exit 1
 fi
 
 AOSP_ROOT="${'$'}1"
-VENDOR_PATH="${'$'}{2:-flockyou}"
+VENDOR_PATH="${'$'}{2:-flocksucker}"
 TARGET_DIR="${'$'}AOSP_ROOT/vendor/${'$'}VENDOR_PATH"
 
 echo "AOSP Root: ${'$'}AOSP_ROOT"
@@ -1005,8 +1005,8 @@ mkdir -p "${'$'}TARGET_DIR"
 
 # Copy XML files
 echo "Copying permission files..."
-cp "${'$'}SCRIPT_DIR/privapp-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/privapp-permissions-flockyou.xml"
-cp "${'$'}SCRIPT_DIR/default-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/default-permissions-flockyou.xml"
+cp "${'$'}SCRIPT_DIR/privapp-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/privapp-permissions-flocksucker.xml"
+cp "${'$'}SCRIPT_DIR/default-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/default-permissions-flocksucker.xml"
 
 echo ""
 echo "Files copied successfully!"

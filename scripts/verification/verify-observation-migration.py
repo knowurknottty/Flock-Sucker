@@ -9,8 +9,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_DIR = ROOT / "app/schemas/com.flockyou.data.repository.FlockYouDatabase"
-DATABASE_KT = ROOT / "app/src/main/java/com/flockyou/data/repository/Database.kt"
+SCHEMA_DIR = ROOT / "app/schemas/com.inversionlabs.flocksucker.data.repository.FlockSuckerDatabase"
+DATABASE_KT = ROOT / "app/src/main/java/com/inversionlabs/flocksucker/data/repository/Database.kt"
 
 
 def schema(version: int) -> dict:

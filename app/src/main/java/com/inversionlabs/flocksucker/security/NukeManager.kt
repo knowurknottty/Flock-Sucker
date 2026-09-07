@@ -70,10 +70,10 @@ class NukeManager @Inject constructor(
         private const val TAG = "NukeManager"
 
         // Database file names
-        private const val DATABASE_NAME = "flockyou_database_encrypted"
-        private const val DATABASE_NAME_WAL = "flockyou_database_encrypted-wal"
-        private const val DATABASE_NAME_SHM = "flockyou_database_encrypted-shm"
-        private const val DATABASE_NAME_JOURNAL = "flockyou_database_encrypted-journal"
+        private const val DATABASE_NAME = "flocksucker_database_encrypted"
+        private const val DATABASE_NAME_WAL = "flocksucker_database_encrypted-wal"
+        private const val DATABASE_NAME_SHM = "flocksucker_database_encrypted-shm"
+        private const val DATABASE_NAME_JOURNAL = "flocksucker_database_encrypted-journal"
 
         // Delay to allow scanning service to gracefully shutdown before wiping
         // Increased from 500ms to 2000ms to ensure the scanning service (running in

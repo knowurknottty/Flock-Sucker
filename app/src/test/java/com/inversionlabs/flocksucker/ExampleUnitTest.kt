@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import com.inversionlabs.flocksucker.data.model.*
 
 /**
- * Comprehensive E2E unit tests for the Flock-You detection system.
+ * Comprehensive E2E unit tests for the Flock-Sucker detection system.
  * These tests validate the core detection logic, data models, and conversions.
  */
 class ExampleUnitTest {

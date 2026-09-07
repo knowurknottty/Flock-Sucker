@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================================================
-# Flock-You Screenshot Automation Script
+# Flock-Sucker Screenshot Automation Script
 # ============================================================================
 #
 # This script automates capturing screenshots of every screen in the app
@@ -26,8 +26,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SCREENSHOTS_DIR="$PROJECT_DIR/screenshots"
-PACKAGE_NAME="com.flockyou.debug"
-HELPER_ACTIVITY="com.flockyou.debug.ScreenshotHelperActivity"
+PACKAGE_NAME="com.inversionlabs.flocksucker.debug"
+HELPER_ACTIVITY="com.inversionlabs.flocksucker.debug.ScreenshotHelperActivity"
 APK_PATH="$PROJECT_DIR/app/build/outputs/apk/sideload/debug/app-sideload-debug.apk"
 
 # Timing configuration (adjust based on device speed)
@@ -203,7 +203,7 @@ skip_onboarding() {
     log_info "Skipping onboarding dialogs..."
 
     # Set the "getting started shown" preference
-    adb shell "run-as $PACKAGE_NAME sh -c 'cat > /data/data/$PACKAGE_NAME/shared_prefs/flockyou_prefs.xml << EOF
+    adb shell "run-as $PACKAGE_NAME sh -c 'cat > /data/data/$PACKAGE_NAME/shared_prefs/flocksucker_prefs.xml << EOF
 <?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?>
 <map>
     <boolean name=\"getting_started_shown\" value=\"true\" />
@@ -217,7 +217,7 @@ enable_test_mode() {
     local scenario="$1"
     log_info "Enabling test mode with scenario: $scenario"
 
-    adb shell am start -a com.flockyou.debug.TEST_MODE \
+    adb shell am start -a com.inversionlabs.flocksucker.debug.TEST_MODE \
         --es action enable \
         --es scenario "$scenario" \
         -n "$PACKAGE_NAME/$HELPER_ACTIVITY"
@@ -229,7 +229,7 @@ enable_test_mode() {
 disable_test_mode() {
     log_info "Disabling test mode..."
 
-    adb shell am start -a com.flockyou.debug.TEST_MODE \
+    adb shell am start -a com.inversionlabs.flocksucker.debug.TEST_MODE \
         --es action disable \
         -n "$PACKAGE_NAME/$HELPER_ACTIVITY"
 
@@ -240,7 +240,7 @@ navigate_to() {
     local route="$1"
     log_info "Navigating to: $route"
 
-    adb shell am start -a com.flockyou.debug.NAVIGATE \
+    adb shell am start -a com.inversionlabs.flocksucker.debug.NAVIGATE \
         --es route "$route" \
         -n "$PACKAGE_NAME/$HELPER_ACTIVITY"
 
@@ -284,7 +284,7 @@ capture_critical_alert() {
 main() {
     echo ""
     echo "=============================================="
-    echo "  Flock-You Screenshot Automation"
+    echo "  Flock-Sucker Screenshot Automation"
     echo "=============================================="
     echo ""
 

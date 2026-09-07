@@ -411,7 +411,7 @@ class AutoMainScreen(carContext: CarContext) : Screen(carContext) {
         // The user should only interact with this when safely parked
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("flockyou://detections")
+                data = Uri.parse("flocksucker://detections")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             carContext.startActivity(intent)

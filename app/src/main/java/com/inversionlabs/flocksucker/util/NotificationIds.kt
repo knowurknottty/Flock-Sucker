@@ -42,25 +42,25 @@ object NotificationIds {
  */
 object NotificationChannelIds {
     // Main scanning service channel
-    const val SCANNING = "flockyou_scanning"
+    const val SCANNING = "flocksucker_scanning"
 
     // Detection alerts channel
-    const val DETECTION_ALERTS = "flockyou_detection_alerts"
+    const val DETECTION_ALERTS = "flocksucker_detection_alerts"
 
     // Dead man's switch warning channel
     const val DEAD_MAN_SWITCH = "dead_man_switch_warning"
 
     // Critical alerts channel (high priority)
-    const val CRITICAL_ALERTS = "flockyou_critical"
+    const val CRITICAL_ALERTS = "flocksucker_critical"
 
     // Update notifications channel
-    const val UPDATES = "flockyou_updates"
+    const val UPDATES = "flocksucker_updates"
 
     // Flipper detection alerts channel (medium-high priority)
-    const val FLIPPER_DETECTION = "flockyou_flipper_detection"
+    const val FLIPPER_DETECTION = "flocksucker_flipper_detection"
 
     // Flipper critical alerts channel (high priority, can bypass DND)
-    const val FLIPPER_CRITICAL = "flockyou_flipper_critical"
+    const val FLIPPER_CRITICAL = "flocksucker_flipper_critical"
 }
 
 /**
@@ -68,5 +68,5 @@ object NotificationChannelIds {
  */
 object NotificationGroupKeys {
     // Group key for Flipper detection notifications
-    const val FLIPPER_DETECTIONS = "flockyou_flipper_detections_group"
+    const val FLIPPER_DETECTIONS = "flocksucker_flipper_detections_group"
 }

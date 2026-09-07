@@ -324,7 +324,7 @@ class OemConfigurationE2ETest {
     @Test
     fun config_databaseEncryptionIsEnforced() {
         // Verify database encryption cannot be disabled
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         assertNotNull("Database path must be defined", dbPath)
         assertTrue(
@@ -336,7 +336,7 @@ class OemConfigurationE2ETest {
     @Test
     fun config_databaseLocationIsStandard() {
         // Verify database uses standard app-private location
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         assertTrue(
             "Database should be in app-private directory",
@@ -397,7 +397,7 @@ class OemConfigurationE2ETest {
     @Test
     fun config_criticalSettingsAreNotMutable() {
         // Verify critical security settings cannot be bypassed
-        val dbName = "flockyou_database_encrypted"
+        val dbName = "flocksucker_database_encrypted"
 
         // Database name should be hardcoded to ensure encryption
         assertTrue(

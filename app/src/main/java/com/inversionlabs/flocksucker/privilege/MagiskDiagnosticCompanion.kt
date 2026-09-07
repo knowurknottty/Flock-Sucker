@@ -14,7 +14,7 @@ data class MagiskDiagnosticCapabilities(
 
 /** App-side contract for the optional authenticated Magisk diagnostic companion. */
 object MagiskDiagnosticCompanion {
-    private const val SOCKET_NAME = "flockyou_diag"
+    private const val SOCKET_NAME = "flocksucker_diag"
     private const val OP_PING: Int = 0x01
     private const val OP_SHANNON_STREAM: Int = 0x02
     private const val OP_CCCI_STREAM: Int = 0x03

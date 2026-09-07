@@ -34,7 +34,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="flockyou"
+                    android:scheme="flocksucker"
                     android:host="testmode" />
             </intent-filter>
             <intent-filter>
@@ -42,7 +42,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="flockyou"
+                    android:scheme="flocksucker"
                     android:host="navigate" />
             </intent-filter>
         </activity>

@@ -64,7 +64,7 @@ class AppLockManager @Inject constructor(
         private const val KEY_LOCKOUT_UNTIL = "lockout_until"
         private const val KEY_LOCKOUT_COUNT = "lockout_count"
         private const val KEY_SECURITY_LEVEL = "security_level"
-        private const val KEY_BIOMETRIC_KEY_ALIAS = "flockyou_biometric_key"
+        private const val KEY_BIOMETRIC_KEY_ALIAS = "flocksucker_biometric_key"
 
         // Default lockout parameters
         const val DEFAULT_MAX_FAILED_ATTEMPTS = 5

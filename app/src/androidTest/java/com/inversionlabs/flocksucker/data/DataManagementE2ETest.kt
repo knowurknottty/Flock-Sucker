@@ -63,7 +63,7 @@ class DataManagementE2ETest {
 
     @Test
     fun database_usesEncryption() {
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         // Database file name should indicate encryption
         assertTrue(
@@ -84,7 +84,7 @@ class DataManagementE2ETest {
         kotlinx.coroutines.delay(100)
 
         // Get database file
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         if (dbPath.exists()) {
             // Verify it's encrypted
@@ -468,7 +468,7 @@ class DataManagementE2ETest {
 
     @Test
     fun database_filePathIsCorrect() {
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         assertTrue(
             "Database path should be in app data directory",
@@ -476,7 +476,7 @@ class DataManagementE2ETest {
         )
         assertTrue(
             "Database should be named correctly",
-            dbPath.name == "flockyou_database_encrypted"
+            dbPath.name == "flocksucker_database_encrypted"
         )
     }
 }

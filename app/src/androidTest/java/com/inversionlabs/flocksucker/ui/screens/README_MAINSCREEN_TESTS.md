@@ -2,12 +2,12 @@
 
 ## Overview
 
-Comprehensive end-to-end test suite for the MainScreen component of the Flock You Android application. This suite includes 50+ tests covering all critical functionality, edge cases, and OEM readiness requirements.
+Comprehensive end-to-end test suite for the MainScreen component of the Flock-Sucker Android application. This suite includes 50+ tests covering all critical functionality, edge cases, and OEM readiness requirements.
 
 ## Files Created
 
 ### 1. MainScreenTest.kt
-**Location:** `/Users/maxwatermolen/source/Flock-You-Android/app/src/androidTest/java/com/flockyou/ui/screens/MainScreenTest.kt`
+**Location:** `/Users/maxwatermolen/source/Flock-Sucker-Android/app/src/androidTest/java/com/inversionlabs/flocksucker/ui/screens/MainScreenTest.kt`
 
 **Size:** 863 lines, ~29KB
 
@@ -34,7 +34,7 @@ Comprehensive end-to-end test suite for the MainScreen component of the Flock Yo
 
 ### Run All Tests (Command Line)
 ```bash
-cd /Users/maxwatermolen/source/Flock-You-Android
+cd /Users/maxwatermolen/source/Flock-Sucker-Android
 
 # For sideload flavor (default)
 ./gradlew connectedSideloadDebugAndroidTest --tests "com.inversionlabs.flocksucker.ui.screens.MainScreenTest"

@@ -1,6 +1,6 @@
 # OEM Customization Directory
 
-This directory contains resources for OEM partners to customize the Flock You application with their own branding.
+This directory contains resources for OEM partners to customize the Flock-Sucker application with their own branding.
 
 ## Directory Structure
 

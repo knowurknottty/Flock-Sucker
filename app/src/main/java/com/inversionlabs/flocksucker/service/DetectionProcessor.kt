@@ -709,7 +709,7 @@ internal fun ScanningService.alertUserOfCorrelation(correlation: com.inversionla
         // Create high-priority alert channel if needed
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val alertChannel = NotificationChannel(
-                "flockyou_correlation_alert",
+                "flocksucker_correlation_alert",
                 "Correlation Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
@@ -729,7 +729,7 @@ internal fun ScanningService.alertUserOfCorrelation(correlation: com.inversionla
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, "flockyou_correlation_alert")
+        val notification = NotificationCompat.Builder(this, "flocksucker_correlation_alert")
             .setSmallIcon(R.drawable.ic_warning)
             .setContentTitle("CRITICAL: ${correlation.correlationType.displayName}")
             .setContentText(correlation.primaryThreatIndicator)

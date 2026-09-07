@@ -196,11 +196,11 @@ Behavioral detection rules with conditions:
 
 ## Related Files
 
-- **Implementation**: `/app/src/main/java/com/flockyou/ui/screens/AllDetectionsScreen.kt`
-- **View Model**: `/app/src/main/java/com/flockyou/ui/screens/RuleSettingsViewModel.kt`
-- **Data Models**: `/app/src/main/java/com/flockyou/data/RuleAndNotificationSettings.kt`
-- **Test Data Factory**: `/app/src/androidTest/java/com/flockyou/utils/TestDataFactory.kt`
-- **Test Helpers**: `/app/src/androidTest/java/com/flockyou/utils/TestHelpers.kt`
+- **Implementation**: `/app/src/main/java/com/inversionlabs/flocksucker/ui/screens/AllDetectionsScreen.kt`
+- **View Model**: `/app/src/main/java/com/inversionlabs/flocksucker/ui/screens/RuleSettingsViewModel.kt`
+- **Data Models**: `/app/src/main/java/com/inversionlabs/flocksucker/data/RuleAndNotificationSettings.kt`
+- **Test Data Factory**: `/app/src/androidTest/java/com/inversionlabs/flocksucker/utils/TestDataFactory.kt`
+- **Test Helpers**: `/app/src/androidTest/java/com/inversionlabs/flocksucker/utils/TestHelpers.kt`
 
 ## Test Statistics
 

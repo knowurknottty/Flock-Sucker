@@ -1,6 +1,6 @@
-# Flock You Android - Comprehensive E2E Test Suite
+# Flock-Sucker Android - Comprehensive E2E Test Suite
 
-This directory contains comprehensive end-to-end (E2E) tests for the Flock You Android application, with a focus on OEM readiness, security features, privacy controls, and detection capabilities.
+This directory contains comprehensive end-to-end (E2E) tests for the Flock-Sucker Android application, with a focus on OEM readiness, security features, privacy controls, and detection capabilities.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The test suite validates all critical functionality required for production depl
 
 ```
 androidTest/
-├── java/com/flockyou/
+├── java/com/inversionlabs/flocksucker/
 │   ├── oem/
 │   │   └── OemReadinessE2ETest.kt         # OEM features & white-labeling
 │   ├── security/

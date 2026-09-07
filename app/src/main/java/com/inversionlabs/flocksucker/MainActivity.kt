@@ -109,7 +109,7 @@ class MainActivity : FragmentActivity() {
 
     // SharedPreferences for Getting Started dialog
     private val prefs: SharedPreferences by lazy {
-        getSharedPreferences("flockyou_prefs", Context.MODE_PRIVATE)
+        getSharedPreferences("flocksucker_prefs", Context.MODE_PRIVATE)
     }
 
     private val PREF_GETTING_STARTED_SHOWN = "getting_started_shown"

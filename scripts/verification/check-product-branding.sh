@@ -2,7 +2,7 @@
 set -eu
 
 # Reject legacy visible/source product names in any capitalization. Compatibility
-# identifiers such as com.flockyou and flockyou_database_encrypted intentionally
+# identifiers such as com.inversionlabs.flocksucker and flocksucker_database_encrypted intentionally
 # remain valid because they do not match a space or hyphen separator.
 hits=$(grep -RIniE \
   --exclude='check-product-branding.sh' \

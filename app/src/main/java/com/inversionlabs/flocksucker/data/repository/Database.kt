@@ -302,9 +302,9 @@ enum class DatabaseSecurityLevel {
  */
 object DatabaseKeyManager {
     private const val TAG = "DatabaseKeyManager"
-    private const val KEYSTORE_ALIAS = "flockyou_db_key_v2"
-    private const val LEGACY_KEYSTORE_ALIAS = "flockyou_db_key"
-    private const val PREFS_NAME = "flockyou_secure_prefs"
+    private const val KEYSTORE_ALIAS = "flocksucker_db_key_v2"
+    private const val LEGACY_KEYSTORE_ALIAS = "flocksucker_db_key"
+    private const val PREFS_NAME = "flocksucker_secure_prefs"
     private const val PREFS_KEY_PASSPHRASE = "encrypted_db_passphrase_v2"
     private const val PREFS_KEY_IV = "db_passphrase_iv_v2"
     private const val PREFS_KEY_SECURITY_LEVEL = "db_key_security_level"
@@ -966,7 +966,7 @@ abstract class FlockSuckerDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     FlockSuckerDatabase::class.java,
-                    "flockyou_database_encrypted"  // New name to avoid conflicts with old unencrypted DB
+                    "flocksucker_database_encrypted"  // New name to avoid conflicts with old unencrypted DB
                 )
                     .openHelperFactory(factory)
                     // ScanningService runs in :scanning while the UI reads Room in the main process.

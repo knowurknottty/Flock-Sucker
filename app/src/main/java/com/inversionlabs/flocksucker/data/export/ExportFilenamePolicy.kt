@@ -14,7 +14,7 @@ internal object ExportFilenamePolicy {
         extension: String,
         instant: Instant = Instant.now(),
         zoneId: ZoneId = ZoneId.systemDefault(),
-    ): String = "flockyou-detections_${timestampFormatter.format(instant.atZone(zoneId))}.$extension"
+    ): String = "flocksucker-detections_${timestampFormatter.format(instant.atZone(zoneId))}.$extension"
 
     /**
      * Atomically create a unique cache file. The timestamp remains operator-readable while
@@ -27,6 +27,6 @@ internal object ExportFilenamePolicy {
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): File {
         val timestamp = timestampFormatter.format(instant.atZone(zoneId))
-        return File.createTempFile("flockyou-detections_${timestamp}_", ".$extension", directory)
+        return File.createTempFile("flocksucker-detections_${timestamp}_", ".$extension", directory)
     }
 }

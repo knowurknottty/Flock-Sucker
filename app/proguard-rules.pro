@@ -1,5 +1,5 @@
 # ============================================================
-# Flock-You ProGuard Rules - COMPREHENSIVE
+# Flock-Sucker ProGuard Rules - COMPREHENSIVE
 # ============================================================
 # This file ensures all app classes are protected from obfuscation
 # that would break functionality (IPC, reflection, serialization)

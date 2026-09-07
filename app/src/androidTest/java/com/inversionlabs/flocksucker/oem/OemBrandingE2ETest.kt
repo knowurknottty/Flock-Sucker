@@ -347,7 +347,7 @@ class OemBrandingE2ETest {
     @Test
     fun branding_noHardcodedBrandInStrings() {
         // This is a sanity check - OEM partners should verify manually
-        // that they can replace all "Flock You" references with their brand
+        // that they can replace all "Flock-Sucker" references with their brand
 
         val appName = context.getString(R.string.app_name)
         val description = context.getString(R.string.app_description)

@@ -27,7 +27,7 @@ class ProductBrandingRegressionTest {
         val buildGradle = File("build.gradle.kts").readText()
         assertTrue(buildGradle.contains("namespace = \"com.inversionlabs.flocksucker\""))
         assertTrue(buildGradle.contains("applicationId = \"com.inversionlabs.flocksucker\""))
-        assertFalse(buildGradle.contains("com.flockyou"))
+        assertFalse(buildGradle.contains("com.flocksucker"))
 
         val strings = visibleSources.first().readText()
         assertTrue(strings.contains("Flock-Sucker"))

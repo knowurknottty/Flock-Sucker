@@ -17,7 +17,7 @@ class BootReceiver : BroadcastReceiver() {
     
     companion object {
         private const val TAG = "BootReceiver"
-        private const val PREFS_NAME = "flockyou_prefs"
+        private const val PREFS_NAME = "flocksucker_prefs"
         private const val KEY_SERVICE_ENABLED = "service_enabled"
         private const val KEY_AUTO_START_ON_BOOT = "auto_start_on_boot"
         

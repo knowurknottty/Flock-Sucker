@@ -16,7 +16,7 @@
 
 ### Option 2: Command Line
 ```bash
-cd /Users/maxwatermolen/source/Flock-You-Android
+cd /Users/maxwatermolen/source/Flock-Sucker-Android
 
 # Run all MainScreen tests
 ./gradlew connectedAndroidTest --tests "com.inversionlabs.flocksucker.ui.screens.MainScreenTest"

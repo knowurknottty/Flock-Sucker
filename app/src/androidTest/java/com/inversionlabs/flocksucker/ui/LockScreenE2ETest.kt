@@ -80,7 +80,7 @@ class LockScreenE2ETest {
     fun lockScreen_displaysTitle() {
         setLockScreenContent()
 
-        composeTestRule.onNodeWithText("Flock You is Locked", substring = true, ignoreCase = true)
+        composeTestRule.onNodeWithText("Flock-Sucker is Locked", substring = true, ignoreCase = true)
             .assertExists()
     }
 

@@ -401,7 +401,7 @@ adb shell pm grant com.inversionlabs.flocksucker android.permission.POST_NOTIFIC
 - **OEM Integration Guide**: `/OEM_INTEGRATION.md`
 - **Build Configuration**: `/app/build.gradle.kts`
 - **System Integration Files**: `/system/` directory
-- **Test Utilities**: `/app/src/androidTest/java/com/flockyou/utils/`
+- **Test Utilities**: `/app/src/androidTest/java/com/inversionlabs/flocksucker/utils/`
 
 ## Contributing
 

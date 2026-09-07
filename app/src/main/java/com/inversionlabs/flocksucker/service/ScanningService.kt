@@ -78,7 +78,7 @@ class ScanningService : Service() {
         private const val BLE_EVIDENCE_TAG = "BleEvidence"
         private const val NOTIFICATION_ID = 1001
         internal const val SATELLITE_CONNECTION_NOTIF_ID = 9999
-        internal const val CHANNEL_ID = "flockyou_scanning"
+        internal const val CHANNEL_ID = "flocksucker_scanning"
 
         // Delegations to ScanningServiceState for backward compatibility.
         // New code should use ScanningServiceState directly.

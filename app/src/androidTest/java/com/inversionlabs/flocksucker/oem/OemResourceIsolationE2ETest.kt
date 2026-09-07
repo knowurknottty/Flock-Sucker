@@ -41,7 +41,7 @@ class OemResourceIsolationE2ETest {
     @Test
     fun isolation_databaseIsAppPrivate() {
         // Verify database is in app-private directory
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         assertTrue(
             "Database must be in app-private directory",
@@ -58,7 +58,7 @@ class OemResourceIsolationE2ETest {
     @Test
     fun isolation_databasePathIncludesPackageName() {
         // Verify database path includes package name for isolation
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
         val packageName = context.packageName
 
         assertTrue(
@@ -70,7 +70,7 @@ class OemResourceIsolationE2ETest {
     @Test
     fun isolation_databaseIsEncrypted() {
         // Verify database uses encryption for multi-tenant security
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         assertTrue(
             "Database name must indicate encryption",
@@ -81,7 +81,7 @@ class OemResourceIsolationE2ETest {
     @Test
     fun isolation_multipleDatabasesDoNotConflict() {
         // Verify different database files can coexist
-        val db1 = context.getDatabasePath("flockyou_database_encrypted")
+        val db1 = context.getDatabasePath("flocksucker_database_encrypted")
         val db2 = context.getDatabasePath("test_database")
 
         assertNotEquals(
@@ -405,7 +405,7 @@ class OemResourceIsolationE2ETest {
     @Test
     fun isolation_databaseEncryptionPreventsLeakage() {
         // Verify database encryption adds additional isolation layer
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
 
         assertTrue(
             "Database encryption prevents data leakage between OEMs",
@@ -424,7 +424,7 @@ class OemResourceIsolationE2ETest {
         TestHelpers.clearAppData(context)
 
         // Verify databases are cleared
-        val dbPath = context.getDatabasePath("flockyou_database_encrypted")
+        val dbPath = context.getDatabasePath("flocksucker_database_encrypted")
         assertFalse(
             "Database should be deleted after clearAppData",
             dbPath.exists()

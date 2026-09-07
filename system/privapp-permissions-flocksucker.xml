@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Privileged permission whitelist for Flock You when installed as a system app.
+    Privileged permission whitelist for Flock-Sucker when installed as a system app.
 
     This file should be placed in:
-    /system/etc/permissions/privapp-permissions-flockyou.xml
+    /system/etc/permissions/privapp-permissions-flocksucker.xml
 
     or for newer Android versions:
-    /system_ext/etc/permissions/privapp-permissions-flockyou.xml
+    /system_ext/etc/permissions/privapp-permissions-flocksucker.xml
 
     The APK should be installed to:
-    /system/priv-app/FlockYou/FlockYou.apk
+    /system/priv-app/FlockSucker/FlockSucker.apk
 
     or for newer Android versions:
-    /system_ext/priv-app/FlockYou/FlockYou.apk
+    /system_ext/priv-app/FlockSucker/FlockSucker.apk
 
     OEM PARTNERS: If you have configured a custom package name via OEM_PACKAGE_NAME
     in gradle.properties, you must regenerate this file:
@@ -23,7 +23,7 @@
 -->
 <permissions>
     <!-- PACKAGE_NAME_PLACEHOLDER: Update this to match your OEM_PACKAGE_NAME if customized -->
-    <privapp-permissions package="com.flockyou">
+    <privapp-permissions package="com.inversionlabs.flocksucker">
         <!-- Bluetooth privileged: Bypass BLE duty cycling for continuous scanning -->
         <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
 

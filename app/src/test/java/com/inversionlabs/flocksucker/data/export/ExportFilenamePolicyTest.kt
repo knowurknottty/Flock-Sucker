@@ -18,7 +18,7 @@ class ExportFilenamePolicyTest {
         val instant = Instant.parse("2026-08-18T16:00:01Z")
 
         assertEquals(
-            "flockyou-detections_2026-08-18_16-00-01.geojson",
+            "flocksucker-detections_2026-08-18_16-00-01.geojson",
             ExportFilenamePolicy.suggestedFilename("geojson", instant, ZoneOffset.UTC),
         )
     }
@@ -41,7 +41,7 @@ class ExportFilenamePolicyTest {
 
             assertEquals(200, files.map { it.name }.toSet().size)
             assertTrue(files.all { it.exists() })
-            assertTrue(files.all { it.name.startsWith("flockyou-detections_2026-08-18_16-00-01_") })
+            assertTrue(files.all { it.name.startsWith("flocksucker-detections_2026-08-18_16-00-01_") })
             assertTrue(files.all { it.name.endsWith(".csv") })
         } finally {
             directory.deleteRecursively()

@@ -39,7 +39,7 @@ class ExportDetectionsUseCase @Inject constructor(
 ) {
     companion object {
         private const val TAG = "ExportDetectionsUseCase"
-        private const val EXPORT_KEY_ALIAS = "flockyou_export_key"
+        private const val EXPORT_KEY_ALIAS = "flocksucker_export_key"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val GCM_IV_LENGTH = 12
         private const val GCM_TAG_LENGTH = 128

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Default runtime permissions for Flock You on first boot.
+    Default runtime permissions for Flock-Sucker on first boot.
 
     This file pre-grants runtime permissions so users don't need to
     manually grant them after installing. This is optional but recommended
     for OEM/system app deployments.
 
     Installation path:
-    /system_ext/etc/default-permissions/default-permissions-flockyou.xml
+    /system_ext/etc/default-permissions/default-permissions-flocksucker.xml
 
     Note: This requires the ROM to support default permission grants.
     GrapheneOS and most AOSP-based ROMs support this.
@@ -21,7 +21,7 @@
 -->
 <exceptions>
     <!-- PACKAGE_NAME_PLACEHOLDER: Update this to match your OEM_PACKAGE_NAME if customized -->
-    <exception package="com.flockyou">
+    <exception package="com.inversionlabs.flocksucker">
         <!-- Location permissions for WiFi/cellular scanning -->
         <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false"/>
         <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false"/>
