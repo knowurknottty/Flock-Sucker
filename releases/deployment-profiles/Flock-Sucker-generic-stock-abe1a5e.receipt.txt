@@ -1,0 +1,8 @@
+Flock-Sucker deployment artifact receipt
+source_sha=abe1a5e97cb0272a19806df3ee265897390cc903
+profile=generic-stock
+install_mode=sideload
+sha256=f7d246896e9f9d66f9741f30999a16ac0968fa9a289151e124cf4bff2c26ed08
+unit_tests_tests_failures_errors_skipped=868/0/0/0
+package: name='com.flockyou.debug' versionCode='1' versionName='1.0.0-debug' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+sdkVersion:'26'
