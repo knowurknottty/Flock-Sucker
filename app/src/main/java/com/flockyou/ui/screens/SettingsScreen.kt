@@ -72,6 +72,7 @@ fun SettingsScreen(
     val isOuiUpdating by viewModel.isOuiUpdating.collectAsStateWithLifecycle()
     // Detection settings - persisted via DataStore
     val detectionSettings by viewModel.detectionSettings.collectAsStateWithLifecycle()
+    val scanSettings by viewModel.scanSettings.collectAsStateWithLifecycle()
     var showScanSettings by remember { mutableStateOf(false) }
     var batteryOptimizationIgnored by remember {
         mutableStateOf(isBatteryOptimizationIgnored(context))
@@ -195,6 +196,38 @@ fun SettingsScreen(
                             detectionSettings.enabledUltrasonicPatterns.size,
                     isScanning = uiState.isScanning
                 )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.setFlockBoostEnabled(!scanSettings.flockBoostEnabled) }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Flock Boost",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Maximum-yield scan timing and aggressive BLE. Higher battery and thermal load.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = scanSettings.flockBoostEnabled,
+                            onCheckedChange = viewModel::setFlockBoostEnabled
+                        )
+                    }
+                }
             }
 
             // 2. ProtectionPresetSelector chip row

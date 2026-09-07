@@ -330,6 +330,9 @@ class GnssSatelliteMonitor(
     private val _measurements = MutableStateFlow<GnssMeasurementData?>(null)
     val measurements: StateFlow<GnssMeasurementData?> = _measurements.asStateFlow()
 
+    private val _measurementEvidence = MutableStateFlow(GnssMeasurementEvidence())
+    val measurementEvidence: StateFlow<GnssMeasurementEvidence> = _measurementEvidence.asStateFlow()
+
     // Callbacks
     private var gnssStatusCallback: GnssStatus.Callback? = null
     private var gnssMeasurementsCallback: GnssMeasurementsEvent.Callback? = null
@@ -714,6 +717,7 @@ class GnssSatelliteMonitor(
 
         Log.i(TAG, "Starting GNSS Satellite Monitor")
         isMonitoring = true
+        _measurementEvidence.value = GnssMeasurementEvidence()
 
         try {
             registerGnssStatusCallback()
@@ -841,7 +845,12 @@ class GnssSatelliteMonitor(
                     GnssMeasurementsEvent.Callback.STATUS_LOCATION_DISABLED -> "LOCATION_DISABLED"
                     else -> "UNKNOWN($status)"
                 }
-                Log.d(TAG, "GNSS measurements status: $statusStr")
+                _measurementEvidence.value = GnssMeasurementEvidenceReducer.statusChanged(
+                    _measurementEvidence.value,
+                    status = statusStr,
+                    timestampMs = System.currentTimeMillis()
+                )
+                Log.i(TAG, "GNSS measurement callback status: ${_measurementEvidence.value}")
 
                 if (status == GnssMeasurementsEvent.Callback.STATUS_READY) {
                     addTimelineEvent(
@@ -858,11 +867,26 @@ class GnssSatelliteMonitor(
                 gnssMeasurementsCallback!!,
                 mainHandler
             )
-            Log.i(TAG, "GNSS measurements callback registered: $registered")
+            _measurementEvidence.value = GnssMeasurementEvidenceReducer.registrationResult(
+                _measurementEvidence.value,
+                registered = registered,
+                timestampMs = System.currentTimeMillis(),
+                error = if (registered) null else "registerGnssMeasurementsCallback returned false"
+            )
+            if (!registered) gnssMeasurementsCallback = null
+            Log.i(TAG, "GNSS measurement registration evidence: ${_measurementEvidence.value}")
         } catch (e: SecurityException) {
+            _measurementEvidence.value = GnssMeasurementEvidenceReducer.registrationResult(
+                _measurementEvidence.value, false, System.currentTimeMillis(),
+                "SecurityException: ${e.message}"
+            )
             Log.e(TAG, "Permission denied for GNSS measurements callback", e)
             gnssMeasurementsCallback = null
         } catch (e: Exception) {
+            _measurementEvidence.value = GnssMeasurementEvidenceReducer.registrationResult(
+                _measurementEvidence.value, false, System.currentTimeMillis(),
+                "${e::class.java.simpleName}: ${e.message}"
+            )
             Log.e(TAG, "Failed to register GNSS measurements callback", e)
             gnssMeasurementsCallback = null
         }
@@ -938,7 +962,7 @@ class GnssSatelliteMonitor(
             hasFix = usedInFix >= MIN_SATELLITES_FOR_FIX,
             spoofingRiskLevel = spoofingRisk,
             jammingDetected = jammingDetected,
-            hasRawMeasurements = gnssMeasurementsCallback != null
+            hasRawMeasurements = _measurementEvidence.value.hasDeliveredMeasurements
         )
 
         _satellites.value = satelliteList
@@ -959,18 +983,46 @@ class GnssSatelliteMonitor(
         var hasPseudorange = false
         var hasCarrierPhase = false
         var hasDoppler = false
+        var codeLockedCount = 0
+        var validAdrCount = 0
+        var carrierFrequencyCount = 0
+        var basebandCn0Count = 0
+        var agcCount = 0
         val multipathIndicators = mutableListOf<Int>()
 
         for (m in measurements) {
             val state = m.state
-            if (state and GnssMeasurement.STATE_CODE_LOCK != 0) hasPseudorange = true
-            if (state and GnssMeasurement.STATE_TOW_DECODED != 0) hasDoppler = true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (m.accumulatedDeltaRangeState and GnssMeasurement.ADR_STATE_VALID != 0) {
-                    hasCarrierPhase = true
-                }
+            if (state and GnssMeasurement.STATE_CODE_LOCK != 0) {
+                hasPseudorange = true
+                codeLockedCount++
             }
+            if (state and GnssMeasurement.STATE_TOW_DECODED != 0) hasDoppler = true
+            if (m.accumulatedDeltaRangeState and GnssMeasurement.ADR_STATE_VALID != 0) {
+                hasCarrierPhase = true
+                validAdrCount++
+            }
+            if (m.hasCarrierFrequencyHz()) carrierFrequencyCount++
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && m.hasBasebandCn0DbHz()) {
+                basebandCn0Count++
+            }
+            @Suppress("DEPRECATION")
+            if (m.hasAutomaticGainControlLevelDb()) agcCount++
             multipathIndicators.add(m.multipathIndicator)
+        }
+
+        _measurementEvidence.value = GnssMeasurementEvidenceReducer.measurementBatch(
+            _measurementEvidence.value,
+            timestampMs = System.currentTimeMillis(),
+            measurementCount = measurements.size,
+            codeLockedCount = codeLockedCount,
+            validAdrCount = validAdrCount,
+            carrierFrequencyCount = carrierFrequencyCount,
+            basebandCn0Count = basebandCn0Count,
+            agcCount = agcCount
+        )
+        if (_measurementEvidence.value.deliveryCount == 1L ||
+            _measurementEvidence.value.deliveryCount % 100L == 0L) {
+            Log.i(TAG, "GNSS measurement delivery evidence: ${_measurementEvidence.value}")
         }
 
         // Track clock drift accumulation for enriched analysis

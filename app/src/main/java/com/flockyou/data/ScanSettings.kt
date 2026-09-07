@@ -108,7 +108,8 @@ data class ScanSettings(
     val cellularScanIntervalSeconds: Int = 3,    // Reduced from 5s for more frequent scanning
     // Battery-adaptive mode settings
     val batteryAdaptiveMode: String = "balanced",
-    val autoBatteryAdaptive: Boolean = true // When true, automatically adjust based on battery level
+    val autoBatteryAdaptive: Boolean = true, // When true, automatically adjust based on battery level
+    val flockBoostEnabled: Boolean = false
 ) {
     /**
      * Get the current battery mode setting.
@@ -200,6 +201,7 @@ class ScanSettingsRepository @Inject constructor(
         // Battery-adaptive mode
         val BATTERY_ADAPTIVE_MODE = stringPreferencesKey("battery_adaptive_mode")
         val AUTO_BATTERY_ADAPTIVE = booleanPreferencesKey("auto_battery_adaptive")
+        val FLOCK_BOOST_ENABLED = booleanPreferencesKey("flock_boost_enabled")
     }
     
     val settings: Flow<ScanSettings> = context.dataStore.data.map { preferences ->
@@ -219,7 +221,8 @@ class ScanSettingsRepository @Inject constructor(
             satelliteScanIntervalSeconds = preferences[PreferencesKeys.SATELLITE_SCAN_INTERVAL] ?: defaults.satelliteScanIntervalSeconds,
             cellularScanIntervalSeconds = preferences[PreferencesKeys.CELLULAR_SCAN_INTERVAL] ?: defaults.cellularScanIntervalSeconds,
             batteryAdaptiveMode = preferences[PreferencesKeys.BATTERY_ADAPTIVE_MODE] ?: defaults.batteryAdaptiveMode,
-            autoBatteryAdaptive = preferences[PreferencesKeys.AUTO_BATTERY_ADAPTIVE] ?: defaults.autoBatteryAdaptive
+            autoBatteryAdaptive = preferences[PreferencesKeys.AUTO_BATTERY_ADAPTIVE] ?: defaults.autoBatteryAdaptive,
+            flockBoostEnabled = preferences[PreferencesKeys.FLOCK_BOOST_ENABLED] ?: defaults.flockBoostEnabled
         )
     }
     
@@ -318,6 +321,12 @@ class ScanSettingsRepository @Inject constructor(
     suspend fun setAutoBatteryAdaptive(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.AUTO_BATTERY_ADAPTIVE] = enabled
+        }
+    }
+
+    suspend fun setFlockBoostEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FLOCK_BOOST_ENABLED] = enabled
         }
     }
 }
