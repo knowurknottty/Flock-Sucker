@@ -24,7 +24,9 @@ class CameraSignaturesTest {
         // Reolink
         assertEquals("Reolink", CameraSignatures.vendorForMac("B0:B5:49:00:00:01")?.vendor)
         // Verkada
-        assertEquals("Verkada", CameraSignatures.vendorForMac("64:16:F0:12:34:56")?.vendor)
+        assertEquals("Verkada", CameraSignatures.vendorForMac("E0:A7:00:12:34:56")?.vendor)
+        assertNull("Apple OUI must never be attributed to Verkada", CameraSignatures.vendorForMac("8C:85:90:12:34:56"))
+        assertNull("Huawei OUI must never be attributed to Verkada", CameraSignatures.vendorForMac("64:16:F0:12:34:56"))
         // Ubiquiti UniFi Protect
         assertEquals("Ubiquiti UniFi Protect", CameraSignatures.vendorForMac("78:8A:20:00:00:99")?.vendor)
     }
@@ -126,7 +128,7 @@ class CameraSignaturesTest {
             "44:47:CC" to DeviceType.HIDDEN_CAMERA,
             "B8:A4:4F" to DeviceType.CCTV_CAMERA,
             "B0:B5:49" to DeviceType.WYZE_CAMERA,
-            "64:16:F0" to DeviceType.CCTV_CAMERA,
+            "E0:A7:00" to DeviceType.CCTV_CAMERA,
             "0C:80:63" to DeviceType.RING_DOORBELL,
             "58:2D:34" to DeviceType.BLINK_CAMERA
         )
