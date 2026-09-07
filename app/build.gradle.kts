@@ -31,6 +31,29 @@ val oemFeatureTorEnabled = getOemFeatureFlag("OEM_FEATURE_TOR_ENABLED")
 val oemFeatureMapEnabled = getOemFeatureFlag("OEM_FEATURE_MAP_ENABLED")
 val oemFeatureShannonDiagEnabled = getOemFeatureFlag("OEM_FEATURE_SHANNON_DIAG_ENABLED")
 
+// ================================================================
+// Deployment Profile Configuration
+// ================================================================
+// Four end-user APK profiles share the sideload install mode while embedding
+// truthful build identity and measured/default tuning. Runtime privilege probes
+// remain authoritative; a root-targeted build never assumes root is present.
+data class DeploymentBuildProfile(
+    val id: String,
+    val rootTargeted: Boolean,
+    val tongaTargeted: Boolean,
+    val forceConstrainedDefaults: Boolean,
+    val defaultFlockBoost: Boolean
+)
+
+val deploymentProfileId = project.findProperty("DEPLOYMENT_PROFILE")?.toString() ?: "generic-stock"
+val deploymentProfile = when (deploymentProfileId) {
+    "generic-stock" -> DeploymentBuildProfile("generic-stock", false, false, false, false)
+    "generic-root" -> DeploymentBuildProfile("generic-root", true, false, false, true)
+    "tonga-stock" -> DeploymentBuildProfile("tonga-stock", false, true, true, true)
+    "tonga-root" -> DeploymentBuildProfile("tonga-root", true, true, true, true)
+    else -> error("Unsupported DEPLOYMENT_PROFILE=$deploymentProfileId; expected generic-stock, generic-root, tonga-stock, or tonga-root")
+}
+
 android {
     namespace = "com.flockyou"
     compileSdk = 37
@@ -40,7 +63,25 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = if (deploymentProfile.id == "generic-stock") {
+            "1.0.0"
+        } else {
+            "1.0.0-${deploymentProfile.id}"
+        }
+
+        buildConfigField("String", "DEPLOYMENT_PROFILE", "\"${deploymentProfile.id}\"")
+        buildConfigField("boolean", "TARGET_ROOTED", deploymentProfile.rootTargeted.toString())
+        buildConfigField("boolean", "TARGET_TONGA", deploymentProfile.tongaTargeted.toString())
+        buildConfigField("boolean", "FORCE_CONSTRAINED_DEFAULTS", deploymentProfile.forceConstrainedDefaults.toString())
+        buildConfigField("boolean", "DEFAULT_FLOCK_BOOST", deploymentProfile.defaultFlockBoost.toString())
+
+        // Tonga / Moto G Power (2022) is a verified arm64-v8a target. Restricting
+        // the device-specialized artifacts avoids carrying irrelevant native ABIs.
+        if (deploymentProfile.tongaTargeted) {
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
+        }
 
         testInstrumentationRunner = "com.flockyou.HiltTestRunner"
         vectorDrawables {
