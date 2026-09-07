@@ -2000,7 +2000,7 @@ class SatelliteMonitor(
      */
     @SuppressLint("MissingPermission")
     private fun initializeSatelliteManagerCallbacks(satelliteManager: Any, managerClass: Class<*>) {
-        val executor = context.mainExecutor
+        val executor = ContextCompat.getMainExecutor(context)
 
         // Try to call requestIsEnabled to check if satellite is enabled
         tryQuerySatelliteEnabled(satelliteManager, managerClass, executor)

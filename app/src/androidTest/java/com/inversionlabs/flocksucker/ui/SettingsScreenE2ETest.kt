@@ -7,6 +7,7 @@ import com.inversionlabs.flocksucker.MainActivity
 import com.inversionlabs.flocksucker.data.NukeSettingsRepository
 import com.inversionlabs.flocksucker.data.PrivacySettingsRepository
 import com.inversionlabs.flocksucker.data.SecuritySettingsRepository
+import com.inversionlabs.flocksucker.utils.MainActivityReadyRule
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -40,6 +41,9 @@ class SettingsScreenE2ETest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
+    val mainActivityReadyRule = MainActivityReadyRule()
+
+    @get:Rule(order = 2)
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Inject

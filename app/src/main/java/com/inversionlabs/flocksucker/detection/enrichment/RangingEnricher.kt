@@ -1,11 +1,15 @@
 package com.inversionlabs.flocksucker.detection.enrichment
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.wifi.rtt.RangingRequest
 import android.net.wifi.rtt.RangingResult
 import android.net.wifi.rtt.RangingResultCallback
 import android.net.wifi.rtt.WifiRttManager
 import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -52,8 +56,24 @@ class RangingEnricher(private val context: Context?) {
     suspend fun rangeScanResults(
         scanResults: List<android.net.wifi.ScanResult>
     ): List<RttEvidence> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return emptyList()
+        return rangeScanResultsApi28(scanResults)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private suspend fun rangeScanResultsApi28(
+        scanResults: List<android.net.wifi.ScanResult>
+    ): List<RttEvidence> {
         val manager = rttManager ?: return emptyList()
         val ctx = context ?: return emptyList()
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return emptyList()
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return emptyList()
+        }
         if (!manager.isAvailable) return emptyList()
 
         val responders = scanResults.filter { is80211mcResponder(it) }

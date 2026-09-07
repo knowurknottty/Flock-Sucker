@@ -180,7 +180,7 @@ The current engine manager supports:
 
 The native GGUF path is real runtime support, not a filename badge. The project pins llama.cpp as a submodule and exposes a `LocalLlmEngine` lifecycle with load/generate/unload/health semantics. A GGUF artifact is **not READY merely because the file exists**: readiness requires llama.cpp to load it and complete the engine self-test/inference path.
 
-The current Inversion Labs fine-tuned GGUF artifact is import-first when no direct resumable app-download URL is configured; users can import the hash-pinned artifact through the model workflow.
+The **preferred** local model is the Inversion Labs fine-tuned Gemma Q8_0 GGUF. Canonical source: `https://mega.nz/file/WzAiwIba#-lYBgLIkxmAgzmd_CXcKEjMIhuuYlvpfWFUeVXMnxlc`. It is import-first because the MEGA host page is not a direct resumable model payload; the app accepts it only after the pinned SHA-256/size contract verifies and llama.cpp completes a real load/inference readiness check.
 
 ## Flipper Zero integration
 

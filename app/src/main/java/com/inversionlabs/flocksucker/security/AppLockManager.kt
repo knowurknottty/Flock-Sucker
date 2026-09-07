@@ -11,6 +11,8 @@ import com.inversionlabs.flocksucker.data.LockMethod
 import com.inversionlabs.flocksucker.data.SecuritySettings
 import com.inversionlabs.flocksucker.data.SecuritySettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -294,6 +296,11 @@ class AppLockManager @Inject constructor(
         }
     }
 
+    /** Off-main wrapper for UI callers; PBKDF2 must never monopolize the main looper. */
+    suspend fun setPinAsync(pin: String): Boolean = withContext(Dispatchers.Default) {
+        setPin(pin)
+    }
+
     /**
      * Remove the current PIN.
      */
@@ -386,7 +393,7 @@ class AppLockManager @Inject constructor(
             }
 
             val salt = Base64.decode(storedSalt, Base64.NO_WRAP)
-            val inputHash = deriveKey(pin, salt)
+            val inputHash = withContext(Dispatchers.Default) { deriveKey(pin, salt) }
             val expectedHash = Base64.decode(storedHash, Base64.NO_WRAP)
 
             // Constant-time comparison to prevent timing attacks

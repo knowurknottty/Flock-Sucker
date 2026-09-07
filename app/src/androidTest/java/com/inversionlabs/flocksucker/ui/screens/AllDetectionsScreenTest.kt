@@ -1,9 +1,10 @@
 package com.inversionlabs.flocksucker.ui.screens
 
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.inversionlabs.flocksucker.data.*
+import com.inversionlabs.flocksucker.debug.HiltComposeTestActivity
 import com.inversionlabs.flocksucker.data.model.DeviceType
 import com.inversionlabs.flocksucker.utils.TestDataFactory
 import com.inversionlabs.flocksucker.utils.TestHelpers
@@ -43,7 +44,7 @@ class AllDetectionsScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
-    val composeTestRule = createComposeRule()
+    val composeTestRule = createAndroidComposeRule<HiltComposeTestActivity>()
 
     @Inject
     lateinit var ruleSettingsRepository: RuleSettingsRepository

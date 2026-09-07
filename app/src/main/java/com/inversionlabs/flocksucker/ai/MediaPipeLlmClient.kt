@@ -71,8 +71,14 @@ class MediaPipeLlmClient @Inject constructor(
          *   <uses-native-library android:name="libvndksupport.so" android:required="false" />
          *   <uses-native-library android:name="libOpenCL.so" android:required="false" />
          */
+        private fun deviceHardwareLabel(): String {
+            val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else "pre-S"
+            return "${Build.HARDWARE}/$soc"
+        }
+
         fun isGpuSupported(): Boolean {
-            Log.d(TAG, "Checking GPU support on device: ${Build.HARDWARE}/${Build.SOC_MODEL}")
+            val hardwareLabel = deviceHardwareLabel()
+            Log.d(TAG, "Checking GPU support on device: $hardwareLabel")
 
             // Check OpenCL availability
             if (!isOpenClAvailable) {
@@ -80,7 +86,7 @@ class MediaPipeLlmClient @Inject constructor(
                 return false
             }
 
-            Log.d(TAG, "GPU supported: OpenCL available on ${Build.HARDWARE}/${Build.SOC_MODEL}")
+            Log.d(TAG, "GPU supported: OpenCL available on $hardwareLabel")
             return true
         }
     }

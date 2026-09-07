@@ -22,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +55,7 @@ fun RfDetectionScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val debugExportSubject = stringResource(R.string.debug_export_subject)
 
     // Request fresh data when screen opens
     LaunchedEffect(Unit) {
@@ -104,7 +107,7 @@ fun RfDetectionScreen(
                                 val debugInfo = viewModel.exportAllDebugInfo()
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.debug_export_subject))
+                                    putExtra(Intent.EXTRA_SUBJECT, debugExportSubject)
                                     putExtra(Intent.EXTRA_TEXT, debugInfo)
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, "Export Debug Info"))
@@ -525,7 +528,7 @@ private fun RfSignalAnalysisCard(rfStatus: RfEnvironmentStatus) {
                     RfDetailRow("Surveillance Cameras", rfStatus.surveillanceCameras.toString())
                     RfDetailRow("Drones Detected", rfStatus.dronesDetected.toString())
 
-                    val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                    val dateFormat = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0])
                     RfDetailRow(
                         "Last Scan",
                         dateFormat.format(Date(rfStatus.lastScanTime))
@@ -775,7 +778,9 @@ private fun RfAnomaliesContent(
     anomalies: List<RfAnomaly>,
     onClear: (() -> Unit)? = null
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -977,7 +982,9 @@ private fun DronesContent(
     drones: List<DroneInfo>,
     isScanning: Boolean
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),

@@ -8,6 +8,7 @@ import com.inversionlabs.flocksucker.data.model.*
 import com.inversionlabs.flocksucker.data.repository.DetectionRepository
 import com.inversionlabs.flocksucker.service.ScanningService
 import com.inversionlabs.flocksucker.utils.TestDataFactory
+import com.inversionlabs.flocksucker.utils.MainActivityReadyRule
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -49,6 +50,9 @@ class MainScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
+    val mainActivityReadyRule = MainActivityReadyRule()
+
+    @get:Rule(order = 2)
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Inject

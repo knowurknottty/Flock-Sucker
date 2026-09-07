@@ -1,5 +1,6 @@
 package com.inversionlabs.flocksucker.ui
 
+import android.annotation.SuppressLint
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.app.KeyguardManager
@@ -241,6 +242,7 @@ class EmergencyAlertActivity : ComponentActivity() {
         backgroundAnimator?.cancel()
     }
 
+    @SuppressLint("MissingSuperCall")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // Prevent dismissal via back button - user must tap OK

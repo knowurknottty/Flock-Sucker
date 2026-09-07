@@ -15,14 +15,53 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.inversionlabs.flocksucker.data.model.*
 import com.inversionlabs.flocksucker.data.model.OuiEntry
 import kotlinx.coroutines.flow.Flow
+import net.zetetic.database.sqlcipher.SQLiteConnection
+import net.zetetic.database.sqlcipher.SQLiteDatabaseHook
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.util.Arrays
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+
+/**
+ * SQLCipher open policy shared by every Room instance in every process.
+ *
+ * SQLCipher 4.12 retains the passphrase byte-array reference inside its open helper, so callers
+ * must not zero the same array handed to the factory. We retain a dedicated copy for SQLCipher
+ * and immediately wipe the caller-owned temporary buffer.
+ */
+internal object SqlCipherOpenConfig {
+    const val BUSY_TIMEOUT_MS = 1_000L
+
+    private val hook = object : SQLiteDatabaseHook {
+        override fun preKey(connection: SQLiteConnection) = Unit
+
+        override fun postKey(connection: SQLiteConnection) {
+            val configuredTimeout = connection.executeForLong(
+                "PRAGMA busy_timeout=$BUSY_TIMEOUT_MS",
+                null,
+                null
+            )
+            Log.d("SqlCipherOpenConfig", "connection busy_timeout=${configuredTimeout}ms")
+        }
+    }
+
+    fun createFactory(sourcePassphrase: ByteArray): SupportOpenHelperFactory {
+        val retainedPassphrase = sourcePassphrase.copyOf()
+        return try {
+            SupportOpenHelperFactory(retainedPassphrase, hook, true)
+        } catch (error: Throwable) {
+            Arrays.fill(retainedPassphrase, 0.toByte())
+            throw error
+        } finally {
+            Arrays.fill(sourcePassphrase, 0.toByte())
+        }
+    }
+}
 
 /**
  * Type converters for Room database.
@@ -953,15 +992,12 @@ abstract class FlockSuckerDatabase : RoomDatabase() {
                 // Load SQLCipher native library
                 System.loadLibrary("sqlcipher")
 
-                // Get or create encryption passphrase
+                // Get or create encryption passphrase. SqlCipherOpenConfig gives SQLCipher its
+                // own retained copy and wipes this temporary source buffer immediately.
                 val passphrase = DatabaseKeyManager.getOrCreatePassphrase(context)
-                val factory = SupportOpenHelperFactory(passphrase)
+                val factory = SqlCipherOpenConfig.createFactory(passphrase)
 
-                // Clear passphrase from memory after factory creation
-                // The factory has already copied the passphrase internally
-                java.util.Arrays.fill(passphrase, 0.toByte())
-
-                Log.d(TAG, "Creating encrypted database")
+                Log.d(TAG, "Creating encrypted database (WAL, busy_timeout=${SqlCipherOpenConfig.BUSY_TIMEOUT_MS}ms)")
 
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
@@ -969,6 +1005,7 @@ abstract class FlockSuckerDatabase : RoomDatabase() {
                     "flocksucker_database_encrypted"  // New name to avoid conflicts with old unencrypted DB
                 )
                     .openHelperFactory(factory)
+                    .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     // ScanningService runs in :scanning while the UI reads Room in the main process.
                     // Without multi-instance invalidation, UI Flows can remain stale until service reconnect/stop.
                     .enableMultiInstanceInvalidation()

@@ -250,7 +250,9 @@ class MockWifiScanner : IWifiScanner {
      * use a wrapper class or Mockito/MockK instead.
      */
     private fun createMockScanResult(network: MockWifiNetwork): WifiScanResult {
-        val result = WifiScanResult()
+        val result = WifiScanResult::class.java.getDeclaredConstructor().apply {
+            isAccessible = true
+        }.newInstance()
 
         // Apply signal variation if enabled
         val rssiWithVariation = if (enableSignalVariation) {

@@ -233,7 +233,7 @@ class AiSettingsViewModel @Inject constructor(
         _selectedModelForDownload.value = null
     }
 
-    fun downloadModel(model: AiModel = _selectedModelForDownload.value ?: AiModel.RULE_BASED) {
+    fun downloadModel(model: AiModel = _selectedModelForDownload.value ?: AiModel.FLOCK_GEMMA_Q8_0) {
         viewModelScope.launch {
             // Guard against concurrent downloads
             if (_isDownloading.value) {

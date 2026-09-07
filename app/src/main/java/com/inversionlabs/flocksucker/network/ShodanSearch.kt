@@ -22,5 +22,5 @@ object ShodanSearch {
     }
 
     fun buildSearchUrl(detection: Detection): String =
-        SEARCH_BASE + URLEncoder.encode(buildKeywords(detection), StandardCharsets.UTF_8)
+        SEARCH_BASE + URLEncoder.encode(buildKeywords(detection), StandardCharsets.UTF_8.name())
 }

@@ -504,8 +504,10 @@ fun SecuritySettingsScreen(
         SetPinDialog(
             onDismiss = { showSetPinDialog = false },
             onPinSet = { pin ->
-                if (appLockManager.setPin(pin)) {
-                    showSetPinDialog = false
+                scope.launch {
+                    if (appLockManager.setPinAsync(pin)) {
+                        showSetPinDialog = false
+                    }
                 }
             }
         )
@@ -695,9 +697,19 @@ private fun ChangePinDialog(
                             if (confirmPin != newPin) {
                                 error = "PINs don't match"
                                 confirmPin = ""
-                            } else {
-                                appLockManager.setPin(newPin)
-                                onPinChanged()
+                            } else if (!isVerifying) {
+                                isVerifying = true
+                                scope.launch {
+                                    try {
+                                        if (appLockManager.setPinAsync(newPin)) {
+                                            onPinChanged()
+                                        } else {
+                                            error = "Unable to set PIN"
+                                        }
+                                    } finally {
+                                        isVerifying = false
+                                    }
+                                }
                             }
                         }
                     }

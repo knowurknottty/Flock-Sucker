@@ -6,8 +6,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.telephony.TelephonyManager
+import androidx.core.content.ContextCompat
 
 /**
  * Bluetooth Classic discovery + WiFi Information-Element fingerprinting.
@@ -81,7 +83,13 @@ object ClassicRadioEnricher {
         onDevice: (ClassicDevice) -> Unit
     ): BroadcastReceiver? {
         val a = adapter ?: return null
-        if (!a.isEnabled) return null
+        val permissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        }
+        if (!permissionGranted || !a.isEnabled) return null
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 if (intent?.action != android.bluetooth.BluetoothDevice.ACTION_FOUND) return
@@ -89,7 +97,7 @@ object ClassicRadioEnricher {
                     android.bluetooth.BluetoothDevice.EXTRA_DEVICE) ?: return
                 val rssi = intent.getShortExtra(
                     android.bluetooth.BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE)
-                onDevice(
+                val classicDevice = try {
                     ClassicDevice(
                         macAddress = device.address ?: return,
                         name = device.name,
@@ -97,12 +105,20 @@ object ClassicRadioEnricher {
                         rssi = if (rssi != Short.MIN_VALUE) rssi else null,
                         timestampMs = System.currentTimeMillis()
                     )
-                )
+                } catch (_: SecurityException) {
+                    return
+                }
+                onDevice(classicDevice)
             }
         }
         context.registerReceiver(receiver,
             IntentFilter(android.bluetooth.BluetoothDevice.ACTION_FOUND))
-        if (a.startDiscovery()) return receiver
+        val started = try {
+            a.startDiscovery()
+        } catch (_: SecurityException) {
+            false
+        }
+        if (started) return receiver
         runCatching { context.unregisterReceiver(receiver) }
         return null
     }

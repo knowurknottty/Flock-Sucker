@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.inversionlabs.flocksucker.MainActivity
 import com.inversionlabs.flocksucker.data.*
+import com.inversionlabs.flocksucker.utils.MainActivityReadyRule
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -40,6 +41,9 @@ class DetectionSettingsScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
+    val mainActivityReadyRule = MainActivityReadyRule()
+
+    @get:Rule(order = 2)
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Inject

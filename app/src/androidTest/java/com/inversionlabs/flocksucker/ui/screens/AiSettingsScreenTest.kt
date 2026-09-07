@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.inversionlabs.flocksucker.MainActivity
 import com.inversionlabs.flocksucker.data.*
+import com.inversionlabs.flocksucker.utils.MainActivityReadyRule
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -44,6 +45,9 @@ class AiSettingsScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
+    val mainActivityReadyRule = MainActivityReadyRule()
+
+    @get:Rule(order = 2)
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Inject
@@ -173,14 +177,14 @@ class AiSettingsScreenTest {
         navigateToAiSettings()
 
         // Model selection should always be visible
-        composeTestRule.onNode(hasText("Rule-Based Analysis", substring = true, ignoreCase = true))
+        composeTestRule.onNode(hasText(AiModel.FLOCK_GEMMA_Q8_0.displayName, substring = true, ignoreCase = true))
             .assertExists()
     }
 
     @Test
-    fun aiSettings_defaultModelIsRuleBased() = runTest {
+    fun aiSettings_defaultModelIsInversionLabsGemma() = runTest {
         val settings = aiSettingsRepository.settings.first()
-        assertEquals("Default model should be rule-based", "rule-based", settings.selectedModel)
+        assertEquals("Default model should be the Inversion Labs fine-tuned Gemma", AiModel.FLOCK_GEMMA_Q8_0.id, settings.selectedModel)
     }
 
     @Test
@@ -205,7 +209,7 @@ class AiSettingsScreenTest {
 
         // Click on model card to open selector
         composeTestRule.onNode(
-            hasText("Rule-Based Analysis", substring = true, ignoreCase = true) and hasClickAction()
+            hasText(AiModel.FLOCK_GEMMA_Q8_0.displayName, substring = true, ignoreCase = true) and hasClickAction()
         ).performClick()
         composeTestRule.waitForIdle()
 
@@ -222,7 +226,7 @@ class AiSettingsScreenTest {
 
         // Open model selector
         composeTestRule.onNode(
-            hasText("Rule-Based Analysis", substring = true, ignoreCase = true) and hasClickAction()
+            hasText(AiModel.FLOCK_GEMMA_Q8_0.displayName, substring = true, ignoreCase = true) and hasClickAction()
         ).performClick()
         composeTestRule.waitForIdle()
 
@@ -703,9 +707,9 @@ class AiSettingsScreenTest {
         aiSettingsRepository.setEnabled(true)
         composeTestRule.waitForIdle()
 
-        // With only rule-based (no download needed), should still work
+        // Preferred model remains selected even before its artifact is imported; runtime falls back safely.
         val settings = aiSettingsRepository.settings.first()
-        assertEquals("Should default to rule-based", "rule-based", settings.selectedModel)
+        assertEquals("Should prefer the Inversion Labs fine-tuned Gemma", AiModel.FLOCK_GEMMA_Q8_0.id, settings.selectedModel)
     }
 
     @Test

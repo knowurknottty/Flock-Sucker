@@ -1,8 +1,9 @@
 package com.inversionlabs.flocksucker.ui.screens
 
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.inversionlabs.flocksucker.debug.HiltComposeTestActivity
 import com.inversionlabs.flocksucker.scanner.flipper.*
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -41,7 +42,7 @@ class FlipperSettingsScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
-    val composeTestRule = createComposeRule()
+    val composeTestRule = createAndroidComposeRule<HiltComposeTestActivity>()
 
     @Inject
     lateinit var settingsRepository: FlipperSettingsRepository

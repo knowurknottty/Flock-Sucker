@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
@@ -95,7 +96,7 @@ class DuressAuthenticator @Inject constructor(
 
         // Check if entered PIN matches the duress PIN
         val duressSalt = Base64.decode(settings.duressPinSalt, Base64.NO_WRAP)
-        val enteredHash = deriveKey(enteredPin, duressSalt)
+        val enteredHash = withContext(Dispatchers.Default) { deriveKey(enteredPin, duressSalt) }
         val expectedHash = Base64.decode(settings.duressPinHash, Base64.NO_WRAP)
 
         // Constant-time comparison to prevent timing attacks
@@ -114,7 +115,7 @@ class DuressAuthenticator @Inject constructor(
         // Check if it's the normal PIN (to return correct result)
         if (normalPinHash != null && normalPinSalt != null) {
             val normalSalt = Base64.decode(normalPinSalt, Base64.NO_WRAP)
-            val normalEnteredHash = deriveKey(enteredPin, normalSalt)
+            val normalEnteredHash = withContext(Dispatchers.Default) { deriveKey(enteredPin, normalSalt) }
             val normalExpectedHash = Base64.decode(normalPinHash, Base64.NO_WRAP)
 
             val isNormalPin = MessageDigest.isEqual(normalEnteredHash, normalExpectedHash)
@@ -151,7 +152,7 @@ class DuressAuthenticator @Inject constructor(
         // Verify the duress PIN is different from the normal PIN
         if (normalPinHash != null && normalPinSalt != null) {
             val normalSalt = Base64.decode(normalPinSalt, Base64.NO_WRAP)
-            val pinHash = deriveKey(pin, normalSalt)
+            val pinHash = withContext(Dispatchers.Default) { deriveKey(pin, normalSalt) }
             val normalExpectedHash = Base64.decode(normalPinHash, Base64.NO_WRAP)
 
             val isSameAsNormal = MessageDigest.isEqual(pinHash, normalExpectedHash)
@@ -171,7 +172,7 @@ class DuressAuthenticator @Inject constructor(
             SecureRandom().nextBytes(salt)
 
             // Derive key using PBKDF2
-            val hash = deriveKey(pin, salt)
+            val hash = withContext(Dispatchers.Default) { deriveKey(pin, salt) }
 
             // Store the hash and salt
             nukeSettingsRepository.setDuressPinHash(

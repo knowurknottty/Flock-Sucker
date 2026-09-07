@@ -61,13 +61,20 @@ class DetectionDeduplicator @Inject constructor() {
         // Get appropriate throttle window based on protocol
         val throttleWindow = getThrottleWindow(detection)
 
-        val lastSeen = lastDetectionTimes[throttleKey]
-        if (lastSeen != null && (now - lastSeen) < throttleWindow) {
-            return true  // Throttle - too recent
+        // Admission for one exact radio identity must be atomic. ConcurrentHashMap
+        // protects individual operations, but a get/check/put sequence can admit
+        // multiple simultaneous observations for the same address. compute()
+        // serializes this compound decision per throttle key.
+        var throttled = false
+        lastDetectionTimes.compute(throttleKey) { _, lastSeen ->
+            if (lastSeen != null && (now - lastSeen) < throttleWindow) {
+                throttled = true
+                lastSeen
+            } else {
+                now
+            }
         }
-
-        // Update last seen time
-        lastDetectionTimes[throttleKey] = now
+        if (throttled) return true
 
         // Enforce cache size limit
         if (lastDetectionTimes.size > MAX_THROTTLE_CACHE_SIZE) {

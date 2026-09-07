@@ -36,7 +36,7 @@ object AndroidObservationAdapter {
                 scannerHealthGeneration = scannerHealthGeneration,
                 observedAddress = result.device.address,
                 addressType = readAddressType(result.device),
-                deviceName = result.device.name,
+                deviceName = readDeviceName(result.device),
                 rssi = result.rssi,
                 txPower = result.txPower.takeUnless { it == Int.MIN_VALUE },
                 advertisedTxPower = record?.txPowerLevel?.takeUnless { it == Int.MIN_VALUE },
@@ -56,6 +56,12 @@ object AndroidObservationAdapter {
                 accuracyMeters = location?.accuracy?.takeIf { location.hasAccuracy() }
             )
         )
+    }
+
+    private fun readDeviceName(device: BluetoothDevice): String? = try {
+        device.name
+    } catch (_: SecurityException) {
+        null
     }
 
     fun fromWifi(

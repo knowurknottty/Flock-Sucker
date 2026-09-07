@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -366,7 +367,7 @@ private fun UltrasonicMainStatusCard(
                 // Last scan time
                 if (status.lastScanTime > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                    val dateFormat = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0])
                     Text(
                         text = "Last scan: ${dateFormat.format(Date(status.lastScanTime))}",
                         style = MaterialTheme.typography.labelSmall,
@@ -606,7 +607,9 @@ private fun BeaconsContent(
     beacons: List<BeaconDetection>,
     isScanning: Boolean
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -872,7 +875,9 @@ private fun UltrasonicAnomaliesContent(
     anomalies: List<UltrasonicAnomaly>,
     onClear: (() -> Unit)? = null
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),

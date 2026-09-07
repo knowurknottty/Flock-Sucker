@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -283,7 +284,9 @@ private fun GnssStatusContent(
     gnssMeasurements: GnssMeasurementData?,
     isScanning: Boolean
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -1652,7 +1655,7 @@ private fun SatelliteApiDataCard(state: SatelliteConnectionState) {
                     ApiDataRow("signalStrength", state.signalStrength?.toString() ?: "null")
                     ApiDataRow("frequency", state.frequency?.let { "${it} MHz" } ?: "null")
                     ApiDataRow("isNTNBand", state.isNTNBand.toString())
-                    ApiDataRow("lastUpdate", SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+                    ApiDataRow("lastUpdate", SimpleDateFormat("HH:mm:ss.SSS", LocalConfiguration.current.locales[0])
                         .format(Date(state.lastUpdate)))
                     ApiDataRow("provider", state.provider.name)
 
@@ -2083,7 +2086,9 @@ private fun SatelliteAnomaliesContent(
     anomalies: List<SatelliteAnomaly>,
     onClear: (() -> Unit)? = null
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     // Group anomalies by category
     val anomaliesByCategory = remember(anomalies) {

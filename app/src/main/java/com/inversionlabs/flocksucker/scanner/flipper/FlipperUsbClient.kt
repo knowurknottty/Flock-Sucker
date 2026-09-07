@@ -10,6 +10,7 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -149,7 +150,12 @@ class FlipperUsbClient(private val context: Context) : AutoCloseable {
             // System broadcasts are delivered regardless of the export flag
             context.registerReceiver(usbStateReceiver, stateFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            context.registerReceiver(usbPermissionReceiver, permissionFilter)
+            ContextCompat.registerReceiver(
+                context,
+                usbPermissionReceiver,
+                permissionFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             context.registerReceiver(usbStateReceiver, stateFilter)
         }
 

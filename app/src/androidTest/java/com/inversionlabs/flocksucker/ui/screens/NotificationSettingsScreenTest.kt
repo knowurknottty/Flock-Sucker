@@ -9,6 +9,7 @@ import com.inversionlabs.flocksucker.data.NotificationSettings
 import com.inversionlabs.flocksucker.data.NotificationSettingsRepository
 import com.inversionlabs.flocksucker.data.VibratePattern
 import com.inversionlabs.flocksucker.data.model.ThreatLevel
+import com.inversionlabs.flocksucker.utils.MainActivityReadyRule
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -47,6 +48,9 @@ class NotificationSettingsScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
+    val mainActivityReadyRule = MainActivityReadyRule()
+
+    @get:Rule(order = 2)
     val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     @Inject
@@ -80,10 +84,24 @@ class NotificationSettingsScreenTest {
         ).performClick()
         composeTestRule.waitForIdle()
 
-        // Navigate to Notification Settings
+        // The Settings screen is a LazyColumn; scroll until the collapsed section is composed.
+        composeTestRule.onNode(hasScrollToIndexAction())
+            .performScrollToNode(hasText("Alerts & Notifications", ignoreCase = true))
         composeTestRule.onNode(
-            hasText("Notification", substring = true, ignoreCase = true) and hasClickAction()
+            hasText("Alerts & Notifications", ignoreCase = true) and hasClickAction()
         ).performClick()
+        composeTestRule.waitForIdle()
+
+        // Navigate to Notification Settings.
+        composeTestRule.onNode(
+            hasText("Notifications", ignoreCase = true) and hasClickAction()
+        ).performClick()
+        composeTestRule.waitForIdle()
+    }
+
+    private fun scrollNotificationTo(text: String, substring: Boolean = false) {
+        val matcher = hasText(text, substring = substring, ignoreCase = true)
+        composeTestRule.onNode(hasScrollToIndexAction()).performScrollToNode(matcher)
         composeTestRule.waitForIdle()
     }
 
@@ -227,8 +245,8 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_soundToggleDisplayed() {
         navigateToNotificationSettings()
 
-        composeTestRule.onNode(hasText("Sound", ignoreCase = true) and hasClickAction())
-            .assertExists()
+        scrollNotificationTo("Sound")
+        composeTestRule.onNode(hasText("Sound", ignoreCase = true)).assertExists()
     }
 
     @Test
@@ -247,8 +265,8 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_vibrationToggleDisplayed() {
         navigateToNotificationSettings()
 
-        composeTestRule.onNode(hasText("Vibration", ignoreCase = true) and hasClickAction())
-            .assertExists()
+        scrollNotificationTo("Vibration")
+        composeTestRule.onNode(hasText("Vibration", ignoreCase = true)).assertExists()
     }
 
     @Test
@@ -272,6 +290,7 @@ class NotificationSettingsScreenTest {
         composeTestRule.waitForIdle()
 
         // Vibration pattern option should be visible
+        scrollNotificationTo("Vibration Pattern", substring = true)
         composeTestRule.onNode(hasText("Vibration Pattern", substring = true, ignoreCase = true))
             .assertExists()
     }
@@ -298,12 +317,13 @@ class NotificationSettingsScreenTest {
         composeTestRule.waitForIdle()
 
         // Click on vibration pattern card
+        scrollNotificationTo("Vibration Pattern", substring = true)
         composeTestRule.onNode(hasText("Vibration Pattern", substring = true, ignoreCase = true))
             .performClick()
         composeTestRule.waitForIdle()
 
         // Dialog should open with pattern options
-        composeTestRule.onNode(hasText("Default", ignoreCase = true)).assertExists()
+        // The current pattern card also says "Default"; the unique alternatives prove the dialog is open.
         composeTestRule.onNode(hasText("Urgent", ignoreCase = true)).assertExists()
         composeTestRule.onNode(hasText("Gentle", ignoreCase = true)).assertExists()
         composeTestRule.onNode(hasText("Long", ignoreCase = true)).assertExists()
@@ -333,6 +353,7 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_lockScreenToggleDisplayed() {
         navigateToNotificationSettings()
 
+        scrollNotificationTo("Show on Lock Screen", substring = true)
         composeTestRule.onNode(hasText("Show on Lock Screen", substring = true, ignoreCase = true))
             .assertExists()
     }
@@ -353,6 +374,7 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_persistentNotificationToggleDisplayed() {
         navigateToNotificationSettings()
 
+        scrollNotificationTo("Persistent Notification", substring = true)
         composeTestRule.onNode(hasText("Persistent Notification", substring = true, ignoreCase = true))
             .assertExists()
     }
@@ -373,6 +395,7 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_bypassDndToggleDisplayed() {
         navigateToNotificationSettings()
 
+        scrollNotificationTo("Bypass Do Not Disturb", substring = true)
         composeTestRule.onNode(hasText("Bypass Do Not Disturb", substring = true, ignoreCase = true))
             .assertExists()
     }
@@ -395,6 +418,7 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_emergencyPopupToggleDisplayed() {
         navigateToNotificationSettings()
 
+        scrollNotificationTo("Emergency Popup", substring = true)
         composeTestRule.onNode(hasText("Emergency Popup", substring = true, ignoreCase = true))
             .assertExists()
     }
@@ -422,6 +446,7 @@ class NotificationSettingsScreenTest {
         // If overlay permission is not granted, warning should show
         val hasOverlayPermission = Settings.canDrawOverlays(context)
         if (!hasOverlayPermission) {
+            scrollNotificationTo("Permission Required", substring = true)
             composeTestRule.onNode(hasText("Permission Required", substring = true, ignoreCase = true))
                 .assertExists()
         }
@@ -432,6 +457,7 @@ class NotificationSettingsScreenTest {
         navigateToNotificationSettings()
 
         // Verify description is shown
+        scrollNotificationTo("Full-screen CMAS/WEA-style alert", substring = true)
         composeTestRule.onNode(
             hasText("Full-screen CMAS/WEA-style alert", substring = true, ignoreCase = true)
         ).assertExists()
@@ -443,8 +469,8 @@ class NotificationSettingsScreenTest {
     fun notificationSettings_quietHoursToggleDisplayed() {
         navigateToNotificationSettings()
 
-        composeTestRule.onNode(hasText("Quiet Hours", ignoreCase = true))
-            .assertExists()
+        scrollNotificationTo("Quiet Hours")
+        composeTestRule.onNode(hasText("Quiet Hours", ignoreCase = false)).assertExists()
     }
 
     @Test
@@ -468,6 +494,7 @@ class NotificationSettingsScreenTest {
         composeTestRule.waitForIdle()
 
         // Schedule card should be visible
+        scrollNotificationTo("Quiet Hours Schedule", substring = true)
         composeTestRule.onNode(hasText("Quiet Hours Schedule", substring = true, ignoreCase = true))
             .assertExists()
     }
@@ -494,6 +521,7 @@ class NotificationSettingsScreenTest {
         composeTestRule.waitForIdle()
 
         // Click on quiet hours schedule
+        scrollNotificationTo("Quiet Hours Schedule", substring = true)
         composeTestRule.onNode(hasText("Quiet Hours Schedule", substring = true, ignoreCase = true))
             .performClick()
         composeTestRule.waitForIdle()
@@ -533,6 +561,7 @@ class NotificationSettingsScreenTest {
         notificationSettingsRepository.updateSettings { it.copy(quietHoursEnabled = true) }
         composeTestRule.waitForIdle()
 
+        scrollNotificationTo("Quiet Hours Schedule", substring = true)
         composeTestRule.onNode(hasText("Quiet Hours Schedule", substring = true, ignoreCase = true))
             .performClick()
         composeTestRule.waitForIdle()

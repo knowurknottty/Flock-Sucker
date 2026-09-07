@@ -136,6 +136,8 @@ android {
             "\"${project.findProperty("SHA256_AI_MODEL_FLOCK_GGUF") ?: "82b323bf05eba698b87a39d1eca8ea31506222aff25b415f6388135069725b57"}\"")
         buildConfigField("long", "SIZE_AI_MODEL_FLOCK_GGUF",
             "${project.findProperty("SIZE_AI_MODEL_FLOCK_GGUF") ?: "291545376"}L")
+        buildConfigField("String", "URL_AI_MODEL_FLOCK_GGUF_SOURCE",
+            "\"${project.findProperty("URL_AI_MODEL_FLOCK_GGUF_SOURCE") ?: "https://mega.nz/file/WzAiwIba#-lYBgLIkxmAgzmd_CXcKEjMIhuuYlvpfWFUeVXMnxlc"}\"")
 
         // Map Tile Server URLs (OpenStreetMap)
         buildConfigField("String", "URL_MAP_TILE_A",

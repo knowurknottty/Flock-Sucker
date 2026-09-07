@@ -1,5 +1,7 @@
 package com.inversionlabs.flocksucker.ai
 
+import com.inversionlabs.flocksucker.config.NetworkConfig
+
 enum class HostedModelFormat {
     GGUF
 }
@@ -20,7 +22,7 @@ object FineTunedModelArtifacts {
         id = "gemma-flock-q8-0",
         displayName = "Flock Fine-Tuned Gemma Q8_0",
         format = HostedModelFormat.GGUF,
-        downloadUrl = "https://mega.nz/file/WzAiwIba#-lYBgLIkxmAgzmd_CXcKEjMIhuuYlvpfWFUeVXMnxlc",
+        downloadUrl = NetworkConfig.AI_MODEL_FLOCK_GGUF_SOURCE_URL,
         sizeBytes = 291_545_376L,
         sha256 = "82b323bf05eba698b87a39d1eca8ea31506222aff25b415f6388135069725b57",
         runtimeCompatible = true,

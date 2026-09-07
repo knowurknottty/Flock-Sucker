@@ -1,5 +1,6 @@
 package com.inversionlabs.flocksucker.evidence
 
+import android.database.sqlite.SQLiteDatabaseLockedException
 import com.inversionlabs.flocksucker.data.model.Observation
 import com.inversionlabs.flocksucker.data.model.ObservationIdentifierKind
 import com.inversionlabs.flocksucker.data.model.ObservationProtocol
@@ -7,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ObservationRecorderTest {
@@ -30,6 +32,34 @@ class ObservationRecorderTest {
         }
 
         assertEquals("scan stopped", thrown?.message)
+    }
+
+    @Test
+    fun `transient database lock is retried before evidence is dropped`() = runTest {
+        var attempts = 0
+        val recorder = ObservationRecorder { _ ->
+            attempts += 1
+            if (attempts < 3) throw SQLiteDatabaseLockedException("database is locked")
+        }
+
+        val result = recorder.record(observation())
+
+        assertEquals(ObservationRecordResult.Recorded("obs-1"), result)
+        assertEquals(3, attempts)
+    }
+
+    @Test
+    fun `persistent database lock fails only after bounded retry budget`() = runTest {
+        var attempts = 0
+        val recorder = ObservationRecorder { _ ->
+            attempts += 1
+            throw SQLiteDatabaseLockedException("database is locked")
+        }
+
+        val result = recorder.record(observation())
+
+        assertEquals(ObservationRecorder.MAX_LOCK_ATTEMPTS, attempts)
+        assertTrue(result is ObservationRecordResult.Failed)
     }
 
     @Test

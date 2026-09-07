@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -590,7 +591,7 @@ private fun NetworkStatsCard(wifiStatus: WifiEnvironmentStatus) {
                 WifiDetailRow("Strongest Signal", "${signal}dBm")
             }
 
-            val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            val dateFormat = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0])
             WifiDetailRow("Last Scan", dateFormat.format(Date(wifiStatus.lastScanTime)))
         }
     }
@@ -682,7 +683,9 @@ private fun WifiThreatsContent(
     anomalies: List<WifiAnomaly>,
     onClear: (() -> Unit)? = null
 ) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -915,7 +918,9 @@ private fun WifiAnomalyCard(
 
 @Composable
 private fun SuspiciousNetworksContent(networks: List<SuspiciousNetwork>) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss", locale) }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),

@@ -215,7 +215,7 @@ internal fun ScanningService.startSatelliteMonitoring() {
             val currentAnomalies = ScanningServiceState.satelliteAnomalies.value.toMutableList()
             currentAnomalies.add(0, anomaly)
             if (currentAnomalies.size > 100) {
-                currentAnomalies.removeLast()
+                currentAnomalies.removeAt(currentAnomalies.lastIndex)
             }
             ScanningServiceState.satelliteAnomalies.value = currentAnomalies
             broadcastSatelliteData()

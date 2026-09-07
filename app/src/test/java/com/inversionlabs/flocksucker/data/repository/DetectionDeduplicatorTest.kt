@@ -12,6 +12,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Tests for the ACTIVE deduplicator wired into the persistence layer
@@ -42,6 +45,31 @@ class DetectionDeduplicatorTest {
         val wifi = detection(ssid = "Net", protocol = DetectionProtocol.WIFI)
         assertFalse(deduplicator.shouldThrottle(ble))
         assertFalse(deduplicator.shouldThrottle(wifi))
+    }
+
+    @Test
+    fun `concurrent rapid duplicates admit exactly one observation`() {
+        val workers = 32
+        repeat(50) { round ->
+            deduplicator.clearThrottleState()
+            val ready = CountDownLatch(workers)
+            val go = CountDownLatch(1)
+            val pool = Executors.newFixedThreadPool(workers)
+            val results = (0 until workers).map {
+                pool.submit<Boolean> {
+                    ready.countDown()
+                    go.await(2, TimeUnit.SECONDS)
+                    deduplicator.shouldThrottle(
+                        detection(mac = "10:22:33:44:55:66", protocol = DetectionProtocol.BLUETOOTH_LE)
+                    )
+                }
+            }
+            assertTrue("workers did not rendezvous", ready.await(2, TimeUnit.SECONDS))
+            go.countDown()
+            val admitted = results.count { !it.get(2, TimeUnit.SECONDS) }
+            pool.shutdownNow()
+            assertEquals("round $round admitted more than one duplicate", 1, admitted)
+        }
     }
 
     @Test

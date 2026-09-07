@@ -8,6 +8,9 @@
     -->
 
     <application>
+        <activity
+            android:name="com.inversionlabs.flocksucker.debug.HiltComposeTestActivity"
+            android:exported="false" />
         <!-- Debug-only activity for screenshot automation -->
         <activity
             android:name="com.inversionlabs.flocksucker.debug.ScreenshotHelperActivity"

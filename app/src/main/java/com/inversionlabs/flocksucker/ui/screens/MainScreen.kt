@@ -86,6 +86,9 @@ fun MainScreen(
     }
 
     val context = LocalContext.current
+    val debugExportSubject = stringResource(R.string.debug_export_subject)
+    val shareDetectionSubject = stringResource(R.string.share_detection_subject)
+    val shareDetectionExportSubject = stringResource(R.string.share_detection_export_subject)
     val hardwareCapabilities = rememberDeviceHardwareCapabilities()
     val isConstrainedDevice = rememberConstrainedDevice()
     val hasExternalRfHardware = uiState.flipperConnectionState == FlipperConnectionState.READY
@@ -188,7 +191,7 @@ fun MainScreen(
                                 val debugInfo = viewModel.exportAllDebugInfo()
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.debug_export_subject))
+                                    putExtra(Intent.EXTRA_SUBJECT, debugExportSubject)
                                     putExtra(Intent.EXTRA_TEXT, debugInfo)
                                 }
                                 context.startActivity(Intent.createChooser(shareIntent, "Export Debug Info"))
@@ -1145,7 +1148,7 @@ fun MainScreen(
                 val shareText = buildDetectionShareText(detection, context)
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, "${context.getString(R.string.share_detection_subject)}: ${detection.deviceType.displayName}")
+                    putExtra(Intent.EXTRA_SUBJECT, "${shareDetectionSubject}: ${detection.deviceType.displayName}")
                     putExtra(Intent.EXTRA_TEXT, shareText)
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Share Detection"))
@@ -1166,7 +1169,7 @@ fun MainScreen(
                 val exportText = buildDetectionExportJson(detection)
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/json"
-                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.share_detection_export_subject))
+                    putExtra(Intent.EXTRA_SUBJECT, shareDetectionExportSubject)
                     putExtra(Intent.EXTRA_TEXT, exportText)
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Export Detection"))

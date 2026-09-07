@@ -184,14 +184,14 @@ class BleGattGossipManager(private val context: Context) {
     }
 
     fun stop() {
-        try { scanner?.stopScan(scanCallback) } catch (_: Throwable) {}
-        try { advertiser?.stopAdvertising(advertiseCallback) } catch (_: Throwable) {}
+        try { scanner?.stopScan(scanCallback) } catch (_: SecurityException) {} catch (_: Throwable) {}
+        try { advertiser?.stopAdvertising(advertiseCallback) } catch (_: SecurityException) {} catch (_: Throwable) {}
         clients.values.forEach { gatt ->
-            try { gatt.disconnect() } catch (_: Throwable) {}
-            try { gatt.close() } catch (_: Throwable) {}
+            try { gatt.disconnect() } catch (_: SecurityException) {} catch (_: Throwable) {}
+            try { gatt.close() } catch (_: SecurityException) {} catch (_: Throwable) {}
         }
         clients.clear()
-        try { gattServer?.close() } catch (_: Throwable) {}
+        try { gattServer?.close() } catch (_: SecurityException) {} catch (_: Throwable) {}
         gattServer = null
         exchangeCharacteristic = null
         peerKeys.clear()
@@ -258,7 +258,7 @@ class BleGattGossipManager(private val context: Context) {
             if (status != BluetoothGatt.GATT_SUCCESS || newState == BluetoothProfile.STATE_DISCONNECTED) {
                 clients.remove(peer)
                 peerKeys.remove(peer)
-                try { gatt.close() } catch (_: Throwable) {}
+                try { gatt.close() } catch (_: SecurityException) {} catch (_: Throwable) {}
                 return
             }
             if (newState == BluetoothProfile.STATE_CONNECTED) {

@@ -1140,7 +1140,13 @@ class MainViewModel @Inject constructor(
     internal fun getAppVersion(): String {
         return try {
             val packageInfo = application.packageManager.getPackageInfo(application.packageName, 0)
-            "${packageInfo.versionName} (${packageInfo.longVersionCode})"
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+            "${packageInfo.versionName} ($versionCode)"
         } catch (e: Exception) {
             "unknown"
         }

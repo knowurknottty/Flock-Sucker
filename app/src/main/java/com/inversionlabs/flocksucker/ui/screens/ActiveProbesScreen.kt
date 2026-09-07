@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -303,7 +304,7 @@ private fun MasterToggleCard(
                 }
                 if (authorizationTimestamp > 0) {
                     Text(
-                        text = "Recorded: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(authorizationTimestamp))}",
+                        text = "Recorded: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", LocalConfiguration.current.locales[0]).format(java.util.Date(authorizationTimestamp))}",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

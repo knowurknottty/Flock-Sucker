@@ -17,6 +17,8 @@ import javax.inject.Singleton
 
 private val Context.aiSettingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "ai_settings")
 
+const val DEFAULT_AI_MODEL_ID = "gemma-flock-q8-0"
+
 /**
  * AI analysis settings for LOCAL ON-DEVICE LLM inference only.
  * No cloud APIs - all analysis happens on the device for maximum privacy.
@@ -45,7 +47,7 @@ enum class PromptCompressionMode(val id: String, val displayName: String, val de
 data class AiSettings(
     val enabled: Boolean = false,
     val modelDownloaded: Boolean = false,
-    val selectedModel: String = "rule-based", // Selected model ID
+    val selectedModel: String = DEFAULT_AI_MODEL_ID, // Preferred model ID; rule-based remains runtime fallback
     val preferredEngine: String = "auto", // LLM engine preference: auto, gemini-nano, mediapipe, rule-based
     val modelSizeMb: Long = 0,
     val useGpuAcceleration: Boolean = true,
@@ -272,7 +274,17 @@ enum class AiModel(
          */
         fun getDownloadInstructions(model: AiModel): String {
             return when (model.modelFormat) {
-                ModelFormat.GGUF -> "Download the hash-pinned GGUF artifact from the project documentation, then use Import Model. READY is reported only after llama.cpp loads it and inference succeeds."
+                ModelFormat.GGUF -> if (model == FLOCK_GEMMA_Q8_0) {
+                    """
+                    Preferred Inversion Labs model: ${model.displayName}
+                    Source: ${NetworkConfig.AI_MODEL_FLOCK_GGUF_SOURCE_URL}
+                    Expected SHA-256: ${NetworkConfig.AI_MODEL_FLOCK_GGUF_SHA256}
+                    Expected size: ${NetworkConfig.AI_MODEL_FLOCK_GGUF_SIZE_BYTES} bytes
+                    Download the artifact, then use Import Model. READY is reported only after hash verification, llama.cpp load, and inference succeed.
+                    """.trimIndent()
+                } else {
+                    "Download the hash-pinned GGUF artifact from the project documentation, then use Import Model. READY is reported only after llama.cpp loads it and inference succeeds."
+                }
                 ModelFormat.TASK -> """
                     To use this model:
                     1. Visit https://www.kaggle.com/models/google/gemma
@@ -508,7 +520,7 @@ class AiSettingsRepository @Inject constructor(
         AiSettings(
             enabled = prefs[Keys.ENABLED] ?: false,
             modelDownloaded = prefs[Keys.MODEL_DOWNLOADED] ?: false,
-            selectedModel = prefs[Keys.SELECTED_MODEL] ?: "rule-based",
+            selectedModel = prefs[Keys.SELECTED_MODEL] ?: DEFAULT_AI_MODEL_ID,
             preferredEngine = prefs[Keys.PREFERRED_ENGINE] ?: "auto",
             modelSizeMb = prefs[Keys.MODEL_SIZE_MB] ?: 0,
             useGpuAcceleration = prefs[Keys.USE_GPU] ?: true,

@@ -63,6 +63,8 @@ object NetworkConfig {
     val AI_MODEL_GEMMA_2B_GPU_SIZE_BYTES: Long get() = BuildConfig.SIZE_AI_MODEL_GEMMA_2B_GPU
     val AI_MODEL_FLOCK_GGUF_SHA256: String get() = BuildConfig.SHA256_AI_MODEL_FLOCK_GGUF
     val AI_MODEL_FLOCK_GGUF_SIZE_BYTES: Long get() = BuildConfig.SIZE_AI_MODEL_FLOCK_GGUF
+    /** Canonical host page for the Inversion Labs fine-tuned GGUF artifact. */
+    val AI_MODEL_FLOCK_GGUF_SOURCE_URL: String get() = BuildConfig.URL_AI_MODEL_FLOCK_GGUF_SOURCE
 
     // ================================================================
     // Map Tile Server URLs

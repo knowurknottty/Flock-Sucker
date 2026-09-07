@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
@@ -890,13 +891,13 @@ fun SettingsScreen(
                             scanStats.lastBleSuccessTime?.let { time ->
                                 StatRow(
                                     "Last BLE Success",
-                                    SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(time))
+                                    SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0]).format(Date(time))
                                 )
                             }
                             scanStats.lastWifiSuccessTime?.let { time ->
                                 StatRow(
                                     "Last WiFi Success",
-                                    SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(time))
+                                    SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0]).format(Date(time))
                                 )
                             }
                         }
@@ -1152,7 +1153,9 @@ fun StatRow(
 
 @Composable
 fun LogEntryCard(error: com.inversionlabs.flocksucker.service.ScanError) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+
+    val dateFormat = remember(locale) { SimpleDateFormat("HH:mm:ss.SSS", locale) }
     
     Card(
         modifier = Modifier.fillMaxWidth(),

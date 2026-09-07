@@ -1,8 +1,9 @@
 package com.inversionlabs.flocksucker.ui.screens
 
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.inversionlabs.flocksucker.debug.HiltComposeTestActivity
 import com.inversionlabs.flocksucker.data.model.*
 import com.inversionlabs.flocksucker.data.repository.DetectionRepository
 import com.inversionlabs.flocksucker.service.RfSignalAnalyzer
@@ -43,7 +44,7 @@ class RfDetectionScreenTest {
     var hiltRule = HiltAndroidRule(this)
 
     @get:Rule(order = 1)
-    val composeTestRule = createComposeRule()
+    val composeTestRule = createAndroidComposeRule<HiltComposeTestActivity>()
 
     @Inject
     lateinit var detectionRepository: DetectionRepository

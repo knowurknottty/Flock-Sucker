@@ -17,12 +17,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.inversionlabs.flocksucker.config.NetworkConfig
 import com.inversionlabs.flocksucker.data.AiModel
 import com.inversionlabs.flocksucker.data.AiModelStatus
 import com.inversionlabs.flocksucker.data.AiSettings
@@ -476,6 +478,7 @@ private fun ModelSelectionCard(
     onCancelDownload: () -> Unit
 ) {
     val currentModel = AiModel.fromId(settings.selectedModel)
+    val uriHandler = LocalUriHandler.current
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -779,13 +782,24 @@ private fun ModelSelectionCard(
                             }
                         }
                         modelStatus is AiModelStatus.NotDownloaded || modelStatus is AiModelStatus.Error -> {
-                            OutlinedButton(
-                                onClick = onDownload,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = "Download model")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Download")
+                            if (currentModel == AiModel.FLOCK_GEMMA_Q8_0) {
+                                OutlinedButton(
+                                    onClick = { uriHandler.openUri(NetworkConfig.AI_MODEL_FLOCK_GGUF_SOURCE_URL) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = "Open preferred model source")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Model Source")
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = onDownload,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = "Download model")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Download")
+                                }
                             }
                             OutlinedButton(onClick = onImport) {
                                 Icon(Icons.Default.FileOpen, contentDescription = "Import model")
@@ -812,9 +826,9 @@ private fun ModelSelectorDialog(
     // Categorize models
     val builtInModels = availableModels.filter { it == AiModel.RULE_BASED }
     val googleAiModels = availableModels.filter { it == AiModel.GEMINI_NANO }
-    val downloadableModels = availableModels.filter {
-        it != AiModel.RULE_BASED && it != AiModel.GEMINI_NANO
-    }
+    val downloadableModels = availableModels
+        .filter { it != AiModel.RULE_BASED && it != AiModel.GEMINI_NANO }
+        .sortedBy { if (it == AiModel.FLOCK_GEMMA_Q8_0) 0 else 1 }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -845,8 +859,8 @@ private fun ModelSelectorDialog(
                         EngineOptionCard(
                             model = model,
                             isSelected = model.id == currentModelId,
-                            isRecommended = true,
-                            recommendedReason = "Works everywhere",
+                            isRecommended = false,
+                            recommendedReason = null,
                             onSelect = { onSelectModel(model) }
                         )
                     }
@@ -911,8 +925,8 @@ private fun ModelSelectorDialog(
                             EngineOptionCard(
                                 model = model,
                                 isSelected = model.id == currentModelId,
-                                isRecommended = model == AiModel.GEMMA3_1B,
-                                recommendedReason = if (model == AiModel.GEMMA3_1B) "Recommended" else null,
+                                isRecommended = model == AiModel.FLOCK_GEMMA_Q8_0,
+                                recommendedReason = if (model == AiModel.FLOCK_GEMMA_Q8_0) "Inversion Labs preferred" else null,
                                 showDownloadIcon = !isDownloaded,
                                 isDownloaded = isDownloaded,
                                 onSelect = {
