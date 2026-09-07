@@ -114,21 +114,21 @@ class OemConfigurationE2ETest {
     }
 
     @Test
-    fun config_ephemeralModeIsConfigurable() {
+    fun config_ephemeralModeEnabledIsConfigurable() {
         // Verify ephemeral mode can be enabled per OEM
         val privacySettings = PrivacySettings()
 
         // Default should be off for all builds (can be changed per OEM)
         assertFalse(
             "Ephemeral mode should default to OFF (configurable)",
-            privacySettings.ephemeralMode
+            privacySettings.ephemeralModeEnabled
         )
 
         // Verify the setting is mutable
-        val modifiedSettings = privacySettings.copy(ephemeralMode = true)
+        val modifiedSettings = privacySettings.copy(ephemeralModeEnabled = true)
         assertTrue(
             "Ephemeral mode can be enabled",
-            modifiedSettings.ephemeralMode
+            modifiedSettings.ephemeralModeEnabled
         )
     }
 
@@ -357,7 +357,7 @@ class OemConfigurationE2ETest {
             )
             assertFalse(
                 "Sideload: Ephemeral mode should be off by default",
-                privacySettings.ephemeralMode
+                privacySettings.ephemeralModeEnabled
             )
         }
     }
@@ -521,7 +521,7 @@ class OemConfigurationE2ETest {
         val settings = PrivacySettings()
 
         // Ephemeral mode and retention are mutually exclusive concepts
-        if (settings.ephemeralMode) {
+        if (settings.ephemeralModeEnabled) {
             assertTrue(
                 "If ephemeral mode is on, retention period becomes less critical",
                 settings.retentionPeriod.hours >= 0

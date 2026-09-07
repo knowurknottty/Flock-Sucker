@@ -49,7 +49,7 @@ class ScanningServiceE2ETest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
@@ -62,7 +62,7 @@ class ScanningServiceE2ETest {
             // Ignore if service not running
         }
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
@@ -133,10 +133,10 @@ class ScanningServiceE2ETest {
     fun scanningService_detectionsArePersisted() = runTest {
         // Add a detection directly to the repository
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         // Verify it was stored
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertTrue("Detection should be stored", detections.isNotEmpty())
     }
 
@@ -145,12 +145,12 @@ class ScanningServiceE2ETest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
 
         // Insert same detection multiple times
-        detectionRepository.insert(detection)
-        detectionRepository.insert(detection.copy(seenCount = 2))
-        detectionRepository.insert(detection.copy(seenCount = 3))
+        detectionRepository.insertDetection(detection)
+        detectionRepository.insertDetection(detection.copy(seenCount = 2))
+        detectionRepository.insertDetection(detection.copy(seenCount = 3))
 
         // Should handle duplicates appropriately
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertTrue("Duplicates should be handled", detections.isNotEmpty())
     }
 
@@ -160,11 +160,11 @@ class ScanningServiceE2ETest {
         val cellularDetection = TestDataFactory.createStingrayDetection()
         val audioDetection = TestDataFactory.createUltrasonicBeaconDetection()
 
-        detectionRepository.insert(wifiDetection)
-        detectionRepository.insert(cellularDetection)
-        detectionRepository.insert(audioDetection)
+        detectionRepository.insertDetection(wifiDetection)
+        detectionRepository.insertDetection(cellularDetection)
+        detectionRepository.insertDetection(audioDetection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 3 detections", 3, detections.size)
     }
 
@@ -204,9 +204,9 @@ class ScanningServiceE2ETest {
     fun scanningService_handlesLargeDetectionBatch() = runTest {
         // Insert many detections at once
         val detections = TestDataFactory.createMultipleDetections(100)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
-        val storedDetections = detectionRepository.getAllDetections().first()
+        val storedDetections = detectionRepository.allDetections.first()
         assertEquals("Should handle large batch", 100, storedDetections.size)
     }
 

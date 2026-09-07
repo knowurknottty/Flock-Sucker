@@ -175,7 +175,7 @@ class LlmE2ETest {
     @Test
     fun detectionAnalyzer_initializesModel() = runTest {
         // Enable AI in settings first
-        aiSettingsRepository.updateEnabled(true)
+        aiSettingsRepository.setEnabled(true)
 
         val initialized = detectionAnalyzer.initializeModel()
 
@@ -186,8 +186,8 @@ class LlmE2ETest {
     @Test
     fun detectionAnalyzer_analyzesFlockSafetyCamera() = runTest {
         // Enable AI
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
 
         // Initialize
         detectionAnalyzer.initializeModel()
@@ -213,8 +213,8 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_analyzesStingray() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createStingrayDetection()
@@ -236,8 +236,8 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_analyzesDrone() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createDroneDetection()
@@ -255,8 +255,8 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_analyzesUltrasonicBeacon() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createUltrasonicBeaconDetection()
@@ -274,8 +274,8 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_analyzesSatellite() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createSatelliteDetection()
@@ -292,8 +292,8 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_providesStructuredData() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
@@ -316,7 +316,7 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_returnsWhenAiDisabled() = runTest {
-        aiSettingsRepository.updateEnabled(false)
+        aiSettingsRepository.setEnabled(false)
 
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
 
@@ -330,8 +330,8 @@ class LlmE2ETest {
 
     @Test
     fun detectionAnalyzer_cachesPreviousAnalysis() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
@@ -450,8 +450,8 @@ class LlmE2ETest {
 
     @Test
     fun integration_allProtocolsCanBeAnalyzed() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
         detectionAnalyzer.initializeModel()
 
         val protocols = mapOf(
@@ -476,9 +476,9 @@ class LlmE2ETest {
 
     @Test
     fun integration_detectionAndFpAnalysisTogether() = runTest {
-        aiSettingsRepository.updateEnabled(true)
-        aiSettingsRepository.updateAnalyzeDetections(true)
-        aiSettingsRepository.updateFalsePositiveFiltering(true)
+        aiSettingsRepository.setEnabled(true)
+        aiSettingsRepository.setAnalyzeDetections(true)
+        aiSettingsRepository.setFalsePositiveFiltering(true)
         detectionAnalyzer.initializeModel()
 
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
@@ -503,11 +503,11 @@ class LlmE2ETest {
 
     @Test
     fun integration_modelStatusReflectsRealState() = runTest {
-        aiSettingsRepository.updateEnabled(true)
+        aiSettingsRepository.setEnabled(true)
         detectionAnalyzer.initializeModel()
 
-        val status = detectionAnalyzer.getModelStatus()
-        val currentModel = detectionAnalyzer.getCurrentModel()
+        val status = detectionAnalyzer.modelStatus.value
+        val currentModel = AiModel.fromId(aiSettingsRepository.settings.first().selectedModel)
 
         assertNotNull("Model status should be available", status)
         assertNotNull("Current model should be set", currentModel)
@@ -519,7 +519,7 @@ class LlmE2ETest {
 
     @Test
     fun errorHandling_handlesNullInputGracefully() = runTest {
-        aiSettingsRepository.updateEnabled(true)
+        aiSettingsRepository.setEnabled(true)
         detectionAnalyzer.initializeModel()
 
         // Create detection with minimal data

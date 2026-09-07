@@ -50,14 +50,14 @@ class MainScreenE2ETest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
@@ -76,7 +76,7 @@ class MainScreenE2ETest {
     fun mainScreen_displaysDetectionInList() = runTest {
         // Add a detection
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         // Detection should appear in the list
         composeTestRule.waitForIdle()
@@ -86,7 +86,7 @@ class MainScreenE2ETest {
     fun mainScreen_displaysMultipleDetections() = runTest {
         // Add multiple detections
         val detections = TestDataFactory.createMultipleDetections(5)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         // All detections should be rendered
         composeTestRule.waitForIdle()
@@ -96,7 +96,7 @@ class MainScreenE2ETest {
     fun mainScreen_displaysMixedProtocolDetections() = runTest {
         // Add detections of different protocols
         val detections = TestDataFactory.createMixedProtocolDetections()
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         // Each type should be represented
         composeTestRule.waitForIdle()
@@ -107,7 +107,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_displaysCriticalThreatBadge() = runTest {
         val detection = TestDataFactory.createStingrayDetection() // Critical threat
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         // Critical threat should show appropriate badge/color
@@ -116,7 +116,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_displaysHighThreatBadge() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection() // High threat
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
     }
@@ -124,7 +124,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_displaysMediumThreatBadge() = runTest {
         val detection = TestDataFactory.createDroneDetection() // Medium threat
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
     }
@@ -132,7 +132,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_displaysLowThreatBadge() = runTest {
         val detection = TestDataFactory.createTestDetection(threatLevel = ThreatLevel.LOW)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
     }
@@ -142,7 +142,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_displaysDeviceTypeInfo() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         // Device type name should be visible
@@ -154,9 +154,9 @@ class MainScreenE2ETest {
         val drone = TestDataFactory.createDroneDetection()
         val stingray = TestDataFactory.createStingrayDetection()
 
-        detectionRepository.insert(camera)
-        detectionRepository.insert(drone)
-        detectionRepository.insert(stingray)
+        detectionRepository.insertDetection(camera)
+        detectionRepository.insertDetection(drone)
+        detectionRepository.insertDetection(stingray)
 
         composeTestRule.waitForIdle()
     }
@@ -166,7 +166,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_detectionCardShowsSSID() = runTest {
         val detection = TestDataFactory.createTestDetection(ssid = "TestNetwork-12345")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
     }
@@ -174,7 +174,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_detectionCardShowsMacAddress() = runTest {
         val detection = TestDataFactory.createTestDetection(macAddress = "AA:BB:CC:DD:EE:FF")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
     }
@@ -182,7 +182,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_detectionCardShowsSignalStrength() = runTest {
         val detection = TestDataFactory.createTestDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         // Signal strength indicator should be visible
@@ -197,9 +197,9 @@ class MainScreenE2ETest {
         val medium = TestDataFactory.createDroneDetection()
         val low = TestDataFactory.createTestDetection(threatLevel = ThreatLevel.LOW)
 
-        detectionRepository.insert(critical)
-        detectionRepository.insert(medium)
-        detectionRepository.insert(low)
+        detectionRepository.insertDetection(critical)
+        detectionRepository.insertDetection(medium)
+        detectionRepository.insertDetection(low)
 
         composeTestRule.waitForIdle()
         // Filter interactions would be tested here
@@ -212,9 +212,9 @@ class MainScreenE2ETest {
         val cellular = TestDataFactory.createStingrayDetection()
         val audio = TestDataFactory.createUltrasonicBeaconDetection()
 
-        detectionRepository.insert(wifi)
-        detectionRepository.insert(cellular)
-        detectionRepository.insert(audio)
+        detectionRepository.insertDetection(wifi)
+        detectionRepository.insertDetection(cellular)
+        detectionRepository.insertDetection(audio)
 
         composeTestRule.waitForIdle()
     }
@@ -222,7 +222,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_clearFiltersShowsAll() = runTest {
         val detections = TestDataFactory.createMultipleDetections(10)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         // Clear filters should show all detections
@@ -239,7 +239,7 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_statusCardShowsDetectionCounts() = runTest {
         val detections = TestDataFactory.createMultipleDetections(5)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         // Detection count should be visible
@@ -251,7 +251,7 @@ class MainScreenE2ETest {
     fun mainScreen_handlesLargeDetectionList() = runTest {
         // Add many detections
         val detections = TestDataFactory.createMultipleDetections(100)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         // Should handle without crashing or freezing
@@ -265,7 +265,7 @@ class MainScreenE2ETest {
             latitude = null,
             longitude = null
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         // Should handle null fields gracefully
@@ -275,7 +275,7 @@ class MainScreenE2ETest {
     fun mainScreen_handlesVeryLongSSID() = runTest {
         val longSsid = "A".repeat(256)
         val detection = TestDataFactory.createTestDetection(ssid = longSsid)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         // Should truncate or handle long SSID appropriately
@@ -289,7 +289,7 @@ class MainScreenE2ETest {
 
         // Add detection after initial render
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         // UI should update to show new detection
         composeTestRule.waitForIdle()
@@ -298,11 +298,11 @@ class MainScreenE2ETest {
     @Test
     fun mainScreen_updatesWhenDetectionRemoved() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
         composeTestRule.waitForIdle()
 
         // Remove detection
-        detectionRepository.deleteById(detection.id)
+        detectionRepository.deleteDetection(detection)
 
         composeTestRule.waitForIdle()
         // UI should update to remove detection

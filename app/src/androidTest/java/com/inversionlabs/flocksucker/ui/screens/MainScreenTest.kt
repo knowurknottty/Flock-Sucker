@@ -219,7 +219,7 @@ class MainScreenTest {
 
         // Add a detection
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         delay(500) // Allow time for DB update to propagate
@@ -235,7 +235,7 @@ class MainScreenTest {
 
         // Add detections
         val detections = TestDataFactory.createMultipleDetections(3)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         delay(500) // Allow DB update to propagate
@@ -255,7 +255,7 @@ class MainScreenTest {
         // Initially no detections
         // Add a detection
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -268,7 +268,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_displaysSingleDetectionInHistory() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
 
@@ -284,7 +284,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_displaysMultipleDetections() = runTest {
         val detections = TestDataFactory.createMultipleDetections(5)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
 
@@ -300,7 +300,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_displaysDetectionCards() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
 
@@ -315,7 +315,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_detectionCardShowsCorrectThreatLevel() = runTest {
         val criticalDetection = TestDataFactory.createStingrayDetection()
-        detectionRepository.insert(criticalDetection)
+        detectionRepository.insertDetection(criticalDetection)
 
         composeTestRule.waitForIdle()
 
@@ -333,9 +333,9 @@ class MainScreenTest {
         val high = TestDataFactory.createFlockSafetyCameraDetection()
         val medium = TestDataFactory.createDroneDetection()
 
-        detectionRepository.insert(critical)
-        detectionRepository.insert(high)
-        detectionRepository.insert(medium)
+        detectionRepository.insertDetection(critical)
+        detectionRepository.insertDetection(high)
+        detectionRepository.insertDetection(medium)
 
         composeTestRule.waitForIdle()
 
@@ -351,7 +351,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_displaysDetectionCount() = runTest {
         val detections = TestDataFactory.createMultipleDetections(10)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -364,13 +364,13 @@ class MainScreenTest {
     @Test
     fun mainScreen_displaysHighThreatCount() = runTest {
         // Add 3 high/critical threats
-        detectionRepository.insert(TestDataFactory.createStingrayDetection())
-        detectionRepository.insert(TestDataFactory.createFlockSafetyCameraDetection())
-        detectionRepository.insert(TestDataFactory.createStingrayDetection().copy(id = 0))
+        detectionRepository.insertDetection(TestDataFactory.createStingrayDetection())
+        detectionRepository.insertDetection(TestDataFactory.createFlockSafetyCameraDetection())
+        detectionRepository.insertDetection(TestDataFactory.createStingrayDetection().copy(id = "0"))
 
         // Add 2 low/medium threats
-        detectionRepository.insert(TestDataFactory.createDroneDetection())
-        detectionRepository.insert(TestDataFactory.createTestDetection(threatLevel = ThreatLevel.LOW))
+        detectionRepository.insertDetection(TestDataFactory.createDroneDetection())
+        detectionRepository.insertDetection(TestDataFactory.createTestDetection(threatLevel = ThreatLevel.LOW))
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -404,9 +404,9 @@ class MainScreenTest {
         val medium = TestDataFactory.createDroneDetection()
         val low = TestDataFactory.createTestDetection(threatLevel = ThreatLevel.LOW)
 
-        detectionRepository.insert(critical)
-        detectionRepository.insert(medium)
-        detectionRepository.insert(low)
+        detectionRepository.insertDetection(critical)
+        detectionRepository.insertDetection(medium)
+        detectionRepository.insertDetection(low)
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -437,9 +437,9 @@ class MainScreenTest {
         val drone = TestDataFactory.createDroneDetection()
         val stingray = TestDataFactory.createStingrayDetection()
 
-        detectionRepository.insert(camera)
-        detectionRepository.insert(drone)
-        detectionRepository.insert(stingray)
+        detectionRepository.insertDetection(camera)
+        detectionRepository.insertDetection(drone)
+        detectionRepository.insertDetection(stingray)
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -458,7 +458,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_clearFilterShowsAllDetections() = runTest {
         val detections = TestDataFactory.createMultipleDetections(5)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -479,7 +479,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_filterIndicatorShownWhenFiltering() = runTest {
         val detections = TestDataFactory.createMultipleDetections(3)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
 
@@ -508,7 +508,7 @@ class MainScreenTest {
         // Initially no detections
         // Add a detection
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         delay(1000) // Wait for Room Flow to emit
@@ -521,7 +521,7 @@ class MainScreenTest {
     fun mainScreen_updatesWhenDetectionDeleted() = runTest {
         // Add a detection
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -554,7 +554,7 @@ class MainScreenTest {
             val detection = TestDataFactory.createTestDetection(
                 macAddress = "AA:BB:CC:DD:EE:${String.format("%02X", index)}"
             )
-            detectionRepository.insert(detection)
+            detectionRepository.insertDetection(detection)
             delay(500)
         }
 
@@ -610,7 +610,7 @@ class MainScreenTest {
     fun mainScreen_handlesLargeDetectionList() = runTest {
         // Add many detections
         val detections = TestDataFactory.createMultipleDetections(50)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         delay(1000)
@@ -627,7 +627,7 @@ class MainScreenTest {
     @Test
     fun mainScreen_handlesDetectionWithNullFields() = runTest {
         val detection = TestDataFactory.createMinimalDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -644,7 +644,7 @@ class MainScreenTest {
     fun mainScreen_handlesVeryLongSSID() = runTest {
         val longSsid = "A".repeat(200)
         val detection = TestDataFactory.createTestDetection(ssid = longSsid)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
         delay(500)
@@ -669,8 +669,8 @@ class MainScreenTest {
         repeat(5) { index ->
             val detection = TestDataFactory.createTestDetection(
                 macAddress = "AA:BB:CC:DD:EE:${String.format("%02X", index)}"
-            ).copy(id = (index + 1).toLong())
-            detectionRepository.insert(detection)
+            ).copy(id = (index + 1).toString())
+            detectionRepository.insertDetection(detection)
             delay(100)
             detectionRepository.deleteDetection(detection)
             delay(100)
@@ -777,7 +777,7 @@ class MainScreenTest {
     fun mainScreen_scrollingWithManyDetectionsIsSmooth() = runTest {
         // Add many detections
         val detections = TestDataFactory.createMultipleDetections(100)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.waitForIdle()
         delay(1000)
@@ -814,7 +814,7 @@ class MainScreenTest {
 
         // Add a detection (simulating a scan finding something)
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
         delay(1000)
 
         // Navigate to History to see detection
@@ -840,7 +840,7 @@ class MainScreenTest {
             TestDataFactory.createStingrayDetection(),
             TestDataFactory.createDroneDetection()
         )
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
         delay(1000)
 
         composeTestRule.waitForIdle()

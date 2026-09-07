@@ -59,14 +59,14 @@ class RfDetectionScreenTest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
@@ -284,8 +284,7 @@ class RfDetectionScreenTest {
     @Test
     fun anomalyList_displaysAnomalyCards() = runTest {
         val anomaly = createTestAnomaly(
-            type = RfAnomalyType.JAMMER_SUSPECTED,
-            displayName = "Possible Jammer Detected",
+            type = RfAnomalyType.POSSIBLE_JAMMER,
             description = "Sudden signal dropout detected"
         )
 
@@ -300,16 +299,16 @@ class RfDetectionScreenTest {
         composeTestRule.waitForIdle()
 
         // Verify anomaly is displayed
-        composeTestRule.onNodeWithText("Possible Jammer Detected", substring = true).assertExists()
+        composeTestRule.onNodeWithText("RF Jammer Detected", substring = true).assertExists()
         composeTestRule.onNodeWithText("Sudden signal dropout detected", substring = true).assertExists()
     }
 
     @Test
     fun anomalyList_displaysAnomalyCount() = runTest {
         val anomalies = listOf(
-            createTestAnomaly(type = RfAnomalyType.JAMMER_SUSPECTED),
+            createTestAnomaly(type = RfAnomalyType.POSSIBLE_JAMMER),
             createTestAnomaly(type = RfAnomalyType.SIGNAL_INTERFERENCE),
-            createTestAnomaly(type = RfAnomalyType.DENSE_NETWORK_ENVIRONMENT)
+            createTestAnomaly(type = RfAnomalyType.UNUSUAL_ACTIVITY)
         )
 
         composeTestRule.setContent {
@@ -329,7 +328,6 @@ class RfDetectionScreenTest {
     @Test
     fun anomalyCard_expandsToShowTechnicalDetails() = runTest {
         val anomaly = createTestAnomaly(
-            displayName = "Signal Interference",
             description = "Unusual RF patterns detected",
             technicalDetails = "Broadband interference on 2.4GHz band",
             contributingFactors = listOf("High network density", "Channel congestion")
@@ -346,7 +344,7 @@ class RfDetectionScreenTest {
         composeTestRule.waitForIdle()
 
         // Click to expand
-        composeTestRule.onNodeWithText("Signal Interference", substring = true).performClick()
+        composeTestRule.onNodeWithText("RF Interference", substring = true).performClick()
         composeTestRule.waitForIdle()
 
         // Verify technical details are shown
@@ -578,7 +576,7 @@ class RfDetectionScreenTest {
         composeTestRule.waitForIdle()
 
         // Verify jammer warning is displayed
-        composeTestRule.onNodeWithText("Possible Jammer Detected", substring = true).assertExists()
+        composeTestRule.onNodeWithText("RF Jammer Detected", substring = true).assertExists()
         composeTestRule.onNodeWithText("RF signal disruption detected", substring = true).assertExists()
     }
 
@@ -902,25 +900,25 @@ class RfDetectionScreenTest {
      * Create a test RfAnomaly object with sensible defaults.
      */
     private fun createTestAnomaly(
-        type: RfAnomalyType = RfAnomalyType.JAMMER_SUSPECTED,
-        displayName: String = "Test Anomaly",
+        type: RfAnomalyType = RfAnomalyType.POSSIBLE_JAMMER,
         description: String = "Test anomaly description",
         technicalDetails: String = "Technical details here",
         severity: ThreatLevel = ThreatLevel.HIGH,
-        confidence: DetectionConfidence = DetectionConfidence.HIGH,
+        confidence: AnomalyConfidence = AnomalyConfidence.HIGH,
         contributingFactors: List<String> = emptyList(),
         timestamp: Long = System.currentTimeMillis()
     ): RfAnomaly {
         return RfAnomaly(
             id = java.util.UUID.randomUUID().toString(),
             type = type,
-            displayName = displayName,
             description = description,
             technicalDetails = technicalDetails,
             severity = severity,
             confidence = confidence,
             contributingFactors = contributingFactors,
-            timestamp = timestamp
+            timestamp = timestamp,
+            latitude = null,
+            longitude = null
         )
     }
 

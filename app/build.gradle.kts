@@ -437,6 +437,8 @@ dependencies {
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("io.mockk:mockk-android:1.14.11")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    androidTestImplementation("app.cash.turbine:turbine:1.0.0")
+    androidTestImplementation("androidx.work:work-testing:2.9.0")
 
     // Hilt Testing
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")

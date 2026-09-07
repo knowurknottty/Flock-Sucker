@@ -9,6 +9,7 @@ import com.inversionlabs.flocksucker.utils.TestDataFactory
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -209,125 +210,65 @@ class DataManagementE2ETest {
 
     @Test
     fun export_csvCreatesValidFile() = runTest {
-        // Insert test data
-        val detections = TestDataFactory.createMixedProtocolDetections()
-        detections.forEach { detectionRepository.insertDetection(it) }
+        TestDataFactory.createMixedProtocolDetections().forEach { detectionRepository.insertDetection(it) }
 
-        // Export to CSV
-        val exportDir = context.cacheDir.resolve("exports").apply { mkdirs() }
-        val csvFile = exportDir.resolve("detections_test.csv")
-
-        val result = exportDetectionsUseCase.exportToCsv(csvFile)
-
-        assertTrue("Export should succeed", result)
-        assertTrue("CSV file should exist", csvFile.exists())
-        assertTrue("CSV file should have content", csvFile.length() > 0)
-
-        // Verify CSV content
-        val content = csvFile.readText()
+        val result = exportDetectionsUseCase.exportToCsv()
+        assertTrue("Export should succeed", result.isSuccess)
+        val content = readExport(result.getOrThrow())
         assertTrue("Should have header", content.contains("id"))
         assertTrue("Should have data", content.lines().size > 1)
-
-        // Clean up
-        csvFile.delete()
     }
 
     @Test
     fun export_jsonCreatesValidFile() = runTest {
-        // Insert test data
-        val detections = TestDataFactory.createMultipleDetections(5)
-        detections.forEach { detectionRepository.insertDetection(it) }
+        TestDataFactory.createMultipleDetections(5).forEach { detectionRepository.insertDetection(it) }
 
-        // Export to JSON
-        val exportDir = context.cacheDir.resolve("exports").apply { mkdirs() }
-        val jsonFile = exportDir.resolve("detections_test.json")
-
-        val result = exportDetectionsUseCase.exportToJson(jsonFile)
-
-        assertTrue("Export should succeed", result)
-        assertTrue("JSON file should exist", jsonFile.exists())
-        assertTrue("JSON file should have content", jsonFile.length() > 0)
-
-        // Verify JSON content
-        val content = jsonFile.readText()
+        val result = exportDetectionsUseCase.exportToJson()
+        assertTrue("Export should succeed", result.isSuccess)
+        val content = readExport(result.getOrThrow())
         assertTrue("Should be JSON array or object", content.startsWith("[") || content.startsWith("{"))
         assertTrue("Should contain detection data", content.contains("protocol"))
-
-        // Clean up
-        jsonFile.delete()
     }
 
     @Test
     fun export_kmlCreatesValidFile() = runTest {
-        // Insert detections with location
-        val detectionsWithLocation = listOf(
+        listOf(
             TestDataFactory.createFlockSafetyCameraDetection(),
             TestDataFactory.createDroneDetection(),
             TestDataFactory.createSatelliteDetection()
-        )
-        detectionsWithLocation.forEach { detectionRepository.insertDetection(it) }
+        ).forEach { detectionRepository.insertDetection(it) }
 
-        // Export to KML
-        val exportDir = context.cacheDir.resolve("exports").apply { mkdirs() }
-        val kmlFile = exportDir.resolve("detections_test.kml")
-
-        val result = exportDetectionsUseCase.exportToKml(kmlFile)
-
-        assertTrue("Export should succeed", result)
-        assertTrue("KML file should exist", kmlFile.exists())
-        assertTrue("KML file should have content", kmlFile.length() > 0)
-
-        // Verify KML content
-        val content = kmlFile.readText()
+        val result = exportDetectionsUseCase.exportToKml()
+        assertTrue("Export should succeed", result.isSuccess)
+        val content = readExport(result.getOrThrow())
         assertTrue("Should have KML header", content.contains("<?xml") || content.contains("<kml"))
         assertTrue("Should have Placemark elements", content.contains("Placemark") || content.contains("coordinates"))
-
-        // Clean up
-        kmlFile.delete()
     }
 
     @Test
     fun export_handlesEmptyDatabase() = runTest {
-        // Export with no data
-        val exportDir = context.cacheDir.resolve("exports").apply { mkdirs() }
-        val csvFile = exportDir.resolve("empty_test.csv")
-
-        val result = exportDetectionsUseCase.exportToCsv(csvFile)
-
-        // Should still succeed, creating file with header only
-        assertTrue("Export should succeed even with no data", result)
-
-        if (csvFile.exists()) {
-            val content = csvFile.readText()
-            assertTrue("Should have header", content.contains("id") || content.isEmpty())
-            csvFile.delete()
-        }
+        val result = exportDetectionsUseCase.exportToCsv()
+        assertTrue("Export should succeed even with no data", result.isSuccess)
+        val content = readExport(result.getOrThrow())
+        assertTrue("Should have header", content.contains("id") || content.isEmpty())
     }
 
     @Test
     fun export_handlesLargeDataset() = runTest {
-        // Insert large dataset
-        val largeDataset = TestDataFactory.createMultipleDetections(1000)
-        largeDataset.forEach { detectionRepository.insertDetection(it) }
-
-        // Export to CSV
-        val exportDir = context.cacheDir.resolve("exports").apply { mkdirs() }
-        val csvFile = exportDir.resolve("large_dataset_test.csv")
+        TestDataFactory.createMultipleDetections(1000).forEach { detectionRepository.insertDetection(it) }
 
         val startTime = System.currentTimeMillis()
-        val result = exportDetectionsUseCase.exportToCsv(csvFile)
+        val result = exportDetectionsUseCase.exportToCsv()
         val duration = System.currentTimeMillis() - startTime
 
-        assertTrue("Export should succeed", result)
-        assertTrue("CSV file should exist", csvFile.exists())
-        assertTrue("CSV file should have substantial content", csvFile.length() > 10000)
-
-        // Export should be reasonably fast
+        assertTrue("Export should succeed", result.isSuccess)
+        val content = readExport(result.getOrThrow())
+        assertTrue("CSV export should have substantial content", content.length > 10000)
         assertTrue("Export should complete in reasonable time (<5s)", duration < 5000)
-
-        // Clean up
-        csvFile.delete()
     }
+
+    private fun readExport(uri: android.net.Uri): String =
+        context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
 
     // ==================== Data Integrity Tests ====================
 

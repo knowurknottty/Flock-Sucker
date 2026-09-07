@@ -51,14 +51,14 @@ class DataRetentionWorkerE2ETest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
@@ -69,14 +69,14 @@ class DataRetentionWorkerE2ETest {
         // Create a detection with old timestamp
         val oldTimestamp = System.currentTimeMillis() - (24 * 60 * 60 * 1000) // 24 hours ago
         val oldDetection = TestDataFactory.createTestDetection().copy(
-            id = 1,
-            firstSeen = oldTimestamp,
-            lastSeen = oldTimestamp
+            id = "1",
+            timestamp = oldTimestamp,
+            lastSeenTimestamp = oldTimestamp
         )
-        detectionRepository.insert(oldDetection)
+        detectionRepository.insertDetection(oldDetection)
 
         // Verify it exists
-        val before = detectionRepository.getAllDetections().first()
+        val before = detectionRepository.allDetections.first()
         assertEquals("Should have 1 detection", 1, before.size)
 
         // Delete detections older than 1 hour (simulating worker behavior)
@@ -84,7 +84,7 @@ class DataRetentionWorkerE2ETest {
         detectionRepository.deleteOldDetections(cutoffTime)
 
         // Verify it's deleted
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertTrue("Old detection should be deleted", after.isEmpty())
     }
 
@@ -93,18 +93,18 @@ class DataRetentionWorkerE2ETest {
         // Create a recent detection
         val recentTimestamp = System.currentTimeMillis()
         val recentDetection = TestDataFactory.createTestDetection().copy(
-            id = 1,
-            firstSeen = recentTimestamp,
-            lastSeen = recentTimestamp
+            id = "1",
+            timestamp = recentTimestamp,
+            lastSeenTimestamp = recentTimestamp
         )
-        detectionRepository.insert(recentDetection)
+        detectionRepository.insertDetection(recentDetection)
 
         // Delete old detections (older than 24 hours)
         val cutoffTime = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
         detectionRepository.deleteOldDetections(cutoffTime)
 
         // Recent detection should still exist
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertEquals("Recent detection should be preserved", 1, after.size)
     }
 
@@ -115,25 +115,25 @@ class DataRetentionWorkerE2ETest {
         val fiveHoursAgo = now - (5 * 60 * 60 * 1000)
 
         val recentDetection = TestDataFactory.createTestDetection().copy(
-            id = 1,
-            firstSeen = threeHoursAgo,
-            lastSeen = threeHoursAgo
+            id = "1",
+            timestamp = threeHoursAgo,
+            lastSeenTimestamp = threeHoursAgo
         )
         val oldDetection = TestDataFactory.createTestDetection().copy(
-            id = 2,
-            firstSeen = fiveHoursAgo,
-            lastSeen = fiveHoursAgo,
+            id = "2",
+            timestamp = fiveHoursAgo,
+            lastSeenTimestamp = fiveHoursAgo,
             macAddress = "11:22:33:44:55:66"
         )
 
-        detectionRepository.insert(recentDetection)
-        detectionRepository.insert(oldDetection)
+        detectionRepository.insertDetection(recentDetection)
+        detectionRepository.insertDetection(oldDetection)
 
         // 4-hour retention period cutoff
         val cutoffTime = now - (4 * 60 * 60 * 1000)
         detectionRepository.deleteOldDetections(cutoffTime)
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertEquals("Only recent detection should remain", 1, after.size)
     }
 
@@ -144,25 +144,25 @@ class DataRetentionWorkerE2ETest {
         val eightDaysAgo = now - (8 * 24 * 60 * 60 * 1000L)
 
         val recentDetection = TestDataFactory.createTestDetection().copy(
-            id = 1,
-            firstSeen = sixDaysAgo,
-            lastSeen = sixDaysAgo
+            id = "1",
+            timestamp = sixDaysAgo,
+            lastSeenTimestamp = sixDaysAgo
         )
         val oldDetection = TestDataFactory.createTestDetection().copy(
-            id = 2,
-            firstSeen = eightDaysAgo,
-            lastSeen = eightDaysAgo,
+            id = "2",
+            timestamp = eightDaysAgo,
+            lastSeenTimestamp = eightDaysAgo,
             macAddress = "11:22:33:44:55:66"
         )
 
-        detectionRepository.insert(recentDetection)
-        detectionRepository.insert(oldDetection)
+        detectionRepository.insertDetection(recentDetection)
+        detectionRepository.insertDetection(oldDetection)
 
         // 7-day retention period cutoff
         val cutoffTime = now - (7 * 24 * 60 * 60 * 1000L)
         detectionRepository.deleteOldDetections(cutoffTime)
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertEquals("Only detection within 7 days should remain", 1, after.size)
     }
 
@@ -188,13 +188,13 @@ class DataRetentionWorkerE2ETest {
     @Test
     fun dataRetention_handlesEmptyDatabase() = runTest {
         // Empty database
-        val before = detectionRepository.getAllDetections().first()
+        val before = detectionRepository.allDetections.first()
         assertTrue("Database should be empty", before.isEmpty())
 
         // Should not crash
         detectionRepository.deleteOldDetections(System.currentTimeMillis())
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertTrue("Database should still be empty", after.isEmpty())
     }
 
@@ -204,21 +204,21 @@ class DataRetentionWorkerE2ETest {
 
         repeat(10) { i ->
             val detection = TestDataFactory.createTestDetection().copy(
-                id = (i + 1).toLong(),
-                firstSeen = veryOld,
-                lastSeen = veryOld,
+                id = (i + 1).toString(),
+                timestamp = veryOld,
+                lastSeenTimestamp = veryOld,
                 macAddress = String.format("AA:BB:CC:DD:EE:%02X", i)
             )
-            detectionRepository.insert(detection)
+            detectionRepository.insertDetection(detection)
         }
 
-        val before = detectionRepository.getAllDetections().first()
+        val before = detectionRepository.allDetections.first()
         assertEquals("Should have 10 detections", 10, before.size)
 
         // Delete all (cutoff in future)
         detectionRepository.deleteOldDetections(System.currentTimeMillis() + 1000)
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertTrue("All old detections should be deleted", after.isEmpty())
     }
 
@@ -228,19 +228,19 @@ class DataRetentionWorkerE2ETest {
 
         repeat(10) { i ->
             val detection = TestDataFactory.createTestDetection().copy(
-                id = (i + 1).toLong(),
-                firstSeen = now,
-                lastSeen = now,
+                id = (i + 1).toString(),
+                timestamp = now,
+                lastSeenTimestamp = now,
                 macAddress = String.format("AA:BB:CC:DD:EE:%02X", i)
             )
-            detectionRepository.insert(detection)
+            detectionRepository.insertDetection(detection)
         }
 
         // Delete old (1 hour ago cutoff - all are recent)
         val cutoffTime = now - (60 * 60 * 1000)
         detectionRepository.deleteOldDetections(cutoffTime)
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertEquals("All recent detections should remain", 10, after.size)
     }
 
@@ -253,18 +253,18 @@ class DataRetentionWorkerE2ETest {
 
         // Add detections at different times
         val detections = listOf(
-            TestDataFactory.createTestDetection().copy(id = 1, firstSeen = now, lastSeen = now, macAddress = "AA:AA:AA:AA:AA:01"),
-            TestDataFactory.createTestDetection().copy(id = 2, firstSeen = oneDayAgo, lastSeen = oneDayAgo, macAddress = "AA:AA:AA:AA:AA:02"),
-            TestDataFactory.createTestDetection().copy(id = 3, firstSeen = threeDaysAgo, lastSeen = threeDaysAgo, macAddress = "AA:AA:AA:AA:AA:03"),
-            TestDataFactory.createTestDetection().copy(id = 4, firstSeen = fiveDaysAgo, lastSeen = fiveDaysAgo, macAddress = "AA:AA:AA:AA:AA:04")
+            TestDataFactory.createTestDetection().copy(id = "1", timestamp = now, lastSeenTimestamp = now, macAddress = "AA:AA:AA:AA:AA:01"),
+            TestDataFactory.createTestDetection().copy(id = "2", timestamp = oneDayAgo, lastSeenTimestamp = oneDayAgo, macAddress = "AA:AA:AA:AA:AA:02"),
+            TestDataFactory.createTestDetection().copy(id = "3", timestamp = threeDaysAgo, lastSeenTimestamp = threeDaysAgo, macAddress = "AA:AA:AA:AA:AA:03"),
+            TestDataFactory.createTestDetection().copy(id = "4", timestamp = fiveDaysAgo, lastSeenTimestamp = fiveDaysAgo, macAddress = "AA:AA:AA:AA:AA:04")
         )
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         // Apply 3-day retention
         val cutoffTime = now - (3 * 24 * 60 * 60 * 1000L)
         detectionRepository.deleteOldDetections(cutoffTime)
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertEquals("Only detections within 3 days should remain", 2, after.size)
     }
 
@@ -277,21 +277,21 @@ class DataRetentionWorkerE2ETest {
         repeat(100) { i ->
             val timestamp = if (i < 50) now else oneHourAgo - (60 * 60 * 1000) // Half recent, half old
             val detection = TestDataFactory.createTestDetection().copy(
-                id = (i + 1).toLong(),
-                firstSeen = timestamp,
-                lastSeen = timestamp,
+                id = (i + 1).toString(),
+                timestamp = timestamp,
+                lastSeenTimestamp = timestamp,
                 macAddress = String.format("AA:BB:CC:DD:%02X:%02X", i / 256, i % 256)
             )
-            detectionRepository.insert(detection)
+            detectionRepository.insertDetection(detection)
         }
 
-        val before = detectionRepository.getAllDetections().first()
+        val before = detectionRepository.allDetections.first()
         assertEquals("Should have 100 detections", 100, before.size)
 
         // Apply 1-hour retention
         detectionRepository.deleteOldDetections(oneHourAgo)
 
-        val after = detectionRepository.getAllDetections().first()
+        val after = detectionRepository.allDetections.first()
         assertEquals("50 recent detections should remain", 50, after.size)
     }
 }

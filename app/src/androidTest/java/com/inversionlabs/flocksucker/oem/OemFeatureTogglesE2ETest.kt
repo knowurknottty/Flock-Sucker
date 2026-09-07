@@ -123,15 +123,15 @@ class OemFeatureTogglesE2ETest {
     // ==================== Privacy Feature Toggles ====================
 
     @Test
-    fun featureToggle_ephemeralModeIsAvailable() {
+    fun featureToggle_ephemeralModeEnabledIsAvailable() {
         // Verify ephemeral mode can be enabled
         val settings = PrivacySettings()
 
-        val ephemeral = settings.copy(ephemeralMode = true)
-        val persistent = settings.copy(ephemeralMode = false)
+        val ephemeral = settings.copy(ephemeralModeEnabled = true)
+        val persistent = settings.copy(ephemeralModeEnabled = false)
 
-        assertTrue("Ephemeral mode can be enabled", ephemeral.ephemeralMode)
-        assertFalse("Ephemeral mode can be disabled", persistent.ephemeralMode)
+        assertTrue("Ephemeral mode can be enabled", ephemeral.ephemeralModeEnabled)
+        assertFalse("Ephemeral mode can be disabled", persistent.ephemeralModeEnabled)
     }
 
     @Test
@@ -419,7 +419,7 @@ class OemFeatureTogglesE2ETest {
 
         // Core configurable features
         assertNotNull("Location storage toggle exists", settings.storeLocationWithDetections)
-        assertNotNull("Ephemeral mode toggle exists", settings.ephemeralMode)
+        assertNotNull("Ephemeral mode toggle exists", settings.ephemeralModeEnabled)
         assertNotNull("Auto-purge toggle exists", settings.autoPurgeOnScreenLock)
         assertNotNull("Ultrasonic toggle exists", settings.ultrasonicDetectionEnabled)
         assertNotNull("Retention period is configurable", settings.retentionPeriod)
@@ -476,7 +476,7 @@ class OemFeatureTogglesE2ETest {
         // All fields should be mutable
         val modified = defaultSettings.copy(
             storeLocationWithDetections = !defaultSettings.storeLocationWithDetections,
-            ephemeralMode = !defaultSettings.ephemeralMode,
+            ephemeralModeEnabled = !defaultSettings.ephemeralModeEnabled,
             autoPurgeOnScreenLock = !defaultSettings.autoPurgeOnScreenLock
         )
 
@@ -534,12 +534,12 @@ class OemFeatureTogglesE2ETest {
         // Toggle multiple features
         val customized = settings.copy(
             storeLocationWithDetections = false,
-            ephemeralMode = true,
+            ephemeralModeEnabled = true,
             ultrasonicDetectionEnabled = false
         )
 
         assertFalse("Location disabled", customized.storeLocationWithDetections)
-        assertTrue("Ephemeral enabled", customized.ephemeralMode)
+        assertTrue("Ephemeral enabled", customized.ephemeralModeEnabled)
         assertFalse("Ultrasonic disabled", customized.ultrasonicDetectionEnabled)
     }
 
@@ -549,7 +549,7 @@ class OemFeatureTogglesE2ETest {
         val settings = PrivacySettings()
 
         // Ephemeral mode affects storage
-        if (settings.ephemeralMode) {
+        if (settings.ephemeralModeEnabled) {
             assertTrue(
                 "Ephemeral mode should prevent persistence",
                 true // Behavior is implemented

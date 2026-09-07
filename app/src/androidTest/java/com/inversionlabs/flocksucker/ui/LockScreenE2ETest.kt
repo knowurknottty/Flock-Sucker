@@ -245,8 +245,7 @@ class LockScreenE2ETest {
     fun lockScreen_biometricButtonVisibleWhenEnabled() {
         val settings = SecuritySettings(
             appLockEnabled = true,
-            lockMethod = LockMethod.PIN_OR_BIOMETRIC,
-            biometricEnabled = true
+            lockMethod = LockMethod.PIN_OR_BIOMETRIC
         )
 
         setLockScreenContent(settings)
@@ -262,8 +261,7 @@ class LockScreenE2ETest {
     fun lockScreen_biometricButtonHiddenWhenDisabled() {
         val settings = SecuritySettings(
             appLockEnabled = true,
-            lockMethod = LockMethod.PIN,
-            biometricEnabled = false
+            lockMethod = LockMethod.PIN
         )
 
         setLockScreenContent(settings)
@@ -293,8 +291,7 @@ class LockScreenE2ETest {
     fun lockScreen_biometricOnlyShowsCorrectMessage() {
         val settings = SecuritySettings(
             appLockEnabled = true,
-            lockMethod = LockMethod.BIOMETRIC,
-            biometricEnabled = true
+            lockMethod = LockMethod.BIOMETRIC
         )
 
         setLockScreenContent(settings)
@@ -307,8 +304,7 @@ class LockScreenE2ETest {
     fun lockScreen_pinOrBiometricShowsCorrectMessage() {
         val settings = SecuritySettings(
             appLockEnabled = true,
-            lockMethod = LockMethod.PIN_OR_BIOMETRIC,
-            biometricEnabled = true
+            lockMethod = LockMethod.PIN_OR_BIOMETRIC
         )
 
         setLockScreenContent(settings)

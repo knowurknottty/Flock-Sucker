@@ -54,16 +54,16 @@ class DetectionFlowE2ETest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
-            ephemeralDetectionRepository.clear()
+            detectionRepository.deleteAllDetections()
+            ephemeralDetectionRepository.deleteAllDetections()
         }
     }
 
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAll()
-            ephemeralDetectionRepository.clear()
+            detectionRepository.deleteAllDetections()
+            ephemeralDetectionRepository.deleteAllDetections()
         }
     }
 
@@ -72,9 +72,9 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_wifiDetectionStoredAndRetrieved() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
 
         assertEquals("Should have 1 detection", 1, detections.size)
         assertEquals("Protocol should be WiFi", DetectionProtocol.WIFI, detections[0].protocol)
@@ -83,9 +83,9 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_cellularDetectionStoredAndRetrieved() = runTest {
         val detection = TestDataFactory.createStingrayDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
 
         assertEquals("Should have 1 detection", 1, detections.size)
         assertEquals("Protocol should be Cellular", DetectionProtocol.CELLULAR, detections[0].protocol)
@@ -94,9 +94,9 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_audioDetectionStoredAndRetrieved() = runTest {
         val detection = TestDataFactory.createUltrasonicBeaconDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
 
         assertEquals("Should have 1 detection", 1, detections.size)
         assertEquals("Protocol should be Audio", DetectionProtocol.AUDIO, detections[0].protocol)
@@ -105,9 +105,9 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_satelliteDetectionStoredAndRetrieved() = runTest {
         val detection = TestDataFactory.createSatelliteDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
 
         assertEquals("Should have 1 detection", 1, detections.size)
         assertEquals("Protocol should be Satellite", DetectionProtocol.SATELLITE, detections[0].protocol)
@@ -123,13 +123,13 @@ class DetectionFlowE2ETest {
         val satelliteDetection = TestDataFactory.createSatelliteDetection()
         val droneDetection = TestDataFactory.createDroneDetection()
 
-        detectionRepository.insert(wifiDetection)
-        detectionRepository.insert(cellularDetection)
-        detectionRepository.insert(audioDetection)
-        detectionRepository.insert(satelliteDetection)
-        detectionRepository.insert(droneDetection)
+        detectionRepository.insertDetection(wifiDetection)
+        detectionRepository.insertDetection(cellularDetection)
+        detectionRepository.insertDetection(audioDetection)
+        detectionRepository.insertDetection(satelliteDetection)
+        detectionRepository.insertDetection(droneDetection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 5 detections", 5, detections.size)
 
         val protocols = detections.map { it.protocol }.toSet()
@@ -142,10 +142,11 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_filterByProtocol() = runTest {
         val detections = TestDataFactory.createMixedProtocolDetections()
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
-        val wifiDetections = detectionRepository.getDetectionsByProtocol(DetectionProtocol.WIFI).first()
-        val cellularDetections = detectionRepository.getDetectionsByProtocol(DetectionProtocol.CELLULAR).first()
+        val allDetections = detectionRepository.allDetections.first()
+        val wifiDetections = allDetections.filter { it.protocol == DetectionProtocol.WIFI }
+        val cellularDetections = allDetections.filter { it.protocol == DetectionProtocol.CELLULAR }
 
         assertTrue("Should have WiFi detections", wifiDetections.isNotEmpty())
         assertTrue("Should have Cellular detections", cellularDetections.isNotEmpty())
@@ -164,10 +165,10 @@ class DetectionFlowE2ETest {
         val mediumDetection = TestDataFactory.createDroneDetection()
         val lowDetection = TestDataFactory.createTestDetection(threatLevel = ThreatLevel.LOW)
 
-        detectionRepository.insert(criticalDetection)
-        detectionRepository.insert(highDetection)
-        detectionRepository.insert(mediumDetection)
-        detectionRepository.insert(lowDetection)
+        detectionRepository.insertDetection(criticalDetection)
+        detectionRepository.insertDetection(highDetection)
+        detectionRepository.insertDetection(mediumDetection)
+        detectionRepository.insertDetection(lowDetection)
 
         val criticalOnly = detectionRepository.getDetectionsByThreatLevel(ThreatLevel.CRITICAL).first()
         assertEquals("Should have 1 critical detection", 1, criticalOnly.size)
@@ -176,9 +177,9 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_threatLevelHierarchy() = runTest {
         val detection = TestDataFactory.createStingrayDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         val threatLevel = detections[0].threatLevel
 
         assertEquals("Stingray should be critical", ThreatLevel.CRITICAL, threatLevel)
@@ -192,26 +193,26 @@ class DetectionFlowE2ETest {
         privacySettingsRepository.setEphemeralModeEnabled(true)
 
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        ephemeralDetectionRepository.add(detection)
+        ephemeralDetectionRepository.insertDetection(detection)
 
-        val ephemeralDetections = ephemeralDetectionRepository.getAll()
+        val ephemeralDetections = ephemeralDetectionRepository.getAllDetectionsSnapshot()
         assertEquals("Should have 1 ephemeral detection", 1, ephemeralDetections.size)
 
         // Persistent database should be empty
-        val persistentDetections = detectionRepository.getAllDetections().first()
+        val persistentDetections = detectionRepository.allDetections.first()
         assertTrue("Persistent database should be empty", persistentDetections.isEmpty())
     }
 
     @Test
     fun detectionFlow_ephemeralModeClearsOnClear() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        ephemeralDetectionRepository.add(detection)
+        ephemeralDetectionRepository.insertDetection(detection)
 
-        assertEquals("Should have 1 detection", 1, ephemeralDetectionRepository.getAll().size)
+        assertEquals("Should have 1 detection", 1, ephemeralDetectionRepository.getAllDetectionsSnapshot().size)
 
-        ephemeralDetectionRepository.clear()
+        ephemeralDetectionRepository.deleteAllDetections()
 
-        assertEquals("Should have 0 detections after clear", 0, ephemeralDetectionRepository.getAll().size)
+        assertEquals("Should have 0 detections after clear", 0, ephemeralDetectionRepository.getAllDetectionsSnapshot().size)
     }
 
     // ==================== Location Flow Tests ====================
@@ -222,9 +223,9 @@ class DetectionFlowE2ETest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Latitude should be stored", 37.7749, detections[0].latitude!!, 0.0001)
         assertEquals("Longitude should be stored", -122.4194, detections[0].longitude!!, 0.0001)
     }
@@ -235,9 +236,9 @@ class DetectionFlowE2ETest {
             latitude = null,
             longitude = null
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertNull("Latitude should be null", detections[0].latitude)
         assertNull("Longitude should be null", detections[0].longitude)
     }
@@ -247,15 +248,15 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_updateExistingDetection() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         val updated = detection.copy(
             seenCount = 5,
-            lastSeen = System.currentTimeMillis()
+            lastSeenTimestamp = System.currentTimeMillis()
         )
-        detectionRepository.update(updated)
+        detectionRepository.updateDetection(updated)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should still have 1 detection", 1, detections.size)
         assertEquals("Seen count should be updated", 5, detections[0].seenCount)
     }
@@ -263,12 +264,12 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_incrementSeenCount() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection().copy(seenCount = 1)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         val updated = detection.copy(seenCount = detection.seenCount + 1)
-        detectionRepository.update(updated)
+        detectionRepository.updateDetection(updated)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Seen count should be incremented", 2, detections[0].seenCount)
     }
 
@@ -282,10 +283,10 @@ class DetectionFlowE2ETest {
             macAddress = "11:22:33:44:55:66"
         )
 
-        detectionRepository.insert(activeDetection)
-        detectionRepository.insert(inactiveDetection)
+        detectionRepository.insertDetection(activeDetection)
+        detectionRepository.insertDetection(inactiveDetection)
 
-        val activeOnly = detectionRepository.getActiveDetections().first()
+        val activeOnly = detectionRepository.activeDetections.first()
         assertTrue("Should have at least 1 active detection", activeOnly.isNotEmpty())
         assertTrue("All results should be active", activeOnly.all { it.isActive })
     }
@@ -295,8 +296,8 @@ class DetectionFlowE2ETest {
         val camera = TestDataFactory.createFlockSafetyCameraDetection()
         val drone = TestDataFactory.createDroneDetection()
 
-        detectionRepository.insert(camera)
-        detectionRepository.insert(drone)
+        detectionRepository.insertDetection(camera)
+        detectionRepository.insertDetection(drone)
 
         val cameras = detectionRepository.getDetectionsByDeviceType(DeviceType.FLOCK_SAFETY_CAMERA).first()
         assertEquals("Should have 1 camera", 1, cameras.size)
@@ -308,9 +309,9 @@ class DetectionFlowE2ETest {
     @Test
     fun detectionFlow_handleLargeDataset() = runTest {
         val detections = TestDataFactory.createMultipleDetections(200)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
-        val allDetections = detectionRepository.getAllDetections().first()
+        val allDetections = detectionRepository.allDetections.first()
         assertEquals("Should handle 200 detections", 200, allDetections.size)
     }
 
@@ -320,24 +321,24 @@ class DetectionFlowE2ETest {
             val detection = TestDataFactory.createTestDetection(
                 macAddress = String.format("AA:BB:CC:DD:EE:%02X", i)
             )
-            detectionRepository.insert(detection)
+            detectionRepository.insertDetection(detection)
         }
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 50 detections", 50, detections.size)
     }
 
     @Test
     fun detectionFlow_deleteById() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         val id = detections[0].id
 
-        detectionRepository.deleteById(id)
+        detectionRepository.deleteDetection(detections[0])
 
-        val afterDelete = detectionRepository.getAllDetections().first()
+        val afterDelete = detectionRepository.allDetections.first()
         assertTrue("Detection should be deleted", afterDelete.isEmpty())
     }
 }

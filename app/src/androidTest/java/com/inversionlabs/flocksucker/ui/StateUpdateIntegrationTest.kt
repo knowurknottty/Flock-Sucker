@@ -1,15 +1,18 @@
 package com.inversionlabs.flocksucker.ui
 
 import android.content.Context
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
+import com.inversionlabs.flocksucker.MainActivity
 import com.inversionlabs.flocksucker.data.model.*
 import com.inversionlabs.flocksucker.data.repository.DetectionRepository
 import com.inversionlabs.flocksucker.scanner.flipper.FlipperConnectionState
 import com.inversionlabs.flocksucker.scanner.flipper.FlipperScannerManager
 import com.inversionlabs.flocksucker.service.ScanningServiceConnection
-import com.inversionlabs.flocksucker.ui.screens.MainViewModel
+import com.inversionlabs.flocksucker.ui.screens.*
 import com.inversionlabs.flocksucker.utils.TestDataFactory
 import com.inversionlabs.flocksucker.utils.TestHelpers
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -62,8 +65,8 @@ class StateUpdateIntegrationTest {
     @Inject
     lateinit var flipperScannerManager: FlipperScannerManager
 
-    @Inject
     lateinit var viewModel: MainViewModel
+    private lateinit var activityScenario: ActivityScenario<MainActivity>
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val testDispatcher = StandardTestDispatcher()
@@ -76,10 +79,17 @@ class StateUpdateIntegrationTest {
         runBlocking {
             detectionRepository.deleteAllDetections()
         }
+        activityScenario = ActivityScenario.launch(MainActivity::class.java)
+        activityScenario.onActivity { activity ->
+            viewModel = ViewModelProvider(activity)[MainViewModel::class.java]
+        }
     }
 
     @After
     fun cleanup() {
+        if (::activityScenario.isInitialized) {
+            activityScenario.close()
+        }
         runBlocking {
             detectionRepository.deleteAllDetections()
         }
@@ -213,8 +223,8 @@ class StateUpdateIntegrationTest {
                 isScanning = true,
                 detectionCount = 5,
                 scanStatus = "Active",
-                bleStatus = "Scanning",
-                wifiStatus = "Scanning",
+                bleStatus = "Active",
+                wifiStatus = "Active",
                 locationStatus = "Available",
                 cellularStatus = "Idle",
                 satelliteStatus = "Idle"
@@ -227,8 +237,8 @@ class StateUpdateIntegrationTest {
 
             assertTrue("Should be scanning", updatedState.isScanning)
             assertEquals("Scan status should be Active", com.inversionlabs.flocksucker.service.ScanStatus.Active, updatedState.scanStatus)
-            assertEquals("BLE status should be Scanning", com.inversionlabs.flocksucker.service.SubsystemStatus.Scanning, updatedState.bleStatus)
-            assertEquals("WiFi status should be Scanning", com.inversionlabs.flocksucker.service.SubsystemStatus.Scanning, updatedState.wifiStatus)
+            assertEquals("BLE status should be Scanning", com.inversionlabs.flocksucker.service.SubsystemStatus.Active, updatedState.bleStatus)
+            assertEquals("WiFi status should be Scanning", com.inversionlabs.flocksucker.service.SubsystemStatus.Active, updatedState.wifiStatus)
         }
     }
 

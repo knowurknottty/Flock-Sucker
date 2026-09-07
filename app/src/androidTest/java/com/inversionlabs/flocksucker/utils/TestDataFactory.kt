@@ -21,7 +21,8 @@ object TestDataFactory {
         ssid: String? = "Test-Network",
         latitude: Double? = 37.7749,
         longitude: Double? = -122.4194,
-        isActive: Boolean = true
+        isActive: Boolean = true,
+        signalStrength: SignalStrength = SignalStrength.MEDIUM
     ): Detection {
         return Detection(
             protocol = protocol,
@@ -29,7 +30,7 @@ object TestDataFactory {
             deviceType = deviceType,
             deviceName = "Test ${deviceType.displayName}",
             rssi = -60,
-            signalStrength = SignalStrength.MEDIUM,
+            signalStrength = signalStrength,
             threatLevel = threatLevel,
             threatScore = 75,
             macAddress = macAddress,
@@ -161,11 +162,9 @@ object TestDataFactory {
         autoLockMinutes: Int = 5
     ): SecuritySettings {
         return SecuritySettings(
-            lockEnabled = lockEnabled,
-            pinHash = "test_hash",
-            pinSalt = "test_salt",
-            biometricEnabled = biometricEnabled,
-            autoLockMinutes = autoLockMinutes
+            appLockEnabled = lockEnabled,
+            lockMethod = if (biometricEnabled) LockMethod.PIN_OR_BIOMETRIC else LockMethod.PIN,
+            lockTimeoutSeconds = autoLockMinutes * 60
         )
     }
 
@@ -223,8 +222,8 @@ object TestDataFactory {
      */
     fun createDetectionWithTimestamp(timestamp: Long): Detection {
         return createTestDetection().copy(
-            firstSeen = timestamp,
-            lastSeen = timestamp
+            timestamp = timestamp,
+            lastSeenTimestamp = timestamp
         )
     }
 
@@ -255,9 +254,9 @@ object TestDataFactory {
             createTestDetection(
                 macAddress = String.format("AA:BB:CC:DD:EE:%02X", index % 256)
             ).copy(
-                id = (index + 1).toLong(),
-                firstSeen = timestamp,
-                lastSeen = timestamp
+                id = (index + 1).toString(),
+                timestamp = timestamp,
+                lastSeenTimestamp = timestamp
             )
         }
     }
@@ -274,9 +273,9 @@ object TestDataFactory {
             createTestDetection(
                 macAddress = String.format("OLD:OLD:OLD:DD:EE:%02X", index % 256)
             ).copy(
-                id = (index + 1).toLong(),
-                firstSeen = oldTimestamp,
-                lastSeen = oldTimestamp
+                id = (index + 1).toString(),
+                timestamp = oldTimestamp,
+                lastSeenTimestamp = oldTimestamp
             )
         }
     }
@@ -322,7 +321,7 @@ object TestDataFactory {
     fun createDetectionsForAllProtocols(): List<Detection> {
         return listOf(
             createTestDetection(protocol = DetectionProtocol.WIFI),
-            createTestDetection(protocol = DetectionProtocol.BLE, macAddress = "11:22:33:44:55:66"),
+            createTestDetection(protocol = DetectionProtocol.BLUETOOTH_LE, macAddress = "11:22:33:44:55:66"),
             createStingrayDetection(),
             createSatelliteDetection(),
             createUltrasonicBeaconDetection()

@@ -53,14 +53,14 @@ class MapScreenTest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
@@ -130,7 +130,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -152,7 +152,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -170,7 +170,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -196,7 +196,7 @@ class MapScreenTest {
             longitude = -122.4194,
             deviceType = DeviceType.FLOCK_SAFETY_CAMERA
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -216,7 +216,7 @@ class MapScreenTest {
             TestDataFactory.createTestDetection(latitude = 37.7850, longitude = -122.4100),
             TestDataFactory.createTestDetection(latitude = 37.7650, longitude = -122.4300)
         )
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -249,10 +249,10 @@ class MapScreenTest {
             longitude = -122.4400
         )
 
-        detectionRepository.insert(critical)
-        detectionRepository.insert(high)
-        detectionRepository.insert(medium)
-        detectionRepository.insert(low)
+        detectionRepository.insertDetection(critical)
+        detectionRepository.insertDetection(high)
+        detectionRepository.insertDetection(medium)
+        detectionRepository.insertDetection(low)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -274,7 +274,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -303,7 +303,7 @@ class MapScreenTest {
                 longitude = baseLongitude + (index * 0.0001)
             )
         }
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -332,8 +332,8 @@ class MapScreenTest {
             longitude = baseLongitude + 0.0001
         )
 
-        detectionRepository.insert(critical)
-        detectionRepository.insert(low)
+        detectionRepository.insertDetection(critical)
+        detectionRepository.insertDetection(low)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -354,7 +354,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(withLocation)
+        detectionRepository.insertDetection(withLocation)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -373,7 +373,7 @@ class MapScreenTest {
             latitude = null,
             longitude = null
         )
-        detectionRepository.insert(withoutLocation)
+        detectionRepository.insertDetection(withoutLocation)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -397,8 +397,8 @@ class MapScreenTest {
             longitude = null
         )
 
-        detectionRepository.insert(withLocation)
-        detectionRepository.insert(withoutLocation)
+        detectionRepository.insertDetection(withLocation)
+        detectionRepository.insertDetection(withoutLocation)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -425,8 +425,8 @@ class MapScreenTest {
             deviceType = DeviceType.DRONE
         )
 
-        detectionRepository.insert(sanFrancisco)
-        detectionRepository.insert(newYork)
+        detectionRepository.insertDetection(sanFrancisco)
+        detectionRepository.insertDetection(newYork)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -446,7 +446,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -464,7 +464,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -486,7 +486,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -504,7 +504,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -538,7 +538,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.waitForIdle()
 
@@ -561,7 +561,7 @@ class MapScreenTest {
             TestDataFactory.createTestDetection(latitude = 37.7650, longitude = -122.4300)
         )
         detections.forEach {
-            detectionRepository.insert(it)
+            detectionRepository.insertDetection(it)
             composeTestRule.waitForIdle()
         }
 
@@ -575,7 +575,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -587,7 +587,7 @@ class MapScreenTest {
         composeTestRule.onNodeWithText("1 locations", substring = true).assertExists()
 
         // Remove detection
-        detectionRepository.deleteById(detection.id)
+        detectionRepository.deleteDetection(detection)
 
         composeTestRule.waitForIdle()
 
@@ -616,7 +616,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -635,7 +635,7 @@ class MapScreenTest {
             longitude = -122.4194,
             signalStrength = SignalStrength.EXCELLENT // Should show ~10m accuracy
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -667,7 +667,7 @@ class MapScreenTest {
     fun mapScreen_showsNoLocationDataStateWithDetectionsButNoLocation() = runTest {
         // Add detection without location
         val detection = TestDataFactory.createUltrasonicBeaconDetection() // Has null location
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -698,7 +698,7 @@ class MapScreenTest {
             latitude = null,
             longitude = null
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -718,7 +718,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -736,7 +736,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -758,7 +758,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -780,7 +780,7 @@ class MapScreenTest {
                 longitude = -122.4194 + (Math.random() * 0.1)
             )
         }
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -805,7 +805,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection1)
+        detectionRepository.insertDetection(detection1)
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithText("1 locations", substring = true).assertExists()
@@ -815,7 +815,7 @@ class MapScreenTest {
             longitude = -122.4100,
             macAddress = "BB:BB:BB:BB:BB:BB"
         )
-        detectionRepository.insert(detection2)
+        detectionRepository.insertDetection(detection2)
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithText("2 locations", substring = true).assertExists()
@@ -832,7 +832,7 @@ class MapScreenTest {
                 longitude = -122.4194 + (Math.random() * 0.5 - 0.25)
             )
         }
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -850,7 +850,7 @@ class MapScreenTest {
             latitude = null,
             longitude = -122.4194
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -868,7 +868,7 @@ class MapScreenTest {
             latitude = 37.7749,
             longitude = null
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -887,7 +887,7 @@ class MapScreenTest {
             latitude = 89.9999,
             longitude = 0.0
         )
-        detectionRepository.insert(northPole)
+        detectionRepository.insertDetection(northPole)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -912,8 +912,8 @@ class MapScreenTest {
             macAddress = "BB:BB:BB:BB:BB:BB"
         )
 
-        detectionRepository.insert(west)
-        detectionRepository.insert(east)
+        detectionRepository.insertDetection(west)
+        detectionRepository.insertDetection(east)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -938,9 +938,9 @@ class MapScreenTest {
             longitude = location1.longitude
         )
 
-        detectionRepository.insert(location1)
-        detectionRepository.insert(location2)
-        detectionRepository.insert(location3)
+        detectionRepository.insertDetection(location1)
+        detectionRepository.insertDetection(location2)
+        detectionRepository.insertDetection(location3)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -967,7 +967,7 @@ class MapScreenTest {
                 longitude = -122.4194 + (index * 0.01),
                 macAddress = String.format("AA:BB:CC:DD:EE:%02X", index)
             )
-            detectionRepository.insert(detection)
+            detectionRepository.insertDetection(detection)
         }
 
         composeTestRule.waitForIdle()
@@ -981,7 +981,7 @@ class MapScreenTest {
     @Test
     fun mapScreen_detailSheetShowsCoordinates() = runTest {
         val detection = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
         composeTestRule.setContent {
             MapScreen(onNavigateBack = {})
@@ -1005,7 +1005,7 @@ class MapScreenTest {
                 longitude = -122.4194 + (Math.random() * 1.0 - 0.5)
             )
         }
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         val startTime = System.currentTimeMillis()
 
@@ -1042,7 +1042,7 @@ class MapScreenTest {
 
         // Add detection via repository
         val detection1 = TestDataFactory.createFlockSafetyCameraDetection()
-        detectionRepository.insert(detection1)
+        detectionRepository.insertDetection(detection1)
         composeTestRule.waitForIdle()
 
         // Map should update
@@ -1053,19 +1053,19 @@ class MapScreenTest {
             latitude = 37.7850,
             longitude = -122.4100
         )
-        detectionRepository.insert(detection2)
+        detectionRepository.insertDetection(detection2)
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithText("2 locations", substring = true).assertExists()
 
         // Remove a detection
-        detectionRepository.deleteById(detection1.id)
+        detectionRepository.deleteDetection(detection1)
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithText("1 locations", substring = true).assertExists()
 
         // Remove all
-        detectionRepository.deleteAll()
+        detectionRepository.deleteAllDetections()
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithText("No Detections Yet", substring = true).assertExists()

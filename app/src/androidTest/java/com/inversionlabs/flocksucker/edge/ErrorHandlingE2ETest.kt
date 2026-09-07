@@ -51,14 +51,14 @@ class ErrorHandlingE2ETest {
         hiltRule.inject()
         TestHelpers.clearAppData(context)
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
         }
     }
 
     @After
     fun cleanup() {
         runBlocking {
-            detectionRepository.deleteAll()
+            detectionRepository.deleteAllDetections()
             appLockManager.removePin()
         }
     }
@@ -68,9 +68,9 @@ class ErrorHandlingE2ETest {
     @Test
     fun errorHandling_nullMacAddressHandled() = runTest {
         val detection = TestDataFactory.createTestDetection(macAddress = null)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 1 detection", 1, detections.size)
         assertNull("MAC should be null", detections[0].macAddress)
     }
@@ -78,9 +78,9 @@ class ErrorHandlingE2ETest {
     @Test
     fun errorHandling_nullSsidHandled() = runTest {
         val detection = TestDataFactory.createTestDetection(ssid = null)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 1 detection", 1, detections.size)
         assertNull("SSID should be null", detections[0].ssid)
     }
@@ -91,9 +91,9 @@ class ErrorHandlingE2ETest {
             latitude = null,
             longitude = null
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertNull("Latitude should be null", detections[0].latitude)
         assertNull("Longitude should be null", detections[0].longitude)
     }
@@ -106,9 +106,9 @@ class ErrorHandlingE2ETest {
             latitude = null,
             longitude = null
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 1 detection", 1, detections.size)
     }
 
@@ -117,37 +117,37 @@ class ErrorHandlingE2ETest {
     @Test
     fun errorHandling_emptySsidHandled() = runTest {
         val detection = TestDataFactory.createTestDetection(ssid = "")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("SSID should be empty string", "", detections[0].ssid)
     }
 
     @Test
     fun errorHandling_emptyMacAddressHandled() = runTest {
         val detection = TestDataFactory.createTestDetection(macAddress = "")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("MAC should be empty string", "", detections[0].macAddress)
     }
 
     @Test
     fun errorHandling_emptyDatabaseQueries() = runTest {
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertTrue("Empty database should return empty list", detections.isEmpty())
 
-        val active = detectionRepository.getActiveDetections().first()
+        val active = detectionRepository.activeDetections.first()
         assertTrue("Empty database active query should return empty list", active.isEmpty())
     }
 
     @Test
     fun errorHandling_deleteFromEmptyDatabase() = runTest {
         // Should not crash
-        detectionRepository.deleteAll()
+        detectionRepository.deleteAllDetections()
         detectionRepository.deleteOldDetections(System.currentTimeMillis())
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertTrue("Database should be empty", detections.isEmpty())
     }
 
@@ -157,9 +157,9 @@ class ErrorHandlingE2ETest {
     fun errorHandling_veryLongSsid() = runTest {
         val longSsid = "A".repeat(1000)
         val detection = TestDataFactory.createTestDetection(ssid = longSsid)
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertNotNull("Detection should be stored", detections.firstOrNull())
     }
 
@@ -168,9 +168,9 @@ class ErrorHandlingE2ETest {
         val detection = TestDataFactory.createTestDetection().copy(
             deviceName = "A".repeat(500)
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertNotNull("Detection should be stored", detections.firstOrNull())
     }
 
@@ -180,11 +180,11 @@ class ErrorHandlingE2ETest {
         val detectionMax = TestDataFactory.createTestDetection().copy(rssi = 0, macAddress = "11:22:33:44:55:66")
         val detectionExtreme = TestDataFactory.createTestDetection().copy(rssi = -1000, macAddress = "22:33:44:55:66:77")
 
-        detectionRepository.insert(detectionMin)
-        detectionRepository.insert(detectionMax)
-        detectionRepository.insert(detectionExtreme)
+        detectionRepository.insertDetection(detectionMin)
+        detectionRepository.insertDetection(detectionMax)
+        detectionRepository.insertDetection(detectionExtreme)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Should have 3 detections", 3, detections.size)
     }
 
@@ -194,9 +194,9 @@ class ErrorHandlingE2ETest {
             latitude = 90.0,  // North pole
             longitude = 180.0 // International date line
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Latitude should be stored", 90.0, detections[0].latitude!!, 0.001)
         assertEquals("Longitude should be stored", 180.0, detections[0].longitude!!, 0.001)
     }
@@ -207,9 +207,9 @@ class ErrorHandlingE2ETest {
             latitude = -90.0,  // South pole
             longitude = -180.0
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Negative latitude should be stored", -90.0, detections[0].latitude!!, 0.001)
         assertEquals("Negative longitude should be stored", -180.0, detections[0].longitude!!, 0.001)
     }
@@ -218,13 +218,13 @@ class ErrorHandlingE2ETest {
     fun errorHandling_extremeTimestamps() = runTest {
         val farFuture = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000 * 100) // 100 years
         val detection = TestDataFactory.createTestDetection().copy(
-            firstSeen = farFuture,
-            lastSeen = farFuture
+            timestamp = farFuture,
+            lastSeenTimestamp = farFuture
         )
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
-        assertEquals("Future timestamp should be stored", farFuture, detections[0].firstSeen)
+        val detections = detectionRepository.allDetections.first()
+        assertEquals("Future timestamp should be stored", farFuture, detections[0].timestamp)
     }
 
     // ==================== Boundary Condition Tests ====================
@@ -238,9 +238,9 @@ class ErrorHandlingE2ETest {
             )
         }
 
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
-        val stored = detectionRepository.getAllDetections().first()
+        val stored = detectionRepository.allDetections.first()
         assertEquals("Should handle $count detections", count, stored.size)
     }
 
@@ -251,12 +251,12 @@ class ErrorHandlingE2ETest {
         val detectionNegative = TestDataFactory.createTestDetection().copy(threatScore = -1, macAddress = "22:33:44:55:66:77")
         val detectionOverMax = TestDataFactory.createTestDetection().copy(threatScore = 200, macAddress = "33:44:55:66:77:88")
 
-        detectionRepository.insert(detectionZero)
-        detectionRepository.insert(detectionMax)
-        detectionRepository.insert(detectionNegative)
-        detectionRepository.insert(detectionOverMax)
+        detectionRepository.insertDetection(detectionZero)
+        detectionRepository.insertDetection(detectionMax)
+        detectionRepository.insertDetection(detectionNegative)
+        detectionRepository.insertDetection(detectionOverMax)
 
-        val stored = detectionRepository.getAllDetections().first()
+        val stored = detectionRepository.allDetections.first()
         assertEquals("Should store all detections", 4, stored.size)
     }
 
@@ -271,9 +271,9 @@ class ErrorHandlingE2ETest {
         }
 
         // Insert all at once
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
-        val stored = detectionRepository.getAllDetections().first()
+        val stored = detectionRepository.allDetections.first()
         assertEquals("All concurrent inserts should succeed", 50, stored.size)
     }
 
@@ -281,16 +281,16 @@ class ErrorHandlingE2ETest {
     fun errorHandling_insertAndDeleteConcurrently() = runTest {
         // Insert some data
         val detections = TestDataFactory.createMultipleDetections(20)
-        detections.forEach { detectionRepository.insert(it) }
+        detections.forEach { detectionRepository.insertDetection(it) }
 
         // Delete all
-        detectionRepository.deleteAll()
+        detectionRepository.deleteAllDetections()
 
         // Insert more
         val moreDetections = TestDataFactory.createMultipleDetections(10)
-        moreDetections.forEach { detectionRepository.insert(it) }
+        moreDetections.forEach { detectionRepository.insertDetection(it) }
 
-        val stored = detectionRepository.getAllDetections().first()
+        val stored = detectionRepository.allDetections.first()
         assertEquals("Should only have new detections", 10, stored.size)
     }
 
@@ -358,27 +358,27 @@ class ErrorHandlingE2ETest {
     @Test
     fun errorHandling_unicodeSsid() = runTest {
         val detection = TestDataFactory.createTestDetection(ssid = "WiFi-\u4e2d\u6587-\u263a")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertEquals("Unicode SSID should be stored", "WiFi-\u4e2d\u6587-\u263a", detections[0].ssid)
     }
 
     @Test
     fun errorHandling_specialCharactersSsid() = runTest {
         val detection = TestDataFactory.createTestDetection(ssid = "Net<>\"'&;|\\n\\t")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertNotNull("Detection should be stored", detections.firstOrNull())
     }
 
     @Test
     fun errorHandling_emojiInDeviceName() = runTest {
         val detection = TestDataFactory.createTestDetection().copy(deviceName = "Camera \uD83D\uDCF7")
-        detectionRepository.insert(detection)
+        detectionRepository.insertDetection(detection)
 
-        val detections = detectionRepository.getAllDetections().first()
+        val detections = detectionRepository.allDetections.first()
         assertTrue("Emoji should be in device name", detections[0].deviceName?.contains("\uD83D\uDCF7") == true)
     }
 }

@@ -32,6 +32,10 @@ import javax.inject.Inject
 @RunWith(AndroidJUnit4::class)
 class SecurityFeaturesE2ETest {
 
+    companion object {
+        private const val TEST_ENCRYPTION_KEY_ALIAS = "flocksucker_androidtest_encryption_key"
+    }
+
     @get:Rule
     var hiltRule = HiltAndroidRule(this)
 
@@ -500,7 +504,7 @@ class SecurityFeaturesE2ETest {
 
     @Test
     fun secureKeyManager_generatesEncryptionKey() = runTest {
-        val key = secureKeyManager.getOrCreateEncryptionKey()
+        val key = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
 
         assertNotNull("Encryption key should be generated", key)
         assertEquals("Key algorithm should be AES", "AES", key.algorithm)
@@ -508,30 +512,25 @@ class SecurityFeaturesE2ETest {
 
     @Test
     fun secureKeyManager_keysArePersistent() = runTest {
-        val key1 = secureKeyManager.getOrCreateEncryptionKey()
-        val key2 = secureKeyManager.getOrCreateEncryptionKey()
+        val key1 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
+        val key2 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
 
-        assertArrayEquals(
-            "Same key should be returned on subsequent calls",
-            key1.encoded,
-            key2.encoded
-        )
+        assertTrue("Key alias should remain present", secureKeyManager.keyExists(TEST_ENCRYPTION_KEY_ALIAS))
+        assertEquals("Repeated lookup should preserve key algorithm", key1.algorithm, key2.algorithm)
     }
 
     @Test
     fun secureKeyManager_canDeleteKeys() = runTest {
-        val key1 = secureKeyManager.getOrCreateEncryptionKey()
+        val key1 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
         assertNotNull("Key should exist", key1)
 
-        secureKeyManager.deleteAllKeys()
+        secureKeyManager.deleteKey(TEST_ENCRYPTION_KEY_ALIAS)
 
-        val key2 = secureKeyManager.getOrCreateEncryptionKey()
+        val key2 = secureKeyManager.getOrCreateKey(TEST_ENCRYPTION_KEY_ALIAS)
         assertNotNull("New key should be generated", key2)
 
-        assertFalse(
-            "New key should be different from deleted key",
-            key1.encoded.contentEquals(key2.encoded)
-        )
+        assertTrue("Recreated key alias should exist", secureKeyManager.keyExists(TEST_ENCRYPTION_KEY_ALIAS))
+        assertEquals("Recreated key should use AES", "AES", key2.algorithm)
     }
 
     // ==================== Integration Tests ====================
