@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.flockyou.config.DeploymentProfile
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -151,6 +152,28 @@ data class ScanSettings(
     }
 }
 
+internal fun scanDefaultsForDeployment(
+    constrained: Boolean,
+    defaultFlockBoost: Boolean
+): ScanSettings = if (constrained) {
+    ScanSettings(
+        wifiScanIntervalSeconds = 45,
+        bleScanDurationSeconds = 8,
+        inactiveTimeoutSeconds = 90,
+        rfScanIntervalSeconds = 60,
+        ultrasonicScanIntervalSeconds = 60,
+        ultrasonicScanDurationSeconds = 4,
+        gnssScanIntervalSeconds = 10,
+        satelliteScanIntervalSeconds = 30,
+        cellularScanIntervalSeconds = 10,
+        batteryAdaptiveMode = "balanced",
+        autoBatteryAdaptive = true,
+        flockBoostEnabled = defaultFlockBoost
+    )
+} else {
+    ScanSettings(flockBoostEnabled = defaultFlockBoost)
+}
+
 @Singleton
 class ScanSettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
@@ -159,25 +182,12 @@ class ScanSettingsRepository @Inject constructor(
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memoryInfo = ActivityManager.MemoryInfo().also(am::getMemoryInfo)
         val fourGiB = 4L * 1024L * 1024L * 1024L
-        val constrained = am.isLowRamDevice || am.memoryClass <= 256 || memoryInfo.totalMem <= fourGiB
+        val runtimeConstrained = am.isLowRamDevice || am.memoryClass <= 256 || memoryInfo.totalMem <= fourGiB
 
-        if (constrained) {
-            ScanSettings(
-                wifiScanIntervalSeconds = 45,
-                bleScanDurationSeconds = 8,
-                inactiveTimeoutSeconds = 90,
-                rfScanIntervalSeconds = 60,
-                ultrasonicScanIntervalSeconds = 60,
-                ultrasonicScanDurationSeconds = 4,
-                gnssScanIntervalSeconds = 10,
-                satelliteScanIntervalSeconds = 30,
-                cellularScanIntervalSeconds = 10,
-                batteryAdaptiveMode = "balanced",
-                autoBatteryAdaptive = true
-            )
-        } else {
-            ScanSettings()
-        }
+        scanDefaultsForDeployment(
+            constrained = runtimeConstrained || DeploymentProfile.forceConstrainedDefaults,
+            defaultFlockBoost = DeploymentProfile.defaultFlockBoost
+        )
     }
 
     private object PreferencesKeys {
