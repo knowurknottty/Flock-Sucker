@@ -139,7 +139,7 @@ jobs:
         run: ./gradlew assembleoemDebug --stacktrace --build-cache
 
       - name: Upload Debug APK (oem)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-oem-debug
           path: app/build/outputs/apk/oem/debug/*.apk
@@ -224,7 +224,7 @@ jobs:
         run: ./gradlew testoemDebugUnitTest --stacktrace --build-cache
 
       - name: Upload Test Results (oem)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-oem
@@ -305,7 +305,7 @@ jobs:
         run: ./gradlew assemblesideloadDebug --stacktrace --build-cache
 
       - name: Upload Debug APK (sideload)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-sideload-debug
           path: app/build/outputs/apk/sideload/debug/*.apk
@@ -390,7 +390,7 @@ jobs:
         run: ./gradlew testsideloadDebugUnitTest --stacktrace --build-cache
 
       - name: Upload Test Results (sideload)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-sideload
@@ -471,7 +471,7 @@ jobs:
         run: ./gradlew assemblesystemDebug --stacktrace --build-cache
 
       - name: Upload Debug APK (system)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-system-debug
           path: app/build/outputs/apk/system/debug/*.apk
@@ -556,7 +556,7 @@ jobs:
         run: ./gradlew testsystemDebugUnitTest --stacktrace --build-cache
 
       - name: Upload Test Results (system)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-system
@@ -819,7 +819,7 @@ jobs:
           echo "Renamed oem APK to FlockSucker-oem-v${VERSION}.apk"
 
       - name: Upload Release APK (oem)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-oem-release
           path: app/build/outputs/apk/release-renamed/*.apk
@@ -1180,7 +1180,7 @@ jobs:
           echo "Renamed sideload APK to FlockSucker-sideload-v${VERSION}.apk"
 
       - name: Upload Release APK (sideload)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-sideload-release
           path: app/build/outputs/apk/release-renamed/*.apk
@@ -1541,7 +1541,7 @@ jobs:
           echo "Renamed system APK to FlockSucker-system-v${VERSION}.apk"
 
       - name: Upload Release APK (system)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-system-release
           path: app/build/outputs/apk/release-renamed/*.apk
@@ -1790,7 +1790,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Lint Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: lint-results
