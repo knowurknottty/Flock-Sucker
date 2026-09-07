@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.flockyou.service.CellularMonitor
 import com.flockyou.service.DetectorHealthStatus
+import com.flockyou.service.DetectorHealthPolicy
+import com.flockyou.service.DetectorLifecycleState
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -76,8 +78,8 @@ fun ServiceHealthStatusScreen(
     }
 
     // Calculate error counts for badges
-    val detectorErrorCount = detectorHealth.values.count { !it.isHealthy && it.isRunning }
-    val totalErrorCount = detectorErrorCount + uiState.recentErrors.size
+    val detectorAttentionCount = DetectorHealthPolicy.summarize(detectorHealth).attentionCount
+    val totalErrorCount = detectorAttentionCount + uiState.recentErrors.size
 
     // Last updated timestamp
     var lastUpdated by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -166,7 +168,7 @@ fun ServiceHealthStatusScreen(
                             text = { Text(title) },
                             icon = {
                                 val badgeCount = when (index) {
-                                    1 -> detectorErrorCount  // Detectors tab
+                                    1 -> detectorAttentionCount  // Detectors tab
                                     2 -> totalErrorCount     // Diagnostics tab
                                     else -> 0
                                 }
@@ -384,10 +386,11 @@ private fun AlertBanner(
     onNavigateToDetectors: () -> Unit,
     onNavigateToDiagnostics: () -> Unit
 ) {
-    val unhealthyCount = detectorHealth.values.count { !it.isHealthy && it.isRunning }
+    val healthSummary = DetectorHealthPolicy.summarize(detectorHealth)
+    val attentionCount = healthSummary.attentionCount
     val errorCount = recentErrors.size
 
-    if (unhealthyCount == 0 && errorCount == 0) return
+    if (attentionCount == 0 && errorCount == 0) return
 
     val infiniteTransition = rememberInfiniteTransition(label = "alert_pulse")
     val alpha by infiniteTransition.animateFloat(
@@ -404,7 +407,7 @@ private fun AlertBanner(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                if (unhealthyCount > 0) onNavigateToDetectors()
+                if (attentionCount > 0) onNavigateToDetectors()
                 else onNavigateToDiagnostics()
             },
         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = alpha)
@@ -424,8 +427,8 @@ private fun AlertBanner(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = buildString {
-                        if (unhealthyCount > 0) append("$unhealthyCount unhealthy detector${if (unhealthyCount > 1) "s" else ""}")
-                        if (unhealthyCount > 0 && errorCount > 0) append(" • ")
+                        if (attentionCount > 0) append("$attentionCount detector${if (attentionCount > 1) "s" else ""} need attention")
+                        if (attentionCount > 0 && errorCount > 0) append(" • ")
                         if (errorCount > 0) append("$errorCount error${if (errorCount > 1) "s" else ""}")
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -574,9 +577,10 @@ private fun DashboardContent(
     onNavigateToErrors: () -> Unit,
     onNavigateToUnhealthy: () -> Unit
 ) {
-    val totalDetectors = if (detectorHealth.isEmpty()) 8 else detectorHealth.size
-    val healthyCount = detectorHealth.values.count { it.isHealthy && it.isRunning }
-    val unhealthyCount = detectorHealth.values.count { !it.isHealthy && it.isRunning }
+    val healthSummary = DetectorHealthPolicy.summarize(detectorHealth)
+    val totalDetectors = if (detectorHealth.isEmpty()) 8 else healthSummary.totalCount
+    val healthyCount = healthSummary.healthyCount
+    val attentionCount = healthSummary.attentionCount
     val errorCount = uiState.recentErrors.size
 
     // Show skeleton loading if no data yet
@@ -611,7 +615,7 @@ private fun DashboardContent(
         item {
             QuickActionsRow(
                 errorCount = errorCount,
-                unhealthyCount = unhealthyCount,
+                unhealthyCount = attentionCount,
                 onViewErrors = onNavigateToErrors,
                 onViewUnhealthy = onNavigateToUnhealthy
             )
@@ -787,7 +791,7 @@ private fun QuickActionsRow(
         if (unhealthyCount > 0) {
             AssistChip(
                 onClick = onViewUnhealthy,
-                label = { Text("$unhealthyCount Unhealthy") },
+                label = { Text("$unhealthyCount Needs Attention") },
                 leadingIcon = {
                     Icon(
                         Icons.Default.Warning,
@@ -985,7 +989,7 @@ private fun DetectorHealthContent(
 ) {
     // Filter state
     var selectedFilter by remember { mutableStateOf("All") }
-    val filters = listOf("All", "Running", "Unhealthy", "Errors")
+    val filters = listOf("All", "Running", "Needs Attention", "Errors")
 
     val detectors = listOf(
         DetectorHealthStatus.DETECTOR_BLE to ("BLE Scanner" to Icons.Default.Bluetooth),
@@ -1001,10 +1005,11 @@ private fun DetectorHealthContent(
     // Filter detectors based on selection
     val filteredDetectors = detectors.filter { (detectorId, _) ->
         val health = detectorHealth[detectorId]
+        val lifecycle = health?.let { DetectorHealthPolicy.state(it) }
         when (selectedFilter) {
-            "Running" -> health?.isRunning == true
-            "Unhealthy" -> health?.isRunning == true && health.isHealthy == false
-            "Errors" -> health?.lastError != null
+            "Running" -> lifecycle == DetectorLifecycleState.RUNNING
+            "Needs Attention" -> lifecycle != null && lifecycle != DetectorLifecycleState.RUNNING
+            "Errors" -> health?.lastError != null || lifecycle == DetectorLifecycleState.FAILED
             else -> true
         }
     }
@@ -1081,9 +1086,25 @@ private fun DetectorHealthCard(
     health: DetectorHealthStatus?,
     onNavigateToError: () -> Unit
 ) {
-    val isRunning = health?.isRunning == true
-    val isHealthy = health?.isHealthy == true
+    val lifecycleState = health?.let { DetectorHealthPolicy.state(it) } ?: DetectorLifecycleState.REGISTERED
+    val isRunning = lifecycleState == DetectorLifecycleState.RUNNING
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val statusText = when (lifecycleState) {
+        DetectorLifecycleState.REGISTERED -> "Ready"
+        DetectorLifecycleState.BLOCKED -> "Gated"
+        DetectorLifecycleState.STARTING -> "Starting"
+        DetectorLifecycleState.RUNNING -> "Healthy"
+        DetectorLifecycleState.STALE -> "Stale"
+        DetectorLifecycleState.STOPPED -> "Stopped"
+        DetectorLifecycleState.FAILED -> "Failed"
+    }
+    val statusColor = when (lifecycleState) {
+        DetectorLifecycleState.RUNNING -> Color(0xFF4CAF50)
+        DetectorLifecycleState.STARTING -> Color(0xFFFFC107)
+        DetectorLifecycleState.BLOCKED -> MaterialTheme.colorScheme.tertiary
+        DetectorLifecycleState.STALE, DetectorLifecycleState.FAILED -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.outline
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1104,11 +1125,7 @@ private fun DetectorHealthCard(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = when {
-                            !isRunning -> MaterialTheme.colorScheme.outline
-                            !isHealthy -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.colorScheme.primary
-                        }
+                        tint = if (isRunning) MaterialTheme.colorScheme.primary else statusColor
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
@@ -1120,7 +1137,7 @@ private fun DetectorHealthCard(
 
                 // Status badge with pulsing indicator for active
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isRunning && isHealthy) {
+                    if (isRunning) {
                         PulsingStatusIndicator(
                             color = Color(0xFF4CAF50),
                             size = 8
@@ -1129,25 +1146,19 @@ private fun DetectorHealthCard(
                     }
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = when {
-                            !isRunning -> MaterialTheme.colorScheme.surfaceVariant
-                            !isHealthy -> MaterialTheme.colorScheme.errorContainer
-                            else -> Color(0xFF4CAF50).copy(alpha = 0.2f)
+                        color = when (lifecycleState) {
+                            DetectorLifecycleState.RUNNING -> Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            DetectorLifecycleState.STARTING -> Color(0xFFFFC107).copy(alpha = 0.2f)
+                            DetectorLifecycleState.BLOCKED -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                            DetectorLifecycleState.STALE, DetectorLifecycleState.FAILED -> MaterialTheme.colorScheme.errorContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
                         }
                     ) {
                         Text(
-                            text = when {
-                                !isRunning -> "Stopped"
-                                !isHealthy -> "Unhealthy"
-                                else -> "Healthy"
-                            },
+                            text = statusText,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = when {
-                                !isRunning -> MaterialTheme.colorScheme.onSurfaceVariant
-                                !isHealthy -> MaterialTheme.colorScheme.error
-                                else -> Color(0xFF4CAF50)
-                            }
+                            color = statusColor
                         )
                     }
                 }

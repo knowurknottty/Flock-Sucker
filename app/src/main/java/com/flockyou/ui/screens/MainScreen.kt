@@ -154,17 +154,11 @@ fun MainScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = stringResource(R.string.app_title_flock),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = " ${stringResource(R.string.app_title_you)}",
-                            fontWeight = FontWeight.Light
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.app_title_full),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 },
                 actions = {
                     // Show filter button on history and home tabs with badge showing active filter count

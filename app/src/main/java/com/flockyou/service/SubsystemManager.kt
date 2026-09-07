@@ -526,11 +526,23 @@ internal fun ScanningService.stopRfSignalAnalysis() {
 internal fun ScanningService.startUltrasonicDetection() {
     // Double-check that user has opted in with consent
     if (!currentPrivacySettings.ultrasonicDetectionEnabled || !currentPrivacySettings.ultrasonicConsentAcknowledged) {
-        Log.w(TAG, "Ultrasonic detection not enabled - user must opt-in via Privacy settings")
+        val reason = if (!currentPrivacySettings.ultrasonicConsentAcknowledged) {
+            "consent_required"
+        } else {
+            "privacy_setting_disabled"
+        }
+        gateDetector(DetectorHealthStatus.DETECTOR_ULTRASONIC, reason)
+        ScanningServiceState.ultrasonicStatus.value = UltrasonicDetector.gatedStatus(reason)
+        broadcastUltrasonicData()
+        Log.w(TAG, "Ultrasonic detection gated: $reason")
         return
     }
 
     if (!hasAudioPermissions()) {
+        val reason = "record_audio_permission_required"
+        gateDetector(DetectorHealthStatus.DETECTOR_ULTRASONIC, reason, permissionState = "denied")
+        ScanningServiceState.ultrasonicStatus.value = UltrasonicDetector.gatedStatus(reason)
+        broadcastUltrasonicData()
         Log.w(TAG, "Missing audio permissions for ultrasonic detection")
         return
     }

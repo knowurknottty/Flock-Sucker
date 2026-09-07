@@ -45,11 +45,27 @@ class DetectionDeduplicatorTest {
     }
 
     @Test
-    fun `findMatch returns a match for same device with matching attributes`() {
-        val candidate = detection(mac = "11:22:33:44:55:66", deviceName = "FlockCam", manufacturer = "Flock Safety")
-        val incoming = detection(mac = "AA:BB:CC:DD:EE:FF", deviceName = "FlockCam", manufacturer = "Flock Safety")
+    fun `findMatch does not merge different MACs from weak similarity`() {
+        val candidate = detection(mac = "10:22:33:44:55:66", deviceName = "FlockCam", manufacturer = "Flock Safety", serviceUuids = "FD6F")
+        val incoming = detection(mac = "20:BB:CC:DD:EE:FF", deviceName = "FlockCam", manufacturer = "Flock Safety", serviceUuids = "FD6F")
         val match = deduplicator.findMatch(incoming, listOf(candidate))
-        assertEquals(candidate, match)
+        assertNull(match)
+    }
+
+
+    @Test
+    fun `same service UUID never canonicalizes different devices`() {
+        val candidate = detection(deviceName = "Accessory A", manufacturer = "Vendor", serviceUuids = "FD6F")
+        val incoming = detection(deviceName = "Accessory B", manufacturer = "Vendor", serviceUuids = "FD6F")
+        assertNull(deduplicator.findMatch(incoming, listOf(candidate)))
+    }
+
+    @Test
+    fun `anonymous same-type devices do not throttle each other`() {
+        val first = detection(deviceName = null, manufacturer = "Vendor")
+        val second = detection(deviceName = null, manufacturer = "Vendor")
+        assertFalse(deduplicator.shouldThrottle(first))
+        assertFalse(deduplicator.shouldThrottle(second))
     }
 
     @Test
@@ -79,6 +95,7 @@ class DetectionDeduplicatorTest {
         manufacturer: String? = null,
         deviceType: DeviceType = DeviceType.FLOCK_SAFETY_CAMERA,
         protocol: DetectionProtocol = DetectionProtocol.WIFI,
+        serviceUuids: String? = null,
     ): Detection = Detection(
         id = java.util.UUID.randomUUID().toString(),
         timestamp = System.currentTimeMillis(),
@@ -92,5 +109,6 @@ class DetectionDeduplicatorTest {
         ssid = ssid,
         deviceName = deviceName,
         manufacturer = manufacturer,
+        serviceUuids = serviceUuids,
     )
 }

@@ -562,6 +562,10 @@ internal fun ScanningService.processBleWithHandler(scanResult: android.bluetooth
         }
     }
 
+    val serviceData = scanResult.scanRecord?.serviceData.orEmpty()
+        .mapKeys { it.key.uuid.toString() }
+        .mapValues { (_, bytes) -> bytes.joinToString("") { "%02X".format(it) } }
+
     // Track packet rate for Signal trigger spike detection
     val advertisingRate = ScanningServiceState.trackPacket(macAddress)
 
@@ -572,6 +576,7 @@ internal fun ScanningService.processBleWithHandler(scanResult: android.bluetooth
         rssi = rssi,
         serviceUuids = serviceUuids,
         manufacturerData = manufacturerData,
+        serviceData = serviceData,
         advertisingRate = advertisingRate,
         timestamp = System.currentTimeMillis(),
         latitude = currentLocation?.latitude,

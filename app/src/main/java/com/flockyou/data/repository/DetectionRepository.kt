@@ -2,8 +2,11 @@ package com.flockyou.data.repository
 
 import android.util.Log
 import com.flockyou.data.model.*
-import com.flockyou.data.repository.FlockYouDatabase
 import kotlinx.coroutines.flow.Flow
+import com.flockyou.evidence.IdentityDecision
+import com.flockyou.evidence.IdentityDecisionClass
+import com.flockyou.evidence.IdentityResolver
+import com.google.gson.Gson
 import androidx.room.withTransaction
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,17 +19,24 @@ class DetectionRepository @Inject constructor(
     private val database: FlockYouDatabase,
     private val detectionDao: DetectionDao,
     private val sightingDao: SightingDao,
-    private val deduplicator: DetectionDeduplicator
+    private val identityLinkDao: IdentityLinkDao,
+    private val deduplicator: DetectionDeduplicator,
+    private val identityResolver: IdentityResolver
 ) {
     companion object {
         private const val TAG = "DetectionRepository"
-        private const val COMPOSITE_KEY_WINDOW_MS = 3600000L  // 1 hour
+        private const val IDENTITY_CANDIDATE_WINDOW_MS = 3600000L  // 1 hour
+        private const val MAX_IDENTITY_LINKS_PER_DETECTION = 8
     }
+    private val gson = Gson()
     val allDetections: Flow<List<Detection>> = detectionDao.getAllDetections()
     val activeDetections: Flow<List<Detection>> = detectionDao.getActiveDetections()
     val totalDetectionCount: Flow<Int> = detectionDao.getTotalDetectionCount()
     val highThreatCount: Flow<Int> = detectionDao.getHighThreatCount()
     val detectionsWithLocation: Flow<List<Detection>> = detectionDao.getDetectionsWithLocation()
+
+    fun identityLinksForDetection(detectionId: String): Flow<List<IdentityLink>> =
+        identityLinkDao.forSourceDetection(detectionId)
     
     fun getRecentDetections(sinceMillis: Long): Flow<List<Detection>> {
         return detectionDao.getRecentDetections(sinceMillis)
@@ -101,97 +111,55 @@ class DetectionRepository @Inject constructor(
     }
     
     /**
-     * Update an existing detection's seen count and location, or insert if new.
-     * Uses enhanced deduplication with throttling and composite key matching.
+     * Update only when protocol-aware stable identity evidence permits it.
+     * Weak SSID/UUID/name/manufacturer/RSSI similarity is recorded separately.
      */
     suspend fun upsertDetection(detection: Detection): Boolean {
-        // 1. Check throttling first (rapid detection suppression).
-        // Throttled observations never touch the ledger (funnel diagnostics only).
+        // Raw Observation evidence has already been written upstream. This layer may
+        // throttle only an exact observed address; weak metadata never suppresses peers.
         if (deduplicator.shouldThrottle(detection)) {
-            Log.d(TAG, "Throttled rapid detection: ${detection.macAddress ?: detection.ssid}")
-            return false  // Treat as duplicate
+            Log.d(TAG, "Throttled rapid exact-address detection: ${detection.macAddress}")
+            return false
         }
 
-        // 2. Try existing match strategies (MAC, SSID)
-        val existingByMac = detection.macAddress?.let { getDetectionByMacAddress(it) }
-        val existingBySsid = if (existingByMac == null) detection.ssid?.let { getDetectionBySsid(it) } else null
-
-        // 3. Try service UUID match for BLE devices
-        val existingByServiceUuid = if (existingByMac == null && existingBySsid == null) {
-            detection.serviceUuids?.split(",")?.firstOrNull()?.trim()?.let { getDetectionByServiceUuid(it) }
-        } else null
-
-        // 4. Try composite key match as fallback
-        val existingByComposite = if (existingByMac == null && existingBySsid == null && existingByServiceUuid == null) {
-            findByCompositeKey(detection)
-        } else null
-
-        val existing = existingByMac ?: existingBySsid ?: existingByServiceUuid ?: existingByComposite
+        val candidates = identityCandidates(detection)
+        val decisions = candidates.map { candidate ->
+            candidate to identityResolver.resolve(detection, candidate)
+        }
+        val canonical = decisions
+            .firstOrNull { (_, decision) -> decision.decision == IdentityDecisionClass.MATCH }
 
         return database.withTransaction {
-            if (existing != null) {
-            // Update existing - increment seen count
-            when {
-                detection.macAddress != null -> {
-                    detectionDao.updateSeenByMac(
-                        macAddress = detection.macAddress,
-                        timestamp = detection.timestamp,
+            if (canonical != null) {
+                val (existing, decision) = canonical
+                detectionDao.updateDetection(
+                    existing.copy(
+                        lastSeenTimestamp = detection.timestamp,
                         rssi = detection.rssi,
-                        latitude = detection.latitude,
-                        longitude = detection.longitude
+                        latitude = detection.latitude ?: existing.latitude,
+                        longitude = detection.longitude ?: existing.longitude,
+                        seenCount = existing.seenCount + 1,
+                        isActive = true
                     )
-                }
-                detection.ssid != null -> {
-                    detectionDao.updateSeenBySsid(
-                        ssid = detection.ssid,
-                        timestamp = detection.timestamp,
-                        rssi = detection.rssi,
-                        latitude = detection.latitude,
-                        longitude = detection.longitude
-                    )
-                }
-                existingByServiceUuid != null -> {
-                    // Update by service UUID
-                    detection.serviceUuids?.split(",")?.firstOrNull()?.trim()?.let { uuid ->
-                        detectionDao.updateSeenByServiceUuid(
-                            serviceUuid = uuid,
-                            timestamp = detection.timestamp,
-                            rssi = detection.rssi,
-                            latitude = detection.latitude,
-                            longitude = detection.longitude
-                        )
-                    }
-                }
-                existingByComposite != null -> {
-                    // Update the matched detection directly
-                    detectionDao.updateDetection(
-                        existing.copy(
-                            lastSeenTimestamp = detection.timestamp,
-                            rssi = detection.rssi,
-                            latitude = detection.latitude ?: existing.latitude,
-                            longitude = detection.longitude ?: existing.longitude,
-                            seenCount = existing.seenCount + 1,
-                            isActive = true
-                        )
-                    )
-                }
-            }
-            // Record the accepted repeat in the append-only sighting ledger
-            // (evidence row; failure here must not fail the canonical update).
-            try {
-                recordSighting(
-                    detectionId = existing.id,
-                    detection = detection,
-                    disposition = SightingDisposition.ACCEPTED_REPEAT
                 )
-            } catch (e: Exception) {
-                Log.w(TAG, "Sighting ledger append failed for ${existing.id}: ${e.message}")
-            }
-            false // Not a new detection
-        } else {
-                // Insert new
+                appendIdentityLink(detection, existing, decision, required = true)
+                try {
+                    recordSighting(
+                        detectionId = existing.id,
+                        detection = detection,
+                        disposition = SightingDisposition.ACCEPTED_REPEAT
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Sighting ledger append failed for ${existing.id}: ${e.message}")
+                }
+                false
+            } else {
                 insertDetection(detection)
-                // Record the founding sighting for the new device
+                decisions
+                    .filter { (_, decision) -> decision.decision == IdentityDecisionClass.POSSIBLY_RELATED }
+                    .sortedByDescending { (_, decision) -> decision.score }
+                    .take(MAX_IDENTITY_LINKS_PER_DETECTION)
+                    .forEach { (candidate, decision) -> appendIdentityLink(detection, candidate, decision) }
                 try {
                     recordSighting(
                         detectionId = detection.id,
@@ -201,8 +169,58 @@ class DetectionRepository @Inject constructor(
                 } catch (e: Exception) {
                     Log.w(TAG, "Sighting ledger append failed for ${detection.id}: ${e.message}")
                 }
-                true // New detection
+                true
             }
+        }
+    }
+
+    private suspend fun identityCandidates(detection: Detection): List<Detection> {
+        val candidates = linkedMapOf<String, Detection>()
+        detection.macAddress?.let { getDetectionByMacAddress(it) }?.let { candidates[it.id] = it }
+        detection.ssid?.let { getDetectionBySsid(it) }?.let { candidates[it.id] = it }
+        detection.serviceUuids
+            ?.split(',')
+            ?.map { it.trim() }
+            ?.firstOrNull { it.isNotEmpty() }
+            ?.let { getDetectionByServiceUuid(it) }
+            ?.let { candidates[it.id] = it }
+        detectionDao.getRecentDetectionsByType(
+            deviceType = detection.deviceType.name,
+            since = System.currentTimeMillis() - IDENTITY_CANDIDATE_WINDOW_MS
+        ).forEach { candidates[it.id] = it }
+        return candidates.values.toList()
+    }
+
+    private suspend fun appendIdentityLink(
+        source: Detection,
+        candidate: Detection,
+        decision: IdentityDecision,
+        required: Boolean = false
+    ) {
+        val storedDecision = when (decision.decision) {
+            IdentityDecisionClass.MATCH -> IdentityLinkDecision.MATCH
+            IdentityDecisionClass.POSSIBLY_RELATED -> IdentityLinkDecision.POSSIBLY_RELATED
+            IdentityDecisionClass.DISTINCT -> IdentityLinkDecision.DISTINCT
+        }
+        try {
+            identityLinkDao.insert(
+                IdentityLink(
+                    id = java.util.UUID.randomUUID().toString(),
+                    sourceDetectionId = source.id,
+                    candidateDetectionId = candidate.id,
+                    sourceObservationId = source.sourceObservationId,
+                    timestamp = source.timestamp,
+                    decision = storedDecision,
+                    ruleId = decision.ruleId,
+                    score = decision.score,
+                    evidenceJson = gson.toJson(decision.evidence),
+                    rejectedAlternativesJson = gson.toJson(decision.rejectedAlternatives),
+                    resolverVersion = decision.resolverVersion
+                )
+            )
+        } catch (e: Exception) {
+            if (required) throw e
+            Log.w(TAG, "Identity-link append failed ${source.id} -> ${candidate.id}: ${e.message}")
         }
     }
 
@@ -231,7 +249,8 @@ class DetectionRepository @Inject constructor(
             longitude = detection.longitude,
             matchedRuleIds = detection.matchedPatterns,
             confidence = detection.threatScore.toFloat() / 100f,
-            disposition = disposition.value()
+            disposition = disposition.value(),
+            sourceObservationId = detection.sourceObservationId
         )
     }
 
@@ -248,18 +267,6 @@ class DetectionRepository @Inject constructor(
     suspend fun recentSightings(detectionId: String, limit: Int = 50): List<com.flockyou.data.model.Sighting> =
         sightingDao.recentForDetection(detectionId, limit)
 
-    /**
-     * Find a matching detection using composite key matching.
-     * Gets recent detections of the same type and uses the deduplicator to find a match.
-     */
-    private suspend fun findByCompositeKey(detection: Detection): Detection? {
-        // Get recent detections of same type and check for proximity match
-        val candidates = detectionDao.getRecentDetectionsByType(
-            deviceType = detection.deviceType.name,
-            since = System.currentTimeMillis() - COMPOSITE_KEY_WINDOW_MS
-        )
-        return deduplicator.findMatch(detection, candidates)
-    }
 
     /**
      * Update false positive analysis results for a detection
@@ -323,84 +330,27 @@ class DetectionRepository @Inject constructor(
     }
 
     /**
-     * Find detections related to the given detection.
-     * Related detections include:
-     * - Same MAC address (device seen at different times/locations)
-     * - Nearby location (within ~500m radius)
-     * - Same device type from same manufacturer
-     *
-     * Results are deduplicated and sorted by relevance (same MAC > nearby > same type).
-     *
-     * @param detection The detection to find related items for
-     * @param limit Maximum number of related detections to return
-     * @return List of related detections, excluding the input detection itself
+     * Return only detections connected by an explicit resolver decision.
+     * Geographic proximity, shared vendor/type, SSID, UUID, and RSSI are not
+     * silently promoted to identity relationships.
      */
     suspend fun getRelatedDetections(detection: Detection, limit: Int = 10): List<Detection> {
-        val relatedDetections = mutableListOf<Detection>()
+        val links = identityLinkDao.relatedTo(detection.id, limit * 2)
         val seenIds = mutableSetOf(detection.id)
-
-        // 1. Same MAC address (highest relevance - definitely same device)
-        detection.macAddress?.let { mac ->
-            val sameMac = detectionDao.getDetectionsByMacAddressExcluding(mac, detection.id, limit)
-            sameMac.forEach { d ->
-                if (d.id !in seenIds) {
-                    relatedDetections.add(d)
-                    seenIds.add(d.id)
-                }
+        val related = mutableListOf<Detection>()
+        for (link in links) {
+            val otherId = if (link.sourceDetectionId == detection.id) {
+                link.candidateDetectionId
+            } else {
+                link.sourceDetectionId
             }
+            if (!seenIds.add(otherId)) continue
+            val candidate = detectionDao.getDetectionById(otherId) ?: continue
+            related += candidate
+            if (related.size >= limit) break
         }
-
-        // 2. Nearby location (within ~500m radius, roughly 0.0045 degrees)
-        if (detection.latitude != null && detection.longitude != null) {
-            val radiusDegrees = 0.0045 // ~500m at mid-latitudes
-            val nearbyDetections = detectionDao.getDetectionsNearLocation(
-                excludeId = detection.id,
-                minLat = detection.latitude - radiusDegrees,
-                maxLat = detection.latitude + radiusDegrees,
-                minLon = detection.longitude - radiusDegrees,
-                maxLon = detection.longitude + radiusDegrees,
-                limit = limit
-            )
-            nearbyDetections.forEach { d ->
-                if (d.id !in seenIds) {
-                    relatedDetections.add(d)
-                    seenIds.add(d.id)
-                }
-            }
-        }
-
-        // 3. Same device type from same manufacturer
-        detection.manufacturer?.let { manufacturer ->
-            val sameManufacturer = detectionDao.getDetectionsByManufacturerExcluding(
-                manufacturer = manufacturer,
-                excludeId = detection.id,
-                limit = limit
-            )
-            sameManufacturer.filter { it.deviceType == detection.deviceType }.forEach { d ->
-                if (d.id !in seenIds) {
-                    relatedDetections.add(d)
-                    seenIds.add(d.id)
-                }
-            }
-        }
-
-        // 4. Same device type (fallback if no manufacturer match)
-        if (relatedDetections.size < limit) {
-            val remaining = limit - relatedDetections.size
-            val sameType = detectionDao.getDetectionsByDeviceTypeExcluding(
-                deviceType = detection.deviceType,
-                excludeId = detection.id,
-                limit = remaining + seenIds.size // Get extra to account for deduplication
-            )
-            sameType.forEach { d ->
-                if (d.id !in seenIds && relatedDetections.size < limit) {
-                    relatedDetections.add(d)
-                    seenIds.add(d.id)
-                }
-            }
-        }
-
-        Log.d(TAG, "Found ${relatedDetections.size} related detections for ${detection.id}")
-        return relatedDetections.take(limit)
+        Log.d(TAG, "Found ${related.size} resolver-linked detections for ${detection.id}")
+        return related
     }
+
 }

@@ -13,8 +13,11 @@ import com.flockyou.data.repository.DetectionDeduplicator
 import com.flockyou.data.repository.DetectionRepository
 import com.flockyou.data.repository.FlockYouDatabase
 import com.flockyou.data.repository.OuiDao
+import com.flockyou.data.repository.ObservationDao
+import com.flockyou.data.repository.IdentityLinkDao
 import com.flockyou.data.repository.SightingDao
 import com.flockyou.data.repository.OuiRepository
+import com.flockyou.evidence.IdentityResolver
 import com.flockyou.network.OrbotHelper
 import com.flockyou.network.TorAwareHttpClient
 import com.flockyou.privilege.PrivilegeMode
@@ -122,15 +125,36 @@ object AppModule {
         database: FlockYouDatabase,
         detectionDao: DetectionDao,
         sightingDao: SightingDao,
-        deduplicator: DetectionDeduplicator
+        identityLinkDao: IdentityLinkDao,
+        deduplicator: DetectionDeduplicator,
+        identityResolver: IdentityResolver
     ): DetectionRepository {
-        return DetectionRepository(database, detectionDao, sightingDao, deduplicator)
+        return DetectionRepository(
+            database,
+            detectionDao,
+            sightingDao,
+            identityLinkDao,
+            deduplicator,
+            identityResolver
+        )
     }
 
     @Provides
     @Singleton
     fun provideSightingDao(database: FlockYouDatabase): SightingDao {
         return database.sightingDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideObservationDao(database: FlockYouDatabase): ObservationDao {
+        return database.observationDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideIdentityLinkDao(database: FlockYouDatabase): IdentityLinkDao {
+        return database.identityLinkDao()
     }
 
     @Provides

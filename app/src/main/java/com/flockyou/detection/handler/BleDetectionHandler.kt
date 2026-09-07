@@ -14,6 +14,9 @@ import com.flockyou.data.model.ThreatLevel
 import com.flockyou.data.model.rssiToDistance
 import com.flockyou.data.model.rssiToSignalStrength
 import com.flockyou.data.model.scoreToThreatLevel
+import com.flockyou.evidence.BleEvidenceKind
+import com.flockyou.evidence.BleTrackerEvidenceClassifier
+import com.flockyou.evidence.rethrowCancellation
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -112,7 +115,7 @@ class BleDetectionHandler @Inject constructor(
         /** Apple accessory advertisement type codes */
         val APPLE_ACCESSORY_TYPE_CODES = setOf(
             "07", "0F", "10", "05", "0C", "0D", "0E", "13", "14",
-            "01", "06", "09", "0A", "0B", "11", "12"
+            "01", "06", "09", "0A", "0B", "11"
         )
 
         /** Hacking tool device types */
@@ -480,11 +483,13 @@ class BleDetectionHandler @Inject constructor(
             try {
                 _detections.emit(result.detection)
             } catch (e: Exception) {
+                e.rethrowCancellation()
                 Log.e(TAG, "Failed to emit BLE detection: ${e.message}")
             }
 
             listOf(result.detection)
         } catch (e: Exception) {
+            e.rethrowCancellation()
             Log.e(TAG, "Error processing BLE detection for ${data.macAddress}: ${e.message}", e)
             emptyList()
         }
@@ -506,6 +511,7 @@ class BleDetectionHandler @Inject constructor(
             Log.e(TAG, "Security exception processing BLE scan result: ${e.message}")
             emptyList()
         } catch (e: Exception) {
+            e.rethrowCancellation()
             Log.e(TAG, "Error processing BLE scan result: ${e.message}", e)
             emptyList()
         }
@@ -534,6 +540,10 @@ class BleDetectionHandler @Inject constructor(
             }
         }
 
+        val serviceData = result.scanRecord?.serviceData.orEmpty()
+            .mapKeys { it.key.uuid.toString() }
+            .mapValues { (_, bytes) -> bytes.joinToString("") { "%02X".format(it) } }
+
         // Calculate advertising rate
         val advertisingRate = trackPacketAndGetRate(macAddress)
 
@@ -543,6 +553,7 @@ class BleDetectionHandler @Inject constructor(
             rssi = rssi,
             serviceUuids = serviceUuids,
             manufacturerData = manufacturerData,
+            serviceData = serviceData,
             advertisingRate = advertisingRate,
             timestamp = System.currentTimeMillis(),
             latitude = currentLatitude,
@@ -1239,15 +1250,15 @@ community organizing opportunities, and legal options for the user.
      * Check service UUIDs against known patterns.
      */
     private fun checkServiceUuidPatterns(context: BleDetectionContext): BleDetectionResult? {
-        // Check for Find My network (AirTag-like)
+        // Find My service proves network participation, not an exact AirTag product.
         if (context.serviceUuids.any { it == UUID_APPLE_FIND_MY }) {
             return createTrackerDetection(
                 context = context,
-                deviceType = DeviceType.AIRTAG,
-                detectionMethod = DetectionMethod.AIRTAG_DETECTED,
+                deviceType = DeviceType.GENERIC_BLE_TRACKER,
+                detectionMethod = DetectionMethod.UNKNOWN_TRACKER,
                 manufacturer = "Apple",
-                description = "Apple Find My network device detected",
-                threatScore = 60
+                description = "Apple Find My network device detected; exact product unresolved",
+                threatScore = 40
             )
         }
 
@@ -1420,34 +1431,51 @@ Analyze this MAC prefix detection and provide assessment of:
      * Check for consumer trackers by manufacturer data.
      */
     private fun checkConsumerTrackers(context: BleDetectionContext): BleDetectionResult? {
-        // Check Apple manufacturer data for potential AirTag
-        if (context.manufacturerData.containsKey(MANUFACTURER_ID_APPLE)) {
-            val data = context.manufacturerData[MANUFACTURER_ID_APPLE] ?: ""
-            if (isLikelyAirTag(data)) {
-                return createTrackerDetection(
-                    context = context,
-                    deviceType = DeviceType.AIRTAG,
-                    detectionMethod = DetectionMethod.AIRTAG_DETECTED,
-                    manufacturer = "Apple",
-                    description = "Likely Apple AirTag (manufacturer data pattern)",
-                    threatScore = 60
-                )
-            }
-        }
+        val evidence = BleTrackerEvidenceClassifier.classify(
+            manufacturerData = context.manufacturerData,
+            serviceUuids = context.serviceUuids.map { it.toString() }
+        )
 
-        // Check Samsung manufacturer data for SmartTag
-        if (context.manufacturerData.containsKey(MANUFACTURER_ID_SAMSUNG)) {
-            return createTrackerDetection(
+        when (evidence.kind) {
+            BleEvidenceKind.APPLE_FIND_MY_NETWORK -> return createTrackerDetection(
+                context = context,
+                deviceType = DeviceType.GENERIC_BLE_TRACKER,
+                detectionMethod = DetectionMethod.UNKNOWN_TRACKER,
+                manufacturer = "Apple",
+                description = "Apple Find My network frame; exact product unresolved",
+                threatScore = 40
+            )
+            BleEvidenceKind.SAMSUNG_OFFLINE_FINDING -> return createTrackerDetection(
+                context = context,
+                deviceType = DeviceType.GENERIC_BLE_TRACKER,
+                detectionMethod = DetectionMethod.UNKNOWN_TRACKER,
+                manufacturer = "Samsung",
+                description = "Samsung Offline Finding device; exact product unresolved",
+                threatScore = 40
+            )
+            BleEvidenceKind.SAMSUNG_SMARTTAG_SERVICE -> return createTrackerDetection(
                 context = context,
                 deviceType = DeviceType.SAMSUNG_SMARTTAG,
                 detectionMethod = DetectionMethod.SMARTTAG_DETECTED,
                 manufacturer = "Samsung",
-                description = "Samsung SmartTag (manufacturer data)",
+                description = "Samsung SmartTag protocol service detected",
                 threatScore = 55
             )
+            BleEvidenceKind.TILE_SERVICE -> return createTrackerDetection(
+                context = context,
+                deviceType = DeviceType.TILE_TRACKER,
+                detectionMethod = DetectionMethod.TILE_DETECTED,
+                manufacturer = "Tile",
+                description = "Tile tracker service detected",
+                threatScore = 55
+            )
+            BleEvidenceKind.APPLE_PROXIMITY_PAIRING,
+            BleEvidenceKind.APPLE_VENDOR_ADVERTISEMENT,
+            BleEvidenceKind.SAMSUNG_VENDOR_ADVERTISEMENT,
+            BleEvidenceKind.NONE -> Unit
         }
 
-        // Check Tile manufacturer data
+        // Preserve Tile company-ID fallback pending a dedicated Tile payload parser.
         if (context.manufacturerData.containsKey(MANUFACTURER_ID_TILE)) {
             return createTrackerDetection(
                 context = context,
@@ -1525,15 +1553,8 @@ Analyze this MAC prefix detection and provide assessment of:
      * Check if manufacturer data looks like Apple accessory advertisement.
      * Flipper Zero spam uses these advertisement types to trigger iOS popups.
      */
-    private fun isAppleAccessoryAdvertisement(manufacturerData: String): Boolean {
-        if (manufacturerData.length < 4) return false
-
-        // Apple Nearby Action codes that trigger popups
-        // 0x07 = AirPods, 0x10 = AirPods Pro, 0x0F = AirPods Max
-        // 0x05 = AppleTV setup, 0x0C = HomePod, etc.
-        val typeCode = manufacturerData.take(2).uppercase()
-        return typeCode in APPLE_ACCESSORY_TYPE_CODES
-    }
+    private fun isAppleAccessoryAdvertisement(manufacturerData: String): Boolean =
+        BleTrackerEvidenceClassifier.isApplePopupEligible(manufacturerData)
 
     /**
      * Check for BLE spam attack patterns.
@@ -2057,19 +2078,6 @@ and personalized recommendations based on the user's situation.
         } else {
             0f
         }
-    }
-
-    /**
-     * Check if manufacturer data looks like an AirTag.
-     * AirTags have specific manufacturer data patterns.
-     */
-    private fun isLikelyAirTag(manufacturerData: String): Boolean {
-        if (manufacturerData.length < 4) return false
-
-        // Check for Find My network beacon type (0x12 or 0x07)
-        val typeBytes = manufacturerData.take(4)
-        return typeBytes.startsWith("12") || typeBytes.startsWith("07") ||
-                typeBytes.startsWith("1207") || typeBytes.startsWith("0712")
     }
 
     /**
@@ -2611,6 +2619,11 @@ and personalized recommendations based on the user's situation.
             context.manufacturerData.forEach { (id, data) ->
                 appendLine("  0x${"%04X".format(id)}: $data")
             }
+            appendLine()
+            appendLine("Service Data (${context.serviceData.size}):")
+            context.serviceData.forEach { (uuid, data) ->
+                appendLine("  $uuid: $data")
+            }
         }
     }
 
@@ -2740,6 +2753,7 @@ data class BleDetectionContext(
     val rssi: Int,
     val serviceUuids: List<UUID>,
     val manufacturerData: Map<Int, String>,
+    val serviceData: Map<String, String> = emptyMap(),
     val advertisingRate: Float,
     val timestamp: Long = System.currentTimeMillis(),
     val latitude: Double? = null,

@@ -106,6 +106,41 @@ class Converters {
             Log.w(TAG, "Invalid DetectionSource '$value', using default UNKNOWN")
             DetectionSource.UNKNOWN
         }
+
+    @TypeConverter
+    fun fromObservationProtocol(value: ObservationProtocol): String = value.name
+
+    @TypeConverter
+    fun toObservationProtocol(value: String): ObservationProtocol =
+        ObservationProtocol.entries.firstOrNull { it.name == value } ?: ObservationProtocol.OTHER
+
+    @TypeConverter
+    fun fromObservationIdentifierKind(value: ObservationIdentifierKind): String = value.name
+
+    @TypeConverter
+    fun toObservationIdentifierKind(value: String): ObservationIdentifierKind =
+        ObservationIdentifierKind.entries.firstOrNull { it.name == value } ?: ObservationIdentifierKind.NONE
+
+    @TypeConverter
+    fun fromBleAddressType(value: BleAddressType?): String? = value?.name
+
+    @TypeConverter
+    fun toBleAddressType(value: String?): BleAddressType? =
+        value?.let { stored -> BleAddressType.entries.firstOrNull { it.name == stored } ?: BleAddressType.UNKNOWN }
+
+    @TypeConverter
+    fun fromObservationDisposition(value: ObservationDisposition): String = value.name
+
+    @TypeConverter
+    fun toObservationDisposition(value: String): ObservationDisposition =
+        ObservationDisposition.entries.firstOrNull { it.name == value } ?: ObservationDisposition.LEGACY_UNVERIFIABLE
+
+    @TypeConverter
+    fun fromIdentityLinkDecision(value: IdentityLinkDecision): String = value.name
+
+    @TypeConverter
+    fun toIdentityLinkDecision(value: String): IdentityLinkDecision =
+        IdentityLinkDecision.entries.firstOrNull { it.name == value } ?: IdentityLinkDecision.DISTINCT
 }
 
 /**
@@ -176,9 +211,6 @@ interface DetectionDao {
     @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE macAddress = :macAddress")
     suspend fun updateSeenByMac(macAddress: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
     
-    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE ssid = :ssid")
-    suspend fun updateSeenBySsid(ssid: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
-    
     @Query("SELECT COUNT(*) FROM detections")
     fun getTotalDetectionCount(): Flow<Int>
     
@@ -200,14 +232,11 @@ interface DetectionDao {
     @Query("SELECT * FROM detections WHERE deviceType = :deviceType AND lastSeenTimestamp > :since ORDER BY lastSeenTimestamp DESC LIMIT 50")
     suspend fun getRecentDetectionsByType(deviceType: String, since: Long): List<Detection>
 
-    @Query("UPDATE detections SET isActive = 1, seenCount = seenCount + 1, lastSeenTimestamp = :timestamp, rssi = :rssi, latitude = :latitude, longitude = :longitude WHERE serviceUuids LIKE '%' || :serviceUuid || '%'")
-    suspend fun updateSeenByServiceUuid(serviceUuid: String, timestamp: Long, rssi: Int, latitude: Double?, longitude: Double?)
-
     // Related detections queries
 
     /**
      * Find detections with the same MAC address (excluding the given detection ID).
-     * Useful for tracking the same device seen at different times/locations.
+     * Useful for inspecting repeated observations of the same address; physical identity is resolved separately.
      */
     @Query("SELECT * FROM detections WHERE macAddress = :macAddress AND id != :excludeId ORDER BY lastSeenTimestamp DESC LIMIT :limit")
     suspend fun getDetectionsByMacAddressExcluding(macAddress: String, excludeId: String, limit: Int): List<Detection>
@@ -662,9 +691,11 @@ object DatabaseKeyManager {
         SeenCellTowerEntity::class,
         TrustedCellEntity::class,
         CellularEventEntity::class,
-        com.flockyou.data.model.Sighting::class
+        com.flockyou.data.model.Sighting::class,
+        Observation::class,
+        IdentityLink::class
     ],
-    version = 11,
+    version = 13,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -673,6 +704,8 @@ abstract class FlockYouDatabase : RoomDatabase() {
     abstract fun ouiDao(): OuiDao
     abstract fun cellularDao(): CellularDao
     abstract fun sightingDao(): SightingDao
+    abstract fun observationDao(): ObservationDao
+    abstract fun identityLinkDao(): IdentityLinkDao
 
     companion object {
         private const val TAG = "FlockYouDatabase"
@@ -837,6 +870,84 @@ abstract class FlockYouDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 11 to 12 - authoritative immutable observation evidence
+        internal val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS observations (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sessionId TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        elapsedRealtimeNanos INTEGER,
+                        protocol TEXT NOT NULL,
+                        sourceScanner TEXT NOT NULL,
+                        scannerHealthGeneration INTEGER NOT NULL,
+                        observedIdentifier TEXT,
+                        identifierKind TEXT NOT NULL,
+                        bleAddressType TEXT,
+                        deviceName TEXT,
+                        ssid TEXT,
+                        rssi INTEGER,
+                        txPower INTEGER,
+                        primaryPhy INTEGER,
+                        secondaryPhy INTEGER,
+                        advertisingSid INTEGER,
+                        periodicAdvertisingInterval INTEGER,
+                        frequencyMhz INTEGER,
+                        channelWidth INTEGER,
+                        manufacturerDataJson TEXT,
+                        serviceUuidsJson TEXT,
+                        serviceDataJson TEXT,
+                        informationElementsJson TEXT,
+                        rawPayloadSha256 TEXT NOT NULL,
+                        rawMetadata TEXT,
+                        latitude REAL,
+                        longitude REAL,
+                        altitudeMeters REAL,
+                        accuracyMeters REAL,
+                        parserVersion INTEGER NOT NULL,
+                        schemaVersion INTEGER NOT NULL,
+                        disposition TEXT NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_sessionId ON observations(sessionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_timestamp ON observations(timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_protocol_timestamp ON observations(protocol, timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_observedIdentifier ON observations(observedIdentifier)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_observations_rawPayloadSha256 ON observations(rawPayloadSha256)")
+            }
+        }
+
+        // Migration from version 12 to 13 - append-only identity resolver decisions
+        internal val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE detections ADD COLUMN sourceObservationId TEXT DEFAULT NULL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_detections_sourceObservationId ON detections(sourceObservationId)")
+                db.execSQL("ALTER TABLE sightings ADD COLUMN sourceObservationId TEXT DEFAULT NULL")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sightings_sourceObservationId ON sightings(sourceObservationId)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS identity_links (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sourceDetectionId TEXT NOT NULL,
+                        candidateDetectionId TEXT NOT NULL,
+                        sourceObservationId TEXT,
+                        timestamp INTEGER NOT NULL,
+                        decision TEXT NOT NULL,
+                        ruleId TEXT NOT NULL,
+                        score REAL NOT NULL,
+                        evidenceJson TEXT,
+                        rejectedAlternativesJson TEXT,
+                        resolverVersion INTEGER NOT NULL
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_sourceDetectionId ON identity_links(sourceDetectionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_candidateDetectionId ON identity_links(candidateDetectionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_sourceObservationId ON identity_links(sourceObservationId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_decision ON identity_links(decision)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_identity_links_timestamp ON identity_links(timestamp)")
+            }
+        }
+
         fun getDatabase(context: Context): FlockYouDatabase {
             return INSTANCE ?: synchronized(this) {
                 // Load SQLCipher native library
@@ -861,7 +972,7 @@ abstract class FlockYouDatabase : RoomDatabase() {
                     // ScanningService runs in :scanning while the UI reads Room in the main process.
                     // Without multi-instance invalidation, UI Flows can remain stale until service reconnect/stop.
                     .enableMultiInstanceInvalidation()
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // Fail loudly on an unhandled UPGRADE (so we never silently destroy a user's
                     // encrypted history because a future migration was forgotten). Only a genuine
                     // DOWNGRADE (installing an older APK) falls back to destructive recreation.

@@ -27,6 +27,15 @@ import com.flockyou.telephony.HybridSilentSmsDetector
 import com.flockyou.R
 import com.flockyou.data.model.*
 import com.flockyou.data.repository.DetectionRepository
+import com.flockyou.evidence.AndroidObservationAdapter
+import com.flockyou.evidence.BleEvidenceKind
+import com.flockyou.evidence.BleForensicSummary
+import com.flockyou.evidence.BleTrackerEvidenceClassifier
+import com.flockyou.evidence.ObservationRecordResult
+import com.flockyou.evidence.ObservationRecorder
+import com.flockyou.evidence.RemoteIdEvidence
+import com.flockyou.evidence.RemoteIdEvidenceDetector
+import com.flockyou.evidence.rethrowCancellation
 import com.flockyou.detection.DetectionRegistry
 import com.flockyou.detection.handler.BleDetectionHandler
 import com.flockyou.detection.handler.CellularDetectionHandler
@@ -66,6 +75,7 @@ class ScanningService : Service() {
 
     companion object {
         private const val TAG = "ScanningService"
+        private const val BLE_EVIDENCE_TAG = "BleEvidence"
         private const val NOTIFICATION_ID = 1001
         internal const val SATELLITE_CONNECTION_NOTIF_ID = 9999
         internal const val CHANNEL_ID = "flockyou_scanning"
@@ -221,6 +231,9 @@ class ScanningService : Service() {
     // 2. Register LearnedSignatureHandler with DetectionRegistry
 
     @Inject
+    lateinit var observationRecorder: ObservationRecorder
+
+    @Inject
     lateinit var detectionRegistry: DetectionRegistry
 
     @Inject
@@ -286,6 +299,8 @@ class ScanningService : Service() {
     private var lastNotificationContentText: String? = null
     private val gson = Gson()
     private val bleCoTravelerAnalyzer = BleCoTravelerAnalyzer()
+    private var observationSessionId: String = UUID.randomUUID().toString()
+    private val observationPersistenceFailures = AtomicInteger(0)
 
     // Bluetooth
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -412,15 +427,29 @@ class ScanningService : Service() {
         }
 
         override fun onDetectorStarted(detectorName: String) {
+            val now = System.currentTimeMillis()
             updateDetectorHealth(detectorName) { current ->
-                current.copy(isRunning = true)
+                current.copy(
+                    isRunning = true,
+                    isHealthy = true,
+                    expectedToRun = true,
+                    gateReason = null,
+                    hardwareAvailable = true,
+                    lastStartTime = now,
+                    lastStopReason = null
+                )
             }
             broadcastDetectorHealth()
         }
 
         override fun onDetectorStopped(detectorName: String) {
+            val now = System.currentTimeMillis()
             updateDetectorHealth(detectorName) { current ->
-                current.copy(isRunning = false)
+                current.copy(
+                    isRunning = false,
+                    lastStopTime = now,
+                    lastStopReason = "detector_callback"
+                )
             }
             broadcastDetectorHealth()
         }
@@ -876,6 +905,14 @@ class ScanningService : Service() {
                     } else {
                         Log.i(TAG, "Ultrasonic detection disabled by privacy settings")
                         stopUltrasonicDetection()
+                        val reason = if (!settings.ultrasonicConsentAcknowledged) {
+                            "consent_required"
+                        } else {
+                            "privacy_setting_disabled"
+                        }
+                        gateDetector(DetectorHealthStatus.DETECTOR_ULTRASONIC, reason)
+                        ScanningServiceState.ultrasonicStatus.value = UltrasonicDetector.gatedStatus(reason)
+                        broadcastUltrasonicData()
                     }
                 }
             }
@@ -988,7 +1025,8 @@ class ScanningService : Service() {
         if (isScanning.value) return
 
         scanStatus.value = ScanStatus.Starting
-        Log.d(TAG, "Starting scanning")
+        observationSessionId = UUID.randomUUID().toString()
+        Log.d(TAG, "Starting scanning (observationSession=$observationSessionId)")
 
         startSettingsCollectionJobs()
 
@@ -1019,6 +1057,10 @@ class ScanningService : Service() {
             wifiStatus.value = SubsystemStatus.PermissionDenied("ACCESS_FINE_LOCATION")
             logError("Location", -1, "Location permissions not granted", recoverable = true)
         }
+
+        // Freeze detector expectations before any subsystem can emit lifecycle callbacks.
+        // This prevents late initialization from erasing legitimate RUNNING states.
+        prepareDetectorHealthForScan(config)
 
         val privilegeEvidence = scanningPrivilegeBridge.onScanningStarted()
         Log.i(TAG, "Privilege bridge start evidence: $privilegeEvidence")
@@ -1069,8 +1111,7 @@ class ScanningService : Service() {
         // startup synchronization. Later location results fan out from updateLocation().
         syncCurrentLocationToSubsystems()
 
-        // Initialize and start detector health monitoring
-        initializeDetectorHealth()
+        // Health rows were registered in onCreate and admitted before subsystem start.
         startHealthCheckJob()
 
         // Start periodic throttle cache cleanup for deduplicator
@@ -1175,6 +1216,7 @@ class ScanningService : Service() {
                             Log.d(TAG, "BLE cooldown: ${effectiveBleCooldown}ms")
                             delay(effectiveBleCooldown)
                         } catch (e: Exception) {
+                            e.rethrowCancellation()
                             consecutiveBleErrors++
                             Log.e(TAG, "BLE scan error (consecutive: $consecutiveBleErrors)", e)
                             logError("BLE", -1, "Scan error: ${e.message}", recoverable = true)
@@ -1201,6 +1243,7 @@ class ScanningService : Service() {
                     try {
                         updateLocation()
                     } catch (e: Exception) {
+                        e.rethrowCancellation()
                         Log.e(TAG, "Location update error", e)
                     }
 
@@ -1211,6 +1254,7 @@ class ScanningService : Service() {
                             val inactiveThreshold = System.currentTimeMillis() - scanConfig.inactiveTimeout
                             repository.markOldInactive(inactiveThreshold)
                         } catch (e: Exception) {
+                            e.rethrowCancellation()
                             Log.e(TAG, "Error marking old detections inactive", e)
                         }
 
@@ -1218,6 +1262,7 @@ class ScanningService : Service() {
                             try {
                                 cleanupSeenDevices(scanConfig.seenDeviceTimeout)
                             } catch (e: Exception) {
+                                e.rethrowCancellation()
                                 Log.e(TAG, "Error cleaning up seen devices", e)
                             }
                         }
@@ -1249,6 +1294,7 @@ class ScanningService : Service() {
                     }
 
                 } catch (e: Exception) {
+                    e.rethrowCancellation()
                     Log.e(TAG, "Scanning error", e)
                     logError("Scanner", -1, "Scan cycle error: ${e.message}", recoverable = true)
                     // Don't let any error kill the loop - just continue to next cycle
@@ -1650,6 +1696,30 @@ class ScanningService : Service() {
         }
     }
 
+    private suspend fun recordObservationOrReport(
+        observation: Observation,
+        lane: String
+    ): Boolean = when (val result = observationRecorder.record(observation)) {
+        is ObservationRecordResult.Recorded -> true
+        is ObservationRecordResult.Failed -> {
+            val failures = observationPersistenceFailures.incrementAndGet()
+            Log.e(
+                TAG,
+                "[$lane] Raw observation persistence failed id=${result.observationId} failures=$failures",
+                result.error
+            )
+            if (failures == 1 || failures % 50 == 0) {
+                logError(
+                    "Evidence",
+                    -2001,
+                    "$lane raw observation persistence failed ($failures total): ${result.error.message}",
+                    recoverable = true
+                )
+            }
+            false
+        }
+    }
+
     /** BLE scan callback - handles scan results for surveillance device detection */
     private val bleScanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
@@ -1707,6 +1777,25 @@ class ScanningService : Service() {
         val macAddress = device.address ?: return
         val deviceName = device.name
         val rssi = result.rssi
+
+        val rawObservation = AndroidObservationAdapter.fromBle(
+            result = result,
+            sessionId = observationSessionId,
+            location = currentLocation
+        )
+        if (!recordObservationOrReport(rawObservation, "BLE")) return
+
+        RemoteIdEvidenceDetector.fromBleServiceData(AndroidObservationAdapter.bleServiceData(result))?.let { evidence ->
+            handleRemoteIdEvidence(
+                evidence = evidence,
+                protocol = DetectionProtocol.BLUETOOTH_LE,
+                observedIdentifier = macAddress,
+                ssid = null,
+                rssi = rssi,
+                sourceObservationId = rawObservation.id
+            )
+        }
+
         val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
 
         // Extract manufacturer data for detection handlers and MAC-independent tail fingerprinting.
@@ -1719,6 +1808,18 @@ class ScanningService : Service() {
                 manufacturerData[key] = value.joinToString("") { "%02X".format(it) }
                 manufacturerDataLengths[key] = value.size
             }
+        }
+
+        val trackerEvidence = BleTrackerEvidenceClassifier.classify(
+            manufacturerData = manufacturerData,
+            serviceUuids = serviceUuids.map { it.toString() }
+        )
+        if (trackerEvidence.kind != BleEvidenceKind.NONE) {
+            val ouiVendor = DetectionPatterns.getManufacturerFromOui(macAddress.take(8))
+            Log.i(
+                BLE_EVIDENCE_TAG,
+                BleForensicSummary.format(rawObservation, trackerEvidence, ouiVendor)
+            )
         }
 
         currentLocation?.let { location ->
@@ -1773,7 +1874,8 @@ class ScanningService : Service() {
                         threatScore = (alert.confidence * 100f).toInt(),
                         matchedPatterns = "fingerprint=${alert.fingerprint};macs=${alert.distinctMacs};locations=${alert.separatedLocations}",
                         rawData = "${alert.proofBoundary};maxSeparationMeters=${alert.maxSeparationMeters.toInt()}",
-                        detectionSource = DetectionSource.NATIVE_BLE
+                        detectionSource = DetectionSource.NATIVE_BLE,
+                        sourceObservationId = rawObservation.id
                     )
                 )
             }
@@ -1808,8 +1910,8 @@ class ScanningService : Service() {
             scanStats.update { stats -> stats.recordCandidate(handlerResult.detection.protocol) }
             broadcastScanStats()
 
-            // Handler found a detection - process it
-            handleDetection(handlerResult.detection)
+            // Handler found a detection - preserve exact raw-evidence lineage.
+            handleDetection(handlerResult.detection.copy(sourceObservationId = rawObservation.id))
 
             // Log AI prompt availability for debugging
             if (BuildConfig.DEBUG && handlerResult.aiPrompt.isNotEmpty()) {
@@ -1827,7 +1929,9 @@ class ScanningService : Service() {
 
         // ==================== Learned Signature Detection ====================
         if (learnedSignatureHandler.learningModeEnabled.value) {
-            checkLearnedSignaturesViaHandler(macAddress, deviceName, rssi, serviceUuids, manufacturerData)
+            checkLearnedSignaturesViaHandler(
+                macAddress, deviceName, rssi, serviceUuids, manufacturerData, rawObservation.id
+            )
         }
     }
 
@@ -1839,7 +1943,8 @@ class ScanningService : Service() {
         deviceName: String?,
         rssi: Int,
         serviceUuids: List<java.util.UUID>,
-        manufacturerData: Map<Int, String>
+        manufacturerData: Map<Int, String>,
+        sourceObservationId: String
     ) {
         val context = com.flockyou.detection.handler.LearnedSignatureContext.Ble(
             macAddress = macAddress,
@@ -1851,8 +1956,45 @@ class ScanningService : Service() {
 
         val detection = learnedSignatureHandler.processBleDevice(context)
         if (detection != null) {
-            handleDetection(detection)
+            handleDetection(detection.copy(sourceObservationId = sourceObservationId))
         }
+    }
+
+    private suspend fun handleRemoteIdEvidence(
+        evidence: RemoteIdEvidence,
+        protocol: DetectionProtocol,
+        observedIdentifier: String?,
+        ssid: String?,
+        rssi: Int,
+        sourceObservationId: String
+    ) {
+        val uasId = evidence.uasIds.firstOrNull()
+        val broadcastLocation = if (evidence.droneLatitude != null && evidence.droneLongitude != null) {
+            "${String.format(Locale.US, "%.7f", evidence.droneLatitude)},${String.format(Locale.US, "%.7f", evidence.droneLongitude)}"
+        } else "not-present-in-decoded-message"
+        val source = if (protocol == DetectionProtocol.BLUETOOTH_LE) DetectionSource.NATIVE_BLE else DetectionSource.NATIVE_WIFI
+        handleDetection(
+            Detection(
+                protocol = protocol,
+                detectionMethod = DetectionMethod.RF_DRONE,
+                deviceType = DeviceType.DRONE,
+                deviceName = uasId?.let { "Remote ID UAS $it" } ?: "Remote ID transmitter / possible drone",
+                macAddress = observedIdentifier,
+                ssid = ssid,
+                rssi = rssi,
+                signalStrength = rssiToSignalStrength(rssi),
+                latitude = currentLocation?.latitude,
+                longitude = currentLocation?.longitude,
+                threatLevel = ThreatLevel.INFO,
+                threatScore = 25,
+                manufacturer = "ASTM F3411 / OpenDroneID",
+                matchedPatterns = "exactRemoteIdSignature=${evidence.signature}; transport=${evidence.transport}; protocolVersion=${evidence.protocolVersion}; messageTypes=${evidence.messageTypes.joinToString(",")}; messageCount=${evidence.messageCount}",
+                rawData = "uasIds=${evidence.uasIds.joinToString(",")}; broadcastDroneLocation=$broadcastLocation; evidenceClass=REMOTE_ID_TRANSMITTER; visualAircraftConfirmationRequired=true",
+                detectionSource = source,
+                sourceObservationId = sourceObservationId
+            )
+        )
+        Log.i(TAG, "Remote ID evidence: transport=${evidence.transport} id=${uasId ?: "unknown"} broadcastLocation=$broadcastLocation")
     }
 
     // ==================== WiFi Scanning ====================
@@ -2000,13 +2142,43 @@ class ScanningService : Service() {
     private suspend fun processWifiScanResults() {
         if (!hasLocationPermissions()) return
 
-        val results = wifiManager.scanResults
-        Log.d(TAG, "Processing ${results.size} WiFi scan results")
+        val rawResults = wifiManager.scanResults
+        val results = mutableListOf<android.net.wifi.ScanResult>()
+        val observationIdsByBssid = mutableMapOf<String, String>()
+        for (result in rawResults) {
+            val observation = AndroidObservationAdapter.fromWifi(
+                result = result,
+                sessionId = observationSessionId,
+                location = currentLocation
+            )
+            if (recordObservationOrReport(observation, "WIFI")) {
+                results += result
+                result.BSSID?.uppercase()?.let { observationIdsByBssid[it] = observation.id }
+                RemoteIdEvidenceDetector.fromWifiInformationElements(
+                    AndroidObservationAdapter.wifiInformationElements(result)
+                )?.let { evidence ->
+                    @Suppress("DEPRECATION")
+                    val ssid = result.SSID?.takeIf { it.isNotBlank() }
+                    handleRemoteIdEvidence(
+                        evidence = evidence,
+                        protocol = DetectionProtocol.WIFI,
+                        observedIdentifier = result.BSSID?.uppercase(),
+                        ssid = ssid,
+                        rssi = result.level,
+                        sourceObservationId = observation.id
+                    )
+                }
+            }
+        }
+        Log.d(
+            TAG,
+            "Processing ${results.size}/${rawResults.size} evidence-backed WiFi scan results"
+        )
 
-        // Update scan stats
+        // Update scan stats using scanner ingress count, even if evidence persistence failed.
         scanStats.update { stats ->
             stats.copy(
-                wifiNetworksSeen = stats.wifiNetworksSeen + results.size,
+                wifiNetworksSeen = stats.wifiNetworksSeen + rawResults.size,
                 lastWifiSuccessTime = System.currentTimeMillis()
             )
         }
@@ -2050,7 +2222,10 @@ class ScanningService : Service() {
 
                 // Handle each detection
                 for (detection in detections) {
-                    handleDetection(detection)
+                    val sourceObservationId = detection.macAddress
+                        ?.uppercase()
+                        ?.let { observationIdsByBssid[it] }
+                    handleDetection(detection.copy(sourceObservationId = sourceObservationId))
                 }
 
                 // Track unmatched networks if enabled
@@ -2394,6 +2569,19 @@ class ScanningService : Service() {
         for ((detectorName, status) in currentHealth) {
             if (!status.isRunning) continue
 
+            if (detectorName == DetectorHealthStatus.DETECTOR_CELLULAR) {
+                val liveness = cellularMonitor?.detectorLiveness()
+                if (liveness?.isOperational == true) {
+                    currentHealth[detectorName] = status.copy(
+                        isHealthy = true,
+                        consecutiveFailures = 0,
+                        lastHeartbeatTime = now,
+                        hardwareAvailable = true
+                    )
+                    continue
+                }
+            }
+
             val lastSuccess = status.lastSuccessfulScan
             if (lastSuccess != null && (now - lastSuccess) > DETECTOR_STALE_THRESHOLD_MS) {
                 Log.w(TAG, "Detector $detectorName appears stalled (no scan in ${(now - lastSuccess) / 1000}s)")
@@ -2575,11 +2763,14 @@ class ScanningService : Service() {
 
     private fun handleDetectorSuccess(detectorName: String) {
         detectorRestartJobs.remove(detectorName)?.cancel()
+        val now = System.currentTimeMillis()
         updateDetectorHealth(detectorName) { current ->
             current.copy(
-                lastSuccessfulScan = System.currentTimeMillis(),
+                lastSuccessfulScan = now,
+                lastHeartbeatTime = now,
                 consecutiveFailures = 0,
-                isHealthy = true
+                isHealthy = true,
+                hardwareAvailable = true
             )
         }
         broadcastDetectorHealth()
@@ -2589,8 +2780,13 @@ class ScanningService : Service() {
 
     /** Record one raw observation at scanner-callback entry, before classification. */
     fun recordRawObservation(detectorName: String) {
+        val now = System.currentTimeMillis()
         updateDetectorHealth(detectorName) { current ->
-            current.copy(rawObservationCount = current.rawObservationCount + 1)
+            current.copy(
+                rawObservationCount = current.rawObservationCount + 1,
+                lastHeartbeatTime = now,
+                hardwareAvailable = true
+            )
         }
         broadcastDetectorHealth()
     }
@@ -2618,6 +2814,138 @@ class ScanningService : Service() {
         val existing = current[detectorName] ?: DetectorHealthStatus(name = detectorName)
         current[detectorName] = transform(existing)
         detectorHealth.value = current
+    }
+
+    private fun prepareDetectorHealthForScan(config: ScanConfig) {
+        val bluetoothPermission = hasBluetoothPermissions()
+        val locationPermission = hasLocationPermissions()
+        val telephonyPermission = hasTelephonyPermissions()
+        val audioPermission = hasAudioPermissions()
+        val bluetoothReady = bluetoothAdapter != null && bluetoothAdapter?.isEnabled == true
+        val wifiReady = wifiManager.isWifiEnabled
+
+        fun configure(
+            name: String,
+            configured: Boolean,
+            permissionGranted: Boolean = true,
+            hardwareReady: Boolean = true,
+            gate: String? = null
+        ) {
+            val effectiveGate = when {
+                !configured -> gate ?: "disabled_by_settings"
+                !permissionGranted -> gate ?: "permission_required"
+                !hardwareReady -> gate ?: "hardware_unavailable"
+                else -> null
+            }
+            updateDetectorHealth(name) { current ->
+                current.copy(
+                    expectedToRun = effectiveGate == null,
+                    gateReason = effectiveGate,
+                    permissionState = if (permissionGranted) "granted" else "denied",
+                    hardwareAvailable = hardwareReady,
+                    isRunning = false,
+                    isHealthy = true,
+                    lastHeartbeatTime = null,
+                    consecutiveFailures = 0
+                )
+            }
+        }
+
+        configure(
+            DetectorHealthStatus.DETECTOR_BLE,
+            configured = config.enableBle,
+            permissionGranted = bluetoothPermission,
+            hardwareReady = bluetoothReady,
+            gate = when {
+                !config.enableBle -> "disabled_by_scan_settings"
+                !bluetoothPermission -> "bluetooth_scan_permission_required"
+                !bluetoothReady -> "bluetooth_off"
+                else -> null
+            }
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_WIFI,
+            configured = config.enableWifi,
+            permissionGranted = locationPermission,
+            hardwareReady = wifiReady,
+            gate = when {
+                !config.enableWifi -> "disabled_by_scan_settings"
+                !locationPermission -> "location_permission_required"
+                !wifiReady -> "wifi_off"
+                else -> null
+            }
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_CELLULAR,
+            configured = config.enableCellular,
+            permissionGranted = telephonyPermission,
+            gate = if (!telephonyPermission) "phone_state_permission_required" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_SATELLITE,
+            configured = true,
+            permissionGranted = telephonyPermission,
+            gate = if (!telephonyPermission) "phone_state_permission_required" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_ROGUE_WIFI,
+            configured = config.enableWifi,
+            permissionGranted = locationPermission,
+            hardwareReady = wifiReady,
+            gate = if (!config.enableWifi) "wifi_disabled" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_RF_SIGNAL,
+            configured = currentDetectionSettings.enableRfDetection,
+            permissionGranted = locationPermission,
+            hardwareReady = wifiReady,
+            gate = if (!currentDetectionSettings.enableRfDetection) "rf_detection_disabled" else null
+        )
+        configure(
+            DetectorHealthStatus.DETECTOR_GNSS,
+            configured = currentDetectionSettings.enableGnssDetection,
+            permissionGranted = locationPermission,
+            gate = if (!currentDetectionSettings.enableGnssDetection) "gnss_detection_disabled" else null
+        )
+        val ultrasonicConfigured = currentPrivacySettings.ultrasonicDetectionEnabled &&
+            currentPrivacySettings.ultrasonicConsentAcknowledged
+        val ultrasonicGate = when {
+            !currentPrivacySettings.ultrasonicConsentAcknowledged -> "consent_required"
+            !currentPrivacySettings.ultrasonicDetectionEnabled -> "privacy_setting_disabled"
+            !audioPermission -> "record_audio_permission_required"
+            else -> null
+        }
+        configure(
+            DetectorHealthStatus.DETECTOR_ULTRASONIC,
+            configured = ultrasonicConfigured,
+            permissionGranted = audioPermission,
+            gate = ultrasonicGate
+        )
+        if (ultrasonicGate != null) {
+            ScanningServiceState.ultrasonicStatus.value = UltrasonicDetector.gatedStatus(ultrasonicGate)
+            broadcastUltrasonicData()
+        }
+        broadcastDetectorHealth()
+    }
+
+    internal fun gateDetector(
+        detectorName: String,
+        reason: String,
+        permissionState: String = "unknown",
+        hardwareAvailable: Boolean = false
+    ) {
+        updateDetectorHealth(detectorName) { current ->
+            current.copy(
+                expectedToRun = false,
+                gateReason = reason,
+                permissionState = permissionState,
+                hardwareAvailable = hardwareAvailable,
+                isRunning = false,
+                lastStopTime = System.currentTimeMillis(),
+                lastStopReason = reason
+            )
+        }
+        broadcastDetectorHealth()
     }
 
     private fun initializeDetectorHealth() {

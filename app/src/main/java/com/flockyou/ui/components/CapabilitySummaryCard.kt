@@ -44,7 +44,7 @@ import com.flockyou.data.model.DetectionProtocol
 import com.flockyou.privilege.PrivilegeMode
 
 /**
- * Hardware facts that materially affect what Flock-You can observe on this phone.
+ * Hardware facts that materially affect what Flock-Sucker can observe on this phone.
  *
  * Keep these separate from [PrivilegeMode]: install privilege and physical hardware
  * are independent constraints and the UI should never imply otherwise.

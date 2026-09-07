@@ -99,6 +99,33 @@ internal object SsidPatterns {
             description = "Vigilant ALPR (Motorola) - competitor to Flock"
         ),
         
+        // Public-safety drone identifiers. These remain hints: only exact Remote ID
+        // transport evidence is treated as protocol-confirmed UAS evidence.
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^skydio[_-]?(x10d?|r10)(?:[_-].*)?$",
+            deviceType = DeviceType.DRONE,
+            manufacturer = "Skydio",
+            threatScore = 60,
+            description = "Possible Skydio X10/X10D/R10 drone radio identifier"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^autel[_-]?(evo|max|robotics).*$",
+            deviceType = DeviceType.DRONE,
+            manufacturer = "Autel Robotics",
+            threatScore = 60,
+            description = "Possible Autel Robotics drone radio identifier"
+        ),
+        DetectionPattern(
+            type = PatternType.SSID_REGEX,
+            pattern = "(?i)^brinc[_-]?(lemur|responder|drone).*$",
+            deviceType = DeviceType.DRONE,
+            manufacturer = "BRINC",
+            threatScore = 65,
+            description = "Possible BRINC public-safety drone radio identifier"
+        ),
+
         // ==================== Police Technology Patterns ====================
         
         // Motorola Solutions

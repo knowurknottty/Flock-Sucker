@@ -195,14 +195,17 @@ data class DetectorHealthStatus(
     /** Observations older than [staleThresholdMs] imply a stale scanner. */
     val staleThresholdMs: Long = 120_000L,
     /** Watchdog armed state. */
-    val watchdogActive: Boolean = false
+    val watchdogActive: Boolean = false,
+    /** Whether this detector is expected to be running in the admitted scan policy. */
+    val expectedToRun: Boolean = true,
+    /** Explicit policy/permission gate when the detector is intentionally blocked. */
+    val gateReason: String? = null,
+    /** Latest detector proof-of-life heartbeat, independent of whether it found a threat. */
+    val lastHeartbeatTime: Long? = null
 ) {
-    /** True when the scanner shows visible proof of life: running, healthy,
-     *  hardware available, and an observation inside the stale window. */
+    /** True only when the authoritative health reducer classifies this detector RUNNING. */
     val hasProofOfLife: Boolean
-        get() = isRunning && isHealthy && hardwareAvailable &&
-            lastSuccessfulScan != null &&
-            (System.currentTimeMillis() - lastSuccessfulScan) <= staleThresholdMs
+        get() = DetectorHealthPolicy.isOperational(this)
 
     companion object {
         const val DETECTOR_ULTRASONIC = "Ultrasonic"

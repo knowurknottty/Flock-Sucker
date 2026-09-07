@@ -28,8 +28,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.flockyou.monitoring.GnssSatelliteMonitor
 import com.flockyou.monitoring.GnssSatelliteMonitor.*
 import com.flockyou.service.CellularMonitor
+import com.flockyou.service.DetectorHealthStatus
 import com.flockyou.service.UltrasonicDetector
 import com.flockyou.service.UltrasonicDetector.*
+import com.flockyou.service.UltrasonicHealthPolicy
+import com.flockyou.service.UltrasonicLifecycleState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -69,6 +72,7 @@ fun NearbyDevicesScreen(
     val ultrasonicStatus = uiState.ultrasonicStatus
     val ultrasonicAnomalies = viewModel.getFilteredUltrasonicAnomalies()
     val ultrasonicBeacons = uiState.ultrasonicBeacons
+    val ultrasonicHealth = uiState.detectorHealth[DetectorHealthStatus.DETECTOR_ULTRASONIC]
 
     val tabs = listOf("BLE", "WiFi", "Cell", "GNSS", "Audio", "Sat")
 
@@ -316,6 +320,7 @@ fun NearbyDevicesScreen(
                         // Ultrasonic tab
                         UltrasonicStatusContent(
                             ultrasonicStatus = ultrasonicStatus,
+                            ultrasonicHealth = ultrasonicHealth,
                             ultrasonicBeacons = ultrasonicBeacons,
                             ultrasonicAnomalies = ultrasonicAnomalies,
                             isScanning = isScanning
@@ -340,12 +345,48 @@ fun NearbyDevicesScreen(
 @Composable
 private fun UltrasonicStatusContent(
     ultrasonicStatus: UltrasonicStatus?,
+    ultrasonicHealth: DetectorHealthStatus?,
     ultrasonicBeacons: List<BeaconDetection>,
     ultrasonicAnomalies: List<UltrasonicAnomaly>,
     isScanning: Boolean
 ) {
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-    val isActive = ultrasonicStatus?.isScanning == true
+    val lifecycleState = if (ultrasonicStatus == null && !ultrasonicHealth?.gateReason.isNullOrBlank()) {
+        UltrasonicLifecycleState.GATED
+    } else {
+        UltrasonicHealthPolicy.state(ultrasonicStatus)
+    }
+    val isActive = lifecycleState == UltrasonicLifecycleState.PROVEN
+    val lifecycleColor = when (lifecycleState) {
+        UltrasonicLifecycleState.PROVEN -> Color(0xFF4CAF50)
+        UltrasonicLifecycleState.STARTING, UltrasonicLifecycleState.PROVING -> Color(0xFFFFC107)
+        UltrasonicLifecycleState.GATED -> MaterialTheme.colorScheme.tertiary
+        UltrasonicLifecycleState.STALE, UltrasonicLifecycleState.FAILED -> MaterialTheme.colorScheme.error
+        UltrasonicLifecycleState.IDLE -> Color(0xFF9E9E9E)
+    }
+    val lifecycleTitle = when (lifecycleState) {
+        UltrasonicLifecycleState.PROVEN -> "Ultrasonic Monitoring Proven"
+        UltrasonicLifecycleState.STARTING -> "Ultrasonic Starting"
+        UltrasonicLifecycleState.PROVING -> "Ultrasonic Proving"
+        UltrasonicLifecycleState.GATED -> "Ultrasonic Gated"
+        UltrasonicLifecycleState.STALE -> "Ultrasonic Proof Stale"
+        UltrasonicLifecycleState.FAILED -> "Ultrasonic Failed"
+        UltrasonicLifecycleState.IDLE -> "Ultrasonic Detection"
+    }
+    val statusMessage = when (lifecycleState) {
+        UltrasonicLifecycleState.GATED -> when (ultrasonicStatus?.gateReason ?: ultrasonicHealth?.gateReason) {
+            "consent_required" -> "Gated: ultrasonic consent is required"
+            "privacy_setting_disabled" -> "Gated: enable ultrasonic detection in Privacy"
+            "record_audio_permission_required" -> "Gated: microphone permission is required"
+            else -> "Gated by detector policy"
+        }
+        UltrasonicLifecycleState.STARTING -> "Opening microphone and waiting for audio frames…"
+        UltrasonicLifecycleState.PROVING -> "Audio frames received; validating frequency analysis…"
+        UltrasonicLifecycleState.PROVEN -> "Monitoring 18–22 kHz with live proof-of-life"
+        UltrasonicLifecycleState.STALE -> "Monitoring proof is stale — waiting for fresh audio analysis"
+        UltrasonicLifecycleState.FAILED -> "Ultrasonic monitor failed: ${ultrasonicStatus?.lastError ?: "unknown error"}"
+        UltrasonicLifecycleState.IDLE -> if (isScanning) "Ultrasonic detector is not running" else "Audio monitoring inactive"
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),
@@ -386,39 +427,25 @@ private fun UltrasonicStatusContent(
                                     imageVector = Icons.Default.Mic,
                                     contentDescription = null,
                                     modifier = Modifier.size(40.dp),
-                                    tint = if (isActive) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
+                                    tint = lifecycleColor
                                 )
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
                                         .size(12.dp)
                                         .clip(CircleShape)
-                                        .background(
-                                            when {
-                                                isActive -> Color(0xFF4CAF50)
-                                                isScanning -> Color(0xFFFFC107)
-                                                else -> Color(0xFF9E9E9E)
-                                            }
-                                        )
+                                        .background(lifecycleColor)
                                 )
                             }
 
                             Column {
                                 Text(
-                                    text = if (isActive) "Ultrasonic Detection Active" else "Ultrasonic Detection",
+                                    text = lifecycleTitle,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = when {
-                                        isActive -> "Monitoring 18-22 kHz frequencies"
-                                        isScanning -> "Starting audio monitoring..."
-                                        else -> "Audio monitoring inactive"
-                                    },
+                                    text = statusMessage,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -479,7 +506,25 @@ private fun UltrasonicStatusContent(
                             )
                         }
 
-                        // Last scan time
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            UltrasonicMetricItem(
+                                label = "Frames",
+                                value = ultrasonicStatus.frameReadCount.toString()
+                            )
+                            UltrasonicMetricItem(
+                                label = "Analyses",
+                                value = ultrasonicStatus.analysisCycleCount.toString()
+                            )
+                            UltrasonicMetricItem(
+                                label = "Last Proof",
+                                value = ultrasonicStatus.lastAnalysisTime?.let { dateFormat.format(Date(it)) } ?: "--"
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Last scan: ${dateFormat.format(Date(ultrasonicStatus.lastScanTime))}",

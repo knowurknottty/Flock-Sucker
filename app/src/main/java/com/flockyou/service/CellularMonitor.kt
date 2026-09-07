@@ -684,6 +684,18 @@ class CellularMonitor(
         Log.d(TAG, "Updated anomaly cooldown: min=${minAnomalyIntervalMs}ms, global=${globalAnomalyCooldownMs}ms")
     }
 
+    fun detectorLiveness(): EventDrivenDetectorLiveness {
+        val listenerRegistered = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            telephonyCallback != null
+        } else {
+            phoneStateListener != null
+        }
+        return EventDrivenDetectorLiveness(
+            monitoring = isMonitoring,
+            listenerRegistered = listenerRegistered
+        )
+    }
+
     fun updateLocation(latitude: Double, longitude: Double) {
         val now = System.currentTimeMillis()
 
@@ -851,11 +863,13 @@ class CellularMonitor(
                 (telephonyCallback as? TelephonyCallback)?.let {
                     telephonyManager.unregisterTelephonyCallback(it)
                 }
+                telephonyCallback = null
             } else {
                 @Suppress("DEPRECATION")
                 phoneStateListener?.let {
                     telephonyManager.listen(it, PhoneStateListener.LISTEN_NONE)
                 }
+                phoneStateListener = null
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error unregistering cell listener", e)
