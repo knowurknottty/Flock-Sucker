@@ -1432,4 +1432,4 @@ flowchart TB
 
 ---
 
-*This documentation is based on the Flock You Android application codebase and is intended for security awareness and education purposes.*
+*This documentation is based on the Flock-Sucker Android application codebase and is intended for security awareness and education purposes.*

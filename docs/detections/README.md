@@ -315,7 +315,7 @@ flowchart TD
     Q3 -->|Yes| Legal["EFF: eff.org<br/>ACLU: aclu.org<br/>Access Now: accessnow.org"]
     Q3 -->|No| Q4{Technical Help<br/>with App?}
 
-    Q4 -->|Yes| Tech["GitHub Issues<br/>github.com/flockyou/issues"]
+    Q4 -->|Yes| Tech["GitHub Issues<br/>github.com/knowurknottty/Flock-Sucker/issues"]
     Q4 -->|No| Q5{Want to Learn<br/>More?}
 
     Q5 -->|Yes| Learn["EFF Surveillance Self-Defense<br/>ssd.eff.org"]
@@ -336,7 +336,7 @@ flowchart TD
 
 ### Mission Statement
 
-Flock-Sucker is an open-source surveillance detection application that empowers individuals to identify and understand surveillance devices in their environment. By detecting police surveillance technology, hidden trackers, IMSI catchers, and other monitoring devices, Flock-You helps people make informed decisions about their privacy and safety.
+Flock-Sucker is an open-source surveillance detection application that empowers individuals to identify and understand surveillance devices in their environment. By detecting police surveillance technology, hidden trackers, IMSI catchers, and other monitoring devices, Flock-Sucker helps people make informed decisions about their privacy and safety.
 
 **"Watch the Watchers"** - Know when surveillance equipment is nearby so you can protect your privacy, document police presence, or simply understand the surveillance landscape around you.
 
@@ -1021,7 +1021,7 @@ If you are concerned about being tracked or surveilled, these organizations can 
 
 ### How to Report Issues
 
-1. **Security Vulnerabilities**: Email security@flockyou.app (do not open public issues)
+1. **Security Vulnerabilities**: Email security@flocksucker.app (do not open public issues)
 2. **Bugs**: Open an issue on GitHub with:
    - Device model and Android version
    - Steps to reproduce

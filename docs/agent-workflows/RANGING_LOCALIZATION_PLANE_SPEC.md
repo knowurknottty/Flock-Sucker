@@ -1,7 +1,7 @@
 # Inversion Labs Ranging & Localization Plane — Design Specification
 
 **Status:** APPROVED ARCHITECTURE / DESIGN AUTHORITY
-**Repository:** `knowurknottty/Flock-You-Android`
+**Repository:** `knowurknottty/Flock-Sucker`
 **Branch:** `design/ranging-localization-plane-r1`
 **Date:** 2026-08-18
 **Purpose:** Replace toy-grade RSSI distance guesses with an evidence-backed, uncertainty-aware ranging and localization subsystem that works on constrained Android hardware and can later serve both the operator map and a sanitized game-world backend.

@@ -2,7 +2,7 @@
 
 ## Authority
 
-Repository: `knowurknottty/Flock-You-Android`
+Repository: `knowurknottty/Flock-Sucker`
 
 Pinned starting point for all three lanes:
 
@@ -12,7 +12,7 @@ If `main` moves after a lane begins, do not silently absorb unrelated changes. C
 
 ## Mission
 
-Maximize Flock-You's engineering quality, constrained-device efficiency, usability, persistence/query quality, security truthfulness, and test evidence **without gutting detection capability or weakening the project's feasibility model**.
+Maximize Flock-Sucker's engineering quality, constrained-device efficiency, usability, persistence/query quality, security truthfulness, and test evidence **without gutting detection capability or weakening the project's feasibility model**.
 
 This round optimizes the Android app. It does not build the planned game layer. Game-oriented architectural possibilities may be recorded as deferred notes only when they expose a useful backend boundary; they must not distort the current counter-surveillance product.
 
@@ -69,7 +69,7 @@ Branch: `maxstats/syn-runtime-r4`
 
 Primary ownership:
 
-- `app/src/main/java/com/flockyou/service/**`
+- `app/src/main/java/com/inversionlabs/flocksucker/service/**`
 - scanner/service lifecycle and restart policy
 - runtime battery/radio policy
 - wake locks, watchdogs, scheduling tied directly to scanning service
@@ -98,7 +98,7 @@ Branch: `maxstats/flash-ui-r4`
 
 Primary ownership:
 
-- `app/src/main/java/com/flockyou/ui/**`
+- `app/src/main/java/com/inversionlabs/flocksucker/ui/**`
 - Compose render/state shape that is strictly presentation-facing
 - `MainViewModel*` only for UI projection/state ownership
 - existing osmdroid map presentation and export/share UI once a backend contract exists
@@ -128,8 +128,8 @@ Branch: `maxstats/pro-data-r4`
 
 Primary ownership:
 
-- `app/src/main/java/com/flockyou/data/**`
-- `app/src/main/java/com/flockyou/data/repository/**`
+- `app/src/main/java/com/inversionlabs/flocksucker/data/**`
+- `app/src/main/java/com/inversionlabs/flocksucker/data/repository/**`
 - Room DAO/schema/migrations/indexes
 - settings repository caching, including AI settings
 - persistence/data-retention behavior

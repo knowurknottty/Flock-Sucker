@@ -1,13 +1,13 @@
-// Flock You - Android.bp for GrapheneOS/AOSP build integration
+// Flock-Sucker - Android.bp for GrapheneOS/AOSP build integration
 //
-// This file enables building Flock You as a privileged system app
+// This file enables building Flock-Sucker as a privileged system app
 // in GrapheneOS, CalyxOS, LineageOS, or other AOSP-based ROMs.
 //
 // Usage:
-//   1. Copy this directory to vendor/flockyou/ or packages/apps/FlockYou/
+//   1. Copy this directory to vendor/flocksucker/ or packages/apps/FlockSucker/
 //   2. Build the APK: ./gradlew assembleOemRelease (or assembleSystemRelease)
-//   3. Copy the APK to this directory as FlockYou.apk
-//   4. Add "FlockYou" to PRODUCT_PACKAGES in your device.mk
+//   3. Copy the APK to this directory as FlockSucker.apk
+//   4. Add "FlockSucker" to PRODUCT_PACKAGES in your device.mk
 //
 // For platform-signed builds (OEM mode), use certificate: "platform"
 // For pre-signed builds (System mode), use certificate: "PRESIGNED"
@@ -22,12 +22,12 @@
 // package name. Copy those files to this directory to replace the default ones.
 //
 // Alternatively, you can manually update the package attribute in:
-//   - privapp-permissions-flockyou.xml
-//   - default-permissions-flockyou.xml
+//   - privapp-permissions-flocksucker.xml
+//   - default-permissions-flocksucker.xml
 
 android_app_import {
-    name: "FlockYou",
-    apk: "FlockYou.apk",
+    name: "FlockSucker",
+    apk: "FlockSucker.apk",
 
     // Install as privileged app in /system_ext/priv-app/
     privileged: true,
@@ -45,8 +45,8 @@ android_app_import {
 
     // Required permissions whitelists
     required: [
-        "privapp_permissions_flockyou",
-        "default_permissions_flockyou",
+        "privapp_permissions_flocksucker",
+        "default_permissions_flocksucker",
     ],
 
     // Optional: Uncomment to use pre-signed APK instead of platform signing
@@ -56,42 +56,42 @@ android_app_import {
 
 // Permission whitelist for privileged permissions
 prebuilt_etc {
-    name: "privapp_permissions_flockyou",
-    src: "privapp-permissions-flockyou.xml",
+    name: "privapp_permissions_flocksucker",
+    src: "privapp-permissions-flocksucker.xml",
     sub_dir: "permissions",
     system_ext_specific: true,
-    filename: "privapp-permissions-flockyou.xml",
+    filename: "privapp-permissions-flocksucker.xml",
 }
 
 // Default runtime permissions (pre-granted on first boot)
 prebuilt_etc {
-    name: "default_permissions_flockyou",
-    src: "default-permissions-flockyou.xml",
+    name: "default_permissions_flocksucker",
+    src: "default-permissions-flocksucker.xml",
     sub_dir: "default-permissions",
     system_ext_specific: true,
-    filename: "default-permissions-flockyou.xml",
+    filename: "default-permissions-flocksucker.xml",
 }
 
 // Alternative: System app (non-system_ext) for older Android versions
 // Uncomment this block and comment out the above if targeting Android 10 or earlier
 /*
 android_app_import {
-    name: "FlockYou_legacy",
-    apk: "FlockYou.apk",
+    name: "FlockSucker_legacy",
+    apk: "FlockSucker.apk",
     privileged: true,
     certificate: "platform",
     dex_preopt: {
         enabled: true,
     },
     required: [
-        "privapp_permissions_flockyou_legacy",
+        "privapp_permissions_flocksucker_legacy",
     ],
 }
 
 prebuilt_etc {
-    name: "privapp_permissions_flockyou_legacy",
-    src: "privapp-permissions-flockyou.xml",
+    name: "privapp_permissions_flocksucker_legacy",
+    src: "privapp-permissions-flocksucker.xml",
     sub_dir: "permissions",
-    filename: "privapp-permissions-flockyou.xml",
+    filename: "privapp-permissions-flocksucker.xml",
 }
 */

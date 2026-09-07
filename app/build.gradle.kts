@@ -9,8 +9,9 @@ plugins {
 
 // OEM configurable application ID
 // OEM partners can set OEM_PACKAGE_NAME in gradle.properties to use their own package name
-val oemPackageName: String = project.findProperty("OEM_PACKAGE_NAME")?.toString() ?: "com.flockyou"
-val defaultPackageName = "com.flockyou"
+val oemPackageName: String = project.findProperty("OEM_PACKAGE_NAME")?.toString() ?: "com.inversionlabs.flocksucker"
+val defaultPackageName = "com.inversionlabs.flocksucker"
+val useTestOrchestrator = providers.gradleProperty("useTestOrchestrator").orNull?.toBoolean() == true
 
 // ================================================================
 // OEM Feature Flags Configuration
@@ -55,11 +56,11 @@ val deploymentProfile = when (deploymentProfileId) {
 }
 
 android {
-    namespace = "com.flockyou"
+    namespace = "com.inversionlabs.flocksucker"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.flockyou"
+        applicationId = "com.inversionlabs.flocksucker"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -83,7 +84,10 @@ android {
             }
         }
 
-        testInstrumentationRunner = "com.flockyou.HiltTestRunner"
+        testInstrumentationRunner = "com.inversionlabs.flocksucker.HiltTestRunner"
+        if (useTestOrchestrator) {
+            testInstrumentationRunnerArguments["clearPackageData"] = "true"
+        }
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -132,6 +136,8 @@ android {
             "\"${project.findProperty("SHA256_AI_MODEL_FLOCK_GGUF") ?: "82b323bf05eba698b87a39d1eca8ea31506222aff25b415f6388135069725b57"}\"")
         buildConfigField("long", "SIZE_AI_MODEL_FLOCK_GGUF",
             "${project.findProperty("SIZE_AI_MODEL_FLOCK_GGUF") ?: "291545376"}L")
+        buildConfigField("String", "URL_AI_MODEL_FLOCK_GGUF_SOURCE",
+            "\"${project.findProperty("URL_AI_MODEL_FLOCK_GGUF_SOURCE") ?: "https://mega.nz/file/WzAiwIba#-lYBgLIkxmAgzmd_CXcKEjMIhuuYlvpfWFUeVXMnxlc"}\"")
 
         // Map Tile Server URLs (OpenStreetMap)
         buildConfigField("String", "URL_MAP_TILE_A",
@@ -158,6 +164,10 @@ android {
         // Data Source URLs
         buildConfigField("String", "URL_OUI_DATABASE",
             "\"${project.findProperty("URL_OUI_DATABASE") ?: "https://standards-oui.ieee.org/oui/oui.csv"}\"")
+    }
+
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 
     // Product flavors for different installation modes
@@ -216,7 +226,7 @@ android {
         // OEM partners can customize the application ID via OEM_PACKAGE_NAME in gradle.properties
         create("oem") {
             dimension = "installMode"
-            // Use OEM-specified package name if provided, otherwise default to com.flockyou
+            // Use OEM-specified package name if provided, otherwise default to com.inversionlabs.flocksucker
             applicationId = oemPackageName
             applicationIdSuffix = ""
             versionNameSuffix = "-oem"
@@ -297,6 +307,9 @@ android {
     // Robolectric. This does not affect production code or instrumented tests.
     testOptions {
         unitTests.isReturnDefaultValues = true
+        if (useTestOrchestrator) {
+            execution = "ANDROIDX_TEST_ORCHESTRATOR"
+        }
     }
 
     // Ensure all build variants are visible in Android Studio
@@ -345,6 +358,8 @@ dependencies {
     // Room with SQLCipher encryption
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
+    // Room 2.8.4 migration tooling uses serialization 1.8.1; align core/json ABI.
+    implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1"))
     ksp("androidx.room:room-compiler:2.8.4")
     implementation("net.zetetic:sqlcipher-android:4.12.0@aar")
     implementation("androidx.sqlite:sqlite-ktx:2.7.0")
@@ -429,9 +444,13 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestUtil("androidx.test:orchestrator:1.6.1")
     androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("io.mockk:mockk-android:1.14.11")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    androidTestImplementation("app.cash.turbine:turbine:1.0.0")
+    androidTestImplementation("androidx.work:work-testing:2.9.0")
 
     // Hilt Testing
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
@@ -817,16 +836,16 @@ tasks.register("generatePrivappPermissions") {
     Package: $oemPackageName
 
     This file should be placed in:
-    /system/etc/permissions/privapp-permissions-flockyou.xml
+    /system/etc/permissions/privapp-permissions-flocksucker.xml
 
     or for newer Android versions:
-    /system_ext/etc/permissions/privapp-permissions-flockyou.xml
+    /system_ext/etc/permissions/privapp-permissions-flocksucker.xml
 
     The APK should be installed to:
-    /system/priv-app/FlockYou/FlockYou.apk
+    /system/priv-app/FlockSucker/FlockSucker.apk
 
     or for newer Android versions:
-    /system_ext/priv-app/FlockYou/FlockYou.apk
+    /system_ext/priv-app/FlockSucker/FlockSucker.apk
 -->
 <permissions>
     <privapp-permissions package="$oemPackageName">
@@ -867,7 +886,7 @@ tasks.register("generatePrivappPermissions") {
         if (oemPackageName != defaultPackageName) {
             println("")
             println("NOTE: Copy this file to your system integration:")
-            println("  cp ${outputFile.absolutePath} /path/to/aosp/vendor/flockyou/privapp-permissions-flockyou.xml")
+            println("  cp ${outputFile.absolutePath} /path/to/aosp/vendor/flocksucker/privapp-permissions-flocksucker.xml")
         }
     }
 }
@@ -903,7 +922,7 @@ tasks.register("generateDefaultPermissions") {
     for OEM/system app deployments.
 
     Installation path:
-    /system_ext/etc/default-permissions/default-permissions-flockyou.xml
+    /system_ext/etc/default-permissions/default-permissions-flocksucker.xml
 
     Note: This requires the ROM to support default permission grants.
     GrapheneOS and most AOSP-based ROMs support this.
@@ -979,16 +998,16 @@ if [ -z "${'$'}1" ]; then
     echo ""
     echo "Arguments:"
     echo "  aosp-root    - Path to AOSP source tree"
-    echo "  vendor-path  - Optional: vendor directory name (default: flockyou)"
+    echo "  vendor-path  - Optional: vendor directory name (default: flocksucker)"
     echo ""
     echo "Example:"
-    echo "  ${'$'}0 /path/to/aosp flockyou"
+    echo "  ${'$'}0 /path/to/aosp flocksucker"
     echo "  ${'$'}0 /path/to/grapheneos partner_security"
     exit 1
 fi
 
 AOSP_ROOT="${'$'}1"
-VENDOR_PATH="${'$'}{2:-flockyou}"
+VENDOR_PATH="${'$'}{2:-flocksucker}"
 TARGET_DIR="${'$'}AOSP_ROOT/vendor/${'$'}VENDOR_PATH"
 
 echo "AOSP Root: ${'$'}AOSP_ROOT"
@@ -1000,16 +1019,16 @@ mkdir -p "${'$'}TARGET_DIR"
 
 # Copy XML files
 echo "Copying permission files..."
-cp "${'$'}SCRIPT_DIR/privapp-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/privapp-permissions-flockyou.xml"
-cp "${'$'}SCRIPT_DIR/default-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/default-permissions-flockyou.xml"
+cp "${'$'}SCRIPT_DIR/privapp-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/privapp-permissions-flocksucker.xml"
+cp "${'$'}SCRIPT_DIR/default-permissions-${oemPackageName.replace(".", "-")}.xml" "${'$'}TARGET_DIR/default-permissions-flocksucker.xml"
 
 echo ""
 echo "Files copied successfully!"
 echo ""
 echo "Next steps:"
-echo "1. Copy your signed APK to: ${'$'}TARGET_DIR/FlockYou.apk"
+echo "1. Copy your signed APK to: ${'$'}TARGET_DIR/FlockSucker.apk"
 echo "2. Update Android.bp/Android.mk in ${'$'}TARGET_DIR if needed"
-echo "3. Add 'FlockYou' to PRODUCT_PACKAGES in your device.mk"
+echo "3. Add 'FlockSucker' to PRODUCT_PACKAGES in your device.mk"
 echo "4. Build your ROM"
 """
         scriptFile.writeText(scriptContent)

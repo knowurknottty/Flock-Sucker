@@ -318,10 +318,10 @@ The history of Android-based IMSI catcher detection is one of abandoned projects
 | Project | Status | Why It Matters |
 |---|---|---|
 | **SnoopSnitch** (SRLabs) | Abandoned | Required root + Qualcomm diag interface for real radio frame analysis. Not updated for modern Android. |
-| **AIMSICD** | Abandoned (2014-2016) | CellInfo-based anomaly detection. Similar approach to what Flock-You implements but without the false positive mitigation. |
+| **AIMSICD** | Abandoned (2014-2016) | CellInfo-based anomaly detection. Similar approach to what Flock-Sucker implements but without the false positive mitigation. |
 | **CellGuard** (TU Darmstadt) | Active (iOS only, 2024) | Validates the cell tower database comparison approach on iOS using Apple's private frameworks. |
 
-The CellGuard research is particularly relevant: it demonstrates that comparing observed cells against a known-good database is the most promising non-root approach, and it found meaningful detection accuracy for simulated IMSI catchers. Flock-You's trusted cell database implements a simplified version of this concept.
+The CellGuard research is particularly relevant: it demonstrates that comparing observed cells against a known-good database is the most promising non-root approach, and it found meaningful detection accuracy for simulated IMSI catchers. Flock-Sucker's trusted cell database implements a simplified version of this concept.
 
 #### With a Custom OS Fork
 
@@ -707,7 +707,7 @@ The four protection presets formalize this:
 | **CellGuard** | iOS only | No | Active (2024) | Apple cell location database comparison | iOS only. Relies on Apple's private database. |
 | **Haven** (Guardian Project) | Android | No | Maintained | Physical surveillance (camera, accelerometer, microphone) | Different threat model (room monitoring vs radio detection) |
 | **AirGuard** | Android | No | Active | AirTag/tracker detection only | Single protocol (BLE trackers only) |
-| **Flock-You** | Android | No (sideload) / Partial (system/OEM) | Active | 7 protocols, 75+ device signatures, cross-protocol correlation | Heuristic-based; cannot access baseband |
+| **Flock-Sucker** | Android | No (sideload) / Partial (system/OEM) | Active | 7 protocols, 75+ device signatures, cross-protocol correlation | Heuristic-based; cannot access baseband |
 
 The key differentiator is breadth: no other tool attempts to correlate across BLE, WiFi, cellular, GNSS, audio, RF, and satellite protocols simultaneously. Each individual protocol has limitations, but the combination provides detection capability that no single-protocol tool can match.
 

@@ -6,7 +6,7 @@
 
 ## Purpose
 
-SØPHIA/Detecx is a commercial passive signal-awareness product whose public feature set provides useful competitive requirements for the Flock-You Anti-Toy campaign.
+SØPHIA/Detecx is a commercial passive signal-awareness product whose public feature set provides useful competitive requirements for the Flock-Sucker Anti-Toy campaign.
 
 This document does **not** authorize source-code reuse.
 
@@ -55,7 +55,7 @@ The campaign must explicitly answer the following in R1/R2/R3.
 
 R1:
 
-- Does Flock-You maintain a meaningful per-environment baseline?
+- Does Flock-Sucker maintain a meaningful per-environment baseline?
 - Which entities/signatures are expected here?
 - Are expected presence, time-of-day, signal distribution, and recurrence represented?
 
@@ -325,7 +325,7 @@ Game rewards, faction state, sponsorship, player votes, and encounter rarity rem
 
 ## Campaign rule
 
-During full R1/R2/R3 execution, compare each SØPHIA capability against actual Flock-You source before creating work.
+During full R1/R2/R3 execution, compare each SØPHIA capability against actual Flock-Sucker source before creating work.
 
 For every donor capability choose exactly one:
 

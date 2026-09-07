@@ -28,7 +28,7 @@ Surveillance detection is a high-stakes domain where both false positives and fa
 
 - **False negatives** leave users vulnerable. Missing a real tracking device or cell site simulator defeats the entire purpose of the application.
 
-The Flock-You threat scoring framework is designed to balance these concerns by producing **calibrated severity levels** that actually correspond to the probability and potential impact of real threats.
+The Flock-Sucker threat scoring framework is designed to balance these concerns by producing **calibrated severity levels** that actually correspond to the probability and potential impact of real threats.
 
 ### Problems with Naive Scoring
 
@@ -44,7 +44,7 @@ Many surveillance detection apps use simplistic scoring that leads to poor user 
 
 ### Design Principles
 
-The Flock-You threat scoring framework follows these principles:
+The Flock-Sucker threat scoring framework follows these principles:
 
 1. **Severity = Probability x Impact**: A CRITICAL alert means there is a high probability of a high-impact threat. Not just that a pattern matched.
 

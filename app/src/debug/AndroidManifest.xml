@@ -8,9 +8,12 @@
     -->
 
     <application>
+        <activity
+            android:name="com.inversionlabs.flocksucker.debug.HiltComposeTestActivity"
+            android:exported="false" />
         <!-- Debug-only activity for screenshot automation -->
         <activity
-            android:name="com.flockyou.debug.ScreenshotHelperActivity"
+            android:name="com.inversionlabs.flocksucker.debug.ScreenshotHelperActivity"
             android:exported="true"
             android:theme="@android:style/Theme.NoDisplay"
             android:taskAffinity=""
@@ -18,13 +21,13 @@
 
             <!-- Test Mode Control -->
             <intent-filter>
-                <action android:name="com.flockyou.debug.TEST_MODE" />
+                <action android:name="com.inversionlabs.flocksucker.debug.TEST_MODE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <!-- Navigation Control -->
             <intent-filter>
-                <action android:name="com.flockyou.debug.NAVIGATE" />
+                <action android:name="com.inversionlabs.flocksucker.debug.NAVIGATE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
@@ -34,7 +37,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="flockyou"
+                    android:scheme="flocksucker"
                     android:host="testmode" />
             </intent-filter>
             <intent-filter>
@@ -42,7 +45,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="flockyou"
+                    android:scheme="flocksucker"
                     android:host="navigate" />
             </intent-filter>
         </activity>

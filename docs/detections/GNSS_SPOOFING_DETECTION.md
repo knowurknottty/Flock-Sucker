@@ -1323,4 +1323,4 @@ const val JAMMING_MEDIUM_THRESHOLD = 40f
 
 ---
 
-*Document generated from Flock-You-Android source code analysis. Last updated: January 2026.*
+*Document generated from Flock-Sucker source code analysis. Last updated: January 2026.*

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Flock-You can capture raw NAS/RRC signaling from Samsung Shannon modems via the
+Flock-Sucker can capture raw NAS/RRC signaling from Samsung Shannon modems via the
 SDM (Samsung Diagnostic Monitor) interface at `/dev/umts_dm0`. This provides
 **definitive** IMSI catcher detection -- not heuristic inference.
 
@@ -33,10 +33,10 @@ disables Shannon diagnostics.
 
 ### 1. Add the policy file
 
-Copy `oem/sepolicy/flockyou_shannon.te` to your device tree:
+Copy `oem/sepolicy/flocksucker_shannon.te` to your device tree:
 
 ```
-device/<vendor>/<device>/sepolicy/flockyou_shannon.te
+device/<vendor>/<device>/sepolicy/flocksucker_shannon.te
 ```
 
 ### 2. Add file_contexts entry

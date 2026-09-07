@@ -1,6 +1,6 @@
-# Flock You Android - Comprehensive E2E Test Suite
+# Flock-Sucker Android - Comprehensive E2E Test Suite
 
-This directory contains comprehensive end-to-end (E2E) tests for the Flock You Android application, with a focus on OEM readiness, security features, privacy controls, and detection capabilities.
+This directory contains comprehensive end-to-end (E2E) tests for the Flock-Sucker Android application, with a focus on OEM readiness, security features, privacy controls, and detection capabilities.
 
 ## Overview
 
@@ -18,7 +18,7 @@ The test suite validates all critical functionality required for production depl
 
 ```
 androidTest/
-├── java/com/flockyou/
+├── java/com/inversionlabs/flocksucker/
 │   ├── oem/
 │   │   └── OemReadinessE2ETest.kt         # OEM features & white-labeling
 │   ├── security/
@@ -45,19 +45,19 @@ androidTest/
 ### Run Specific Test Suite
 ```bash
 # OEM readiness tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.oem.OemReadinessE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.oem.OemReadinessE2ETest
 
 # Security tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.security.SecurityFeaturesE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.security.SecurityFeaturesE2ETest
 
 # Privacy tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.privacy.PrivacyFeaturesE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.privacy.PrivacyFeaturesE2ETest
 
 # Detection system tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.detection.DetectionSystemE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.detection.DetectionSystemE2ETest
 
 # Data management tests
-./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.data.DataManagementE2ETest
+./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.data.DataManagementE2ETest
 ```
 
 ### Run Tests for Specific Build Flavor

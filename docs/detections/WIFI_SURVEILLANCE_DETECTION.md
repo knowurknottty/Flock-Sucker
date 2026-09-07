@@ -1224,4 +1224,4 @@ flowchart TD
 
 ---
 
-*Documentation generated from Flock You Android codebase - WifiDetectionHandler.kt, RogueWifiMonitor.kt, DetectionPatterns.kt*
+*Documentation generated from Flock-Sucker Android codebase - WifiDetectionHandler.kt, RogueWifiMonitor.kt, DetectionPatterns.kt*

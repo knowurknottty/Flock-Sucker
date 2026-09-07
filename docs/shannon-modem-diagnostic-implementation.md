@@ -1,6 +1,6 @@
 # Samsung Shannon Modem Diagnostic Support: Implementation Plan
 
-An implementation plan for adding Samsung Shannon/Exynos modem diagnostic capabilities to Flock-You, enabling IMSI catcher detection on Pixel 6-9 and Samsung Exynos devices.
+An implementation plan for adding Samsung Shannon/Exynos modem diagnostic capabilities to Flock-Sucker, enabling IMSI catcher detection on Pixel 6-9 and Samsung Exynos devices.
 
 ---
 
@@ -53,7 +53,7 @@ Samsung Shannon modems expose a rich set of interfaces between the Application P
 │ Application Processor (Android)                                     │
 │                                                                     │
 │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────────┐ │
-│  │ Flock-You    │  │ libsec-ril.so │  │ cbd (CP Boot Daemon)     │ │
+│  │ Flock-Sucker    │  │ libsec-ril.so │  │ cbd (CP Boot Daemon)     │ │
 │  │ Detection    │  │ (Samsung RIL) │  │                          │ │
 │  │ Daemon       │  │               │  │                          │ │
 │  └──────┬───────┘  └───────┬───────┘  └────────────┬─────────────┘ │
@@ -174,7 +174,7 @@ Google uses the **exact same CPIF driver and device node naming** as Samsung. Th
 
 ### Phase 1: Standard Android APIs (No Root)
 
-**Goal**: Maximize IMSI catcher detection using only public Android APIs. This is the current Flock-You approach, refined for Shannon-specific behavior.
+**Goal**: Maximize IMSI catcher detection using only public Android APIs. This is the current Flock-Sucker approach, refined for Shannon-specific behavior.
 
 **What works today on Pixel 6-9:**
 
@@ -218,7 +218,7 @@ Google uses the **exact same CPIF driver and device node naming** as Samsung. Th
 
 ```
 ┌─────────────────────────────────────────────────┐
-│ Flock-You App (Android)                         │
+│ Flock-Sucker App (Android)                         │
 │  ┌───────────────────────────────────────────┐  │
 │  │ ShannonDiagService (Native Daemon)        │  │
 │  │                                           │  │
@@ -254,7 +254,7 @@ Google uses the **exact same CPIF driver and device node naming** as Samsung. Th
 
 #### 2.1: Port SCAT SDM Parser to Kotlin/Native
 
-SCAT (Python) parses Samsung SDM diagnostic messages. Port the relevant parsing code to a native library callable from Flock-You:
+SCAT (Python) parses Samsung SDM diagnostic messages. Port the relevant parsing code to a native library callable from Flock-Sucker:
 
 ```
 scat/parsers/samsung/
@@ -417,7 +417,7 @@ allow shannon_diag umts_dm_device:chr_file { open read write ioctl };
 allow shannon_diag umts_router_device:chr_file { open read write ioctl };
 
 # Allow IPC with the detection service
-allow shannon_diag flockyou_service:unix_stream_socket { connectto read write };
+allow shannon_diag flocksucker_service:unix_stream_socket { connectto read write };
 
 # Networking for GSMTAP output (localhost only, for Wireshark debugging)
 allow shannon_diag self:udp_socket { create connect write };
@@ -451,10 +451,10 @@ service shannon_diag /system/bin/shannon_diag_daemon
     seclabel u:r:shannon_diag:s0
     disabled
 
-on property:persist.flockyou.shannon_diag=1
+on property:persist.flocksucker.shannon_diag=1
     start shannon_diag
 
-on property:persist.flockyou.shannon_diag=0
+on property:persist.flocksucker.shannon_diag=0
     stop shannon_diag
 ```
 
@@ -635,7 +635,7 @@ Port priority:
 **Cons**: Requires Python on device, IPC overhead
 
 ```
-SCAT (Python) → GSMTAP (UDP :4729) → Flock-You GSMTAP Listener → Detection Pipeline
+SCAT (Python) → GSMTAP (UDP :4729) → Flock-Sucker GSMTAP Listener → Detection Pipeline
 ```
 
 **Recommendation**: **Option A** (native port) for production. Use **Option C** (GSMTAP bridge) for development and validation. The GSMTAP format is well-defined and Wireshark-compatible, making it ideal for debugging. The native port ensures production performance and eliminates the Python dependency.
@@ -685,7 +685,7 @@ On Samsung devices, a UNIX socket named "Multiclient" can be used to interact wi
 
 Shannon modem diagnostic access exposes sensitive cellular signaling data. On a custom OS:
 
-1. **All captured data stays on-device.** No diagnostic data should ever leave the device. This is consistent with Flock-You's zero-cloud architecture.
+1. **All captured data stays on-device.** No diagnostic data should ever leave the device. This is consistent with Flock-Sucker's zero-cloud architecture.
 
 2. **Minimize captured data.** Only parse and retain signaling events relevant to surveillance detection. Discard raw SDM frames after analysis. Do not log full NAS messages that may contain user plane data.
 

@@ -106,8 +106,8 @@ Edit `app/src/main/res/values/strings.xml`:
 ```xml
 <resources>
     <!-- Default app names -->
-    <string name="app_name">Flock You</string>
-    <string name="app_name_system">Flock You (System)</string>
+    <string name="app_name">Flock-Sucker</string>
+    <string name="app_name_system">Flock-Sucker (System)</string>
     <string name="app_name_oem">Your Brand Scanner</string>  <!-- Change this -->
 
     <!-- App description shown in About screen -->
@@ -294,9 +294,9 @@ when (BuildConfig.BUILD_MODE) {
 system/
 ├── Android.bp              # Soong build configuration
 ├── Android.mk              # Legacy make configuration
-├── flockyou.mk            # Product makefile include
-├── privapp-permissions-flockyou.xml
-└── default-permissions-flockyou.xml
+├── flocksucker.mk            # Product makefile include
+├── privapp-permissions-flocksucker.xml
+└── default-permissions-flocksucker.xml
 ```
 
 ### Android.bp Configuration (Soong)
@@ -306,8 +306,8 @@ system/
 ```blueprint
 // Flock-Sucker - Android.bp for AOSP build integration
 android_app_import {
-    name: "FlockYou",
-    apk: "FlockYou.apk",
+    name: "FlockSucker",
+    apk: "FlockSucker.apk",
 
     // Install as privileged app in /system_ext/priv-app/
     privileged: true,
@@ -325,27 +325,27 @@ android_app_import {
 
     // Required permission whitelists
     required: [
-        "privapp_permissions_flockyou",
-        "default_permissions_flockyou",
+        "privapp_permissions_flocksucker",
+        "default_permissions_flocksucker",
     ],
 }
 
 // Privileged permission whitelist
 prebuilt_etc {
-    name: "privapp_permissions_flockyou",
-    src: "privapp-permissions-flockyou.xml",
+    name: "privapp_permissions_flocksucker",
+    src: "privapp-permissions-flocksucker.xml",
     sub_dir: "permissions",
     system_ext_specific: true,
-    filename: "privapp-permissions-flockyou.xml",
+    filename: "privapp-permissions-flocksucker.xml",
 }
 
 // Default runtime permissions
 prebuilt_etc {
-    name: "default_permissions_flockyou",
-    src: "default-permissions-flockyou.xml",
+    name: "default_permissions_flocksucker",
+    src: "default-permissions-flocksucker.xml",
     sub_dir: "default-permissions",
     system_ext_specific: true,
-    filename: "default-permissions-flockyou.xml",
+    filename: "default-permissions-flocksucker.xml",
 }
 ```
 
@@ -357,52 +357,52 @@ prebuilt_etc {
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := FlockYou
+LOCAL_MODULE := FlockSucker
 LOCAL_MODULE_CLASS := APPS
 LOCAL_MODULE_TAGS := optional
 LOCAL_PRIVILEGED_MODULE := true
 LOCAL_SYSTEM_EXT_MODULE := true
 LOCAL_CERTIFICATE := platform
-LOCAL_SRC_FILES := FlockYou.apk
+LOCAL_SRC_FILES := FlockSucker.apk
 LOCAL_MODULE_SUFFIX := $(COMMON_ANDROID_PACKAGE_SUFFIX)
 LOCAL_DEX_PREOPT := true
 LOCAL_REQUIRED_MODULES := \
-    privapp-permissions-flockyou.xml \
-    default-permissions-flockyou.xml
-LOCAL_OVERRIDES_PACKAGES := FlockYou
+    privapp-permissions-flocksucker.xml \
+    default-permissions-flocksucker.xml
+LOCAL_OVERRIDES_PACKAGES := FlockSucker
 include $(BUILD_PREBUILT)
 
 # Permission whitelist
 include $(CLEAR_VARS)
-LOCAL_MODULE := privapp-permissions-flockyou.xml
+LOCAL_MODULE := privapp-permissions-flocksucker.xml
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_TAGS := optional
 LOCAL_SYSTEM_EXT_MODULE := true
 LOCAL_MODULE_PATH := $(TARGET_OUT_SYSTEM_EXT_ETC)/permissions
-LOCAL_SRC_FILES := privapp-permissions-flockyou.xml
+LOCAL_SRC_FILES := privapp-permissions-flocksucker.xml
 include $(BUILD_PREBUILT)
 
 # Default permissions
 include $(CLEAR_VARS)
-LOCAL_MODULE := default-permissions-flockyou.xml
+LOCAL_MODULE := default-permissions-flocksucker.xml
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_TAGS := optional
 LOCAL_SYSTEM_EXT_MODULE := true
 LOCAL_MODULE_PATH := $(TARGET_OUT_SYSTEM_EXT_ETC)/default-permissions
-LOCAL_SRC_FILES := default-permissions-flockyou.xml
+LOCAL_SRC_FILES := default-permissions-flocksucker.xml
 include $(BUILD_PREBUILT)
 ```
 
 ### Privileged Permissions Setup
 
-**File:** `system/privapp-permissions-flockyou.xml`
+**File:** `system/privapp-permissions-flocksucker.xml`
 
 This file whitelists privileged permissions for system/OEM installations:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <permissions>
-    <privapp-permissions package="com.flockyou">
+    <privapp-permissions package="com.inversionlabs.flocksucker">
         <!-- BLE: Bypass duty cycling for continuous scanning -->
         <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
 
@@ -432,19 +432,19 @@ This file whitelists privileged permissions for system/OEM installations:
 ```
 
 **Installation paths:**
-- Android 11+: `/system_ext/etc/permissions/privapp-permissions-flockyou.xml`
-- Android 10: `/system/etc/permissions/privapp-permissions-flockyou.xml`
+- Android 11+: `/system_ext/etc/permissions/privapp-permissions-flocksucker.xml`
+- Android 10: `/system/etc/permissions/privapp-permissions-flocksucker.xml`
 
 ### Default Permissions Setup
 
-**File:** `system/default-permissions-flockyou.xml`
+**File:** `system/default-permissions-flocksucker.xml`
 
 Pre-grants runtime permissions on first boot:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <exceptions>
-    <exception package="com.flockyou">
+    <exception package="com.inversionlabs.flocksucker">
         <!-- Location for WiFi/cellular scanning -->
         <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false"/>
         <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false"/>
@@ -466,7 +466,7 @@ Pre-grants runtime permissions on first boot:
 </exceptions>
 ```
 
-**Installation path:** `/system_ext/etc/default-permissions/default-permissions-flockyou.xml`
+**Installation path:** `/system_ext/etc/default-permissions/default-permissions-flocksucker.xml`
 
 ### Platform Signing vs Pre-signed Options
 
@@ -478,8 +478,8 @@ Pre-grants runtime permissions on first boot:
 **For pre-signed APKs**, add to `Android.bp`:
 ```blueprint
 android_app_import {
-    name: "FlockYou",
-    apk: "FlockYou.apk",
+    name: "FlockSucker",
+    apk: "FlockSucker.apk",
     privileged: true,
     certificate: "PRESIGNED",
     presigned: true,
@@ -493,10 +493,10 @@ android_app_import {
 
 ```makefile
 # Include Flock-Sucker
-$(call inherit-product, vendor/flockyou/flockyou.mk)
+$(call inherit-product, vendor/flocksucker/flocksucker.mk)
 
 # Or add directly to PRODUCT_PACKAGES
-PRODUCT_PACKAGES += FlockYou
+PRODUCT_PACKAGES += FlockSucker
 ```
 
 ---
@@ -553,7 +553,7 @@ data class PrivacySettings(
 )
 ```
 
-To customize defaults, modify `app/src/main/java/com/flockyou/data/PrivacySettings.kt`.
+To customize defaults, modify `app/src/main/java/com/inversionlabs/flocksucker/data/PrivacySettings.kt`.
 
 ### Retention Period Options
 
@@ -578,17 +578,17 @@ The project includes comprehensive OEM readiness tests:
 ```bash
 # Run all OEM tests on connected device
 ./gradlew connectedOemDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.oem.OemReadinessE2ETest
+    -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.oem.OemReadinessE2ETest
 
 # Run specific test suites
 ./gradlew connectedOemDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.oem.OemBrandingE2ETest
+    -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.oem.OemBrandingE2ETest
 
 ./gradlew connectedOemDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.oem.OemConfigurationE2ETest
+    -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.oem.OemConfigurationE2ETest
 
 ./gradlew connectedOemDebugAndroidTest \
-    -Pandroid.testInstrumentationRunnerArguments.class=com.flockyou.oem.OemFeatureTogglesE2ETest
+    -Pandroid.testInstrumentationRunnerArguments.class=com.inversionlabs.flocksucker.oem.OemFeatureTogglesE2ETest
 ```
 
 ### What the Tests Validate
@@ -695,8 +695,8 @@ Test reports are generated in:
   - [ ] Signature verified: `apksigner verify --print-certs app.apk`
 
 - [ ] **Permissions**
-  - [ ] `privapp-permissions-flockyou.xml` included in ROM
-  - [ ] `default-permissions-flockyou.xml` included in ROM
+  - [ ] `privapp-permissions-flocksucker.xml` included in ROM
+  - [ ] `default-permissions-flocksucker.xml` included in ROM
   - [ ] Package name matches in permission files
 
 - [ ] **Testing**
@@ -713,7 +713,7 @@ Test reports are generated in:
 ### Required Customizations
 
 1. **App name** (`app_name_oem` in strings.xml)
-2. **Application ID** (if different from `com.flockyou`)
+2. **Application ID** (if different from `com.inversionlabs.flocksucker`)
 3. **Launcher icons** (mipmap directories)
 4. **Signing certificate** (platform or release key)
 5. **Permission whitelist files** (for system/priv-app)
@@ -738,13 +738,13 @@ Test reports are generated in:
 **Cause:** Privileged permissions not whitelisted.
 
 **Solution:**
-1. Verify `privapp-permissions-flockyou.xml` is in correct location
+1. Verify `privapp-permissions-flocksucker.xml` is in correct location
 2. Check package name matches in XML file
 3. Rebuild ROM and reflash
 
 ```bash
 # Verify permission file exists
-adb shell cat /system_ext/etc/permissions/privapp-permissions-flockyou.xml
+adb shell cat /system_ext/etc/permissions/privapp-permissions-flocksucker.xml
 ```
 
 #### Issue: WiFi scan throttling still active
@@ -756,7 +756,7 @@ adb shell cat /system_ext/etc/permissions/privapp-permissions-flockyou.xml
 2. Verify app is in `/system_ext/priv-app/` (not `/system/app/`)
 3. Check with:
 ```bash
-adb shell dumpsys package com.flockyou | grep "CONNECTIVITY_INTERNAL"
+adb shell dumpsys package com.inversionlabs.flocksucker | grep "CONNECTIVITY_INTERNAL"
 ```
 
 #### Issue: BuildConfig.IS_OEM_BUILD is false
@@ -771,7 +771,7 @@ adb shell dumpsys package com.flockyou | grep "CONNECTIVITY_INTERNAL"
 # NOT sideloadRelease or systemRelease
 ```
 
-#### Issue: App name shows "Flock You" instead of custom name
+#### Issue: App name shows "Flock-Sucker" instead of custom name
 
 **Cause:** String resources not overridden correctly.
 
@@ -846,17 +846,17 @@ For OEM integration support:
 | `app/src/main/res/values/colors.xml` | Theme colors |
 | `app/src/main/res/mipmap-*/` | Launcher icons |
 | `app/src/main/AndroidManifest.xml` | Permissions, components |
-| `app/src/main/java/com/flockyou/data/PrivacySettings.kt` | Default privacy settings |
+| `app/src/main/java/com/inversionlabs/flocksucker/data/PrivacySettings.kt` | Default privacy settings |
 | `system/Android.bp` | Soong build configuration |
 | `system/Android.mk` | Make build configuration |
-| `system/privapp-permissions-flockyou.xml` | Privileged permission whitelist |
-| `system/default-permissions-flockyou.xml` | Pre-granted runtime permissions |
+| `system/privapp-permissions-flocksucker.xml` | Privileged permission whitelist |
+| `system/default-permissions-flocksucker.xml` | Pre-granted runtime permissions |
 
 ### Test Files
 
 | File | Purpose |
 |------|---------|
-| `app/src/androidTest/java/com/flockyou/oem/OemReadinessE2ETest.kt` | OEM readiness validation |
-| `app/src/androidTest/java/com/flockyou/oem/OemBrandingE2ETest.kt` | Branding customization tests |
-| `app/src/androidTest/java/com/flockyou/oem/OemConfigurationE2ETest.kt` | Configuration flexibility tests |
-| `app/src/androidTest/java/com/flockyou/oem/OemFeatureTogglesE2ETest.kt` | Feature toggle tests |
+| `app/src/androidTest/java/com/inversionlabs/flocksucker/oem/OemReadinessE2ETest.kt` | OEM readiness validation |
+| `app/src/androidTest/java/com/inversionlabs/flocksucker/oem/OemBrandingE2ETest.kt` | Branding customization tests |
+| `app/src/androidTest/java/com/inversionlabs/flocksucker/oem/OemConfigurationE2ETest.kt` | Configuration flexibility tests |
+| `app/src/androidTest/java/com/inversionlabs/flocksucker/oem/OemFeatureTogglesE2ETest.kt` | Feature toggle tests |

@@ -1,48 +1,48 @@
 #!/bin/bash
 set -euo pipefail
 
-# OEM Setup Script - Integrates Flock-You app into GrapheneOS build
+# OEM Setup Script - Integrates Flock-Sucker app into GrapheneOS build
 # This script is called during the build process
 
 DEVICE="${DEVICE:-husky}"
-OEM_APP_DIR="/src/vendor/flockyou"
-PREBUILT_APK="/oem-apps/flock-you.apk"
+OEM_APP_DIR="/src/vendor/flocksucker"
+PREBUILT_APK="/oem-apps/flock-sucker.apk"
 
-echo "=== Setting up Flock-You OEM Integration ==="
+echo "=== Setting up Flock-Sucker OEM Integration ==="
 
 # Create vendor directory structure
-mkdir -p "${OEM_APP_DIR}/apps/FlockYou"
+mkdir -p "${OEM_APP_DIR}/apps/FlockSucker"
 mkdir -p "${OEM_APP_DIR}/overlay"
 mkdir -p "${OEM_APP_DIR}/sepolicy"
 
 # Copy prebuilt APK if available
 if [ -f "${PREBUILT_APK}" ]; then
     echo "Using prebuilt APK..."
-    cp "${PREBUILT_APK}" "${OEM_APP_DIR}/apps/FlockYou/FlockYou.apk"
+    cp "${PREBUILT_APK}" "${OEM_APP_DIR}/apps/FlockSucker/FlockSucker.apk"
 fi
 
 # Create Android.bp for the app module
-cat > "${OEM_APP_DIR}/apps/FlockYou/Android.bp" << 'EOF'
+cat > "${OEM_APP_DIR}/apps/FlockSucker/Android.bp" << 'EOF'
 android_app_import {
-    name: "FlockYou",
-    owner: "flockyou",
-    apk: "FlockYou.apk",
+    name: "FlockSucker",
+    owner: "flocksucker",
+    apk: "FlockSucker.apk",
     presigned: true,
     privileged: true,
     dex_preopt: {
         enabled: true,
     },
     required: [
-        "privapp_whitelist_com.flockyou",
+        "privapp_whitelist_com.inversionlabs.flocksucker",
     ],
 }
 EOF
 
 # Create privapp permissions whitelist
-cat > "${OEM_APP_DIR}/apps/FlockYou/privapp_whitelist_com.flockyou.xml" << 'EOF'
+cat > "${OEM_APP_DIR}/apps/FlockSucker/privapp_whitelist_com.inversionlabs.flocksucker.xml" << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
 <permissions>
-    <privapp-permissions package="com.flockyou">
+    <privapp-permissions package="com.inversionlabs.flocksucker">
         <!-- Bluetooth scanning for tracker detection -->
         <permission name="android.permission.BLUETOOTH_SCAN"/>
         <permission name="android.permission.BLUETOOTH_CONNECT"/>
@@ -73,10 +73,10 @@ cat > "${OEM_APP_DIR}/apps/FlockYou/privapp_whitelist_com.flockyou.xml" << 'EOF'
 EOF
 
 # Create Android.bp for privapp whitelist
-cat > "${OEM_APP_DIR}/apps/FlockYou/privapp_whitelist_Android.bp" << 'EOF'
+cat > "${OEM_APP_DIR}/apps/FlockSucker/privapp_whitelist_Android.bp" << 'EOF'
 prebuilt_etc {
-    name: "privapp_whitelist_com.flockyou",
-    src: "privapp_whitelist_com.flockyou.xml",
+    name: "privapp_whitelist_com.inversionlabs.flocksucker",
+    src: "privapp_whitelist_com.inversionlabs.flocksucker.xml",
     sub_dir: "permissions",
     filename_from_src: true,
 }
@@ -86,74 +86,74 @@ EOF
 cat > "${OEM_APP_DIR}/Android.bp" << 'EOF'
 soong_namespace {
     imports: [
-        "vendor/flockyou/apps/FlockYou",
+        "vendor/flocksucker/apps/FlockSucker",
     ],
 }
 EOF
 
 # Create device makefile fragment
-cat > "${OEM_APP_DIR}/flockyou.mk" << 'EOF'
-# Flock-You OEM Integration
+cat > "${OEM_APP_DIR}/flocksucker.mk" << 'EOF'
+# Flock-Sucker OEM Integration
 
 # Include the app in the build
 PRODUCT_PACKAGES += \
-    FlockYou \
-    privapp_whitelist_com.flockyou
+    FlockSucker \
+    privapp_whitelist_com.inversionlabs.flocksucker
 
 # Grant default permissions
 PRODUCT_COPY_FILES += \
-    vendor/flockyou/apps/FlockYou/privapp_whitelist_com.flockyou.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp_whitelist_com.flockyou.xml
+    vendor/flocksucker/apps/FlockSucker/privapp_whitelist_com.inversionlabs.flocksucker.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp_whitelist_com.inversionlabs.flocksucker.xml
 
 # OEM branding
-PRODUCT_BRAND := FlockYou
+PRODUCT_BRAND := FlockSucker
 PRODUCT_MODEL := $(PRODUCT_MODEL) Security Edition
 
 # Enable additional security features
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.flockyou.enabled=true \
-    ro.flockyou.version=1.0.0 \
-    persist.flockyou.auto_scan=true
+    ro.flocksucker.enabled=true \
+    ro.flocksucker.version=1.0.0 \
+    persist.flocksucker.auto_scan=true
 EOF
 
 # Create SEPolicy for privileged permissions
-cat > "${OEM_APP_DIR}/sepolicy/flockyou.te" << 'EOF'
-# SELinux policy for Flock-You privileged app
+cat > "${OEM_APP_DIR}/sepolicy/flocksucker.te" << 'EOF'
+# SELinux policy for Flock-Sucker privileged app
 
-type flockyou_app, domain;
-app_domain(flockyou_app)
-net_domain(flockyou_app)
+type flocksucker_app, domain;
+app_domain(flocksucker_app)
+net_domain(flocksucker_app)
 
 # Allow bluetooth operations
-allow flockyou_app bluetooth_socket:sock_file write;
-allow flockyou_app bluetooth:unix_stream_socket connectto;
+allow flocksucker_app bluetooth_socket:sock_file write;
+allow flocksucker_app bluetooth:unix_stream_socket connectto;
 
 # Allow WiFi scanning
-allow flockyou_app wifi_data_file:dir search;
-allow flockyou_app wifi_data_file:file r_file_perms;
+allow flocksucker_app wifi_data_file:dir search;
+allow flocksucker_app wifi_data_file:file r_file_perms;
 
 # Allow reading cell info
-allow flockyou_app radio_service:service_manager find;
+allow flocksucker_app radio_service:service_manager find;
 
 # Allow location access
-allow flockyou_app location_service:service_manager find;
+allow flocksucker_app location_service:service_manager find;
 
 # Allow foreground service
-allow flockyou_app activity_service:service_manager find;
+allow flocksucker_app activity_service:service_manager find;
 EOF
 
 cat > "${OEM_APP_DIR}/sepolicy/file_contexts" << 'EOF'
-/system/priv-app/FlockYou(/.*)?    u:object_r:system_file:s0
+/system/priv-app/FlockSucker(/.*)?    u:object_r:system_file:s0
 EOF
 
 cat > "${OEM_APP_DIR}/sepolicy/seapp_contexts" << 'EOF'
-user=_app seinfo=platform name=com.flockyou domain=flockyou_app type=app_data_file levelFrom=all
+user=_app seinfo=platform name=com.inversionlabs.flocksucker domain=flocksucker_app type=app_data_file levelFrom=all
 EOF
 
 # Create SEPolicy Android.bp to include policy files
 cat > "${OEM_APP_DIR}/sepolicy/Android.bp" << 'EOF'
 se_policy_conf {
-    name: "flockyou_sepolicy",
-    srcs: ["flockyou.te"],
+    name: "flocksucker_sepolicy",
+    srcs: ["flocksucker.te"],
     installable: false,
 }
 EOF
@@ -207,13 +207,13 @@ for mk_path in "${DEVICE_MK_LOCATIONS[@]}"; do
 done
 
 if [ -n "${DEVICE_MK}" ]; then
-    if ! grep -q "flockyou.mk" "${DEVICE_MK}"; then
+    if ! grep -q "flocksucker.mk" "${DEVICE_MK}"; then
         echo "" >> "${DEVICE_MK}"
-        echo "# Flock-You OEM Integration" >> "${DEVICE_MK}"
-        echo "\$(call inherit-product-if-exists, vendor/flockyou/flockyou.mk)" >> "${DEVICE_MK}"
-        echo "Injected Flock-You into device makefile: ${DEVICE_MK}"
+        echo "# Flock-Sucker OEM Integration" >> "${DEVICE_MK}"
+        echo "\$(call inherit-product-if-exists, vendor/flocksucker/flocksucker.mk)" >> "${DEVICE_MK}"
+        echo "Injected Flock-Sucker into device makefile: ${DEVICE_MK}"
     else
-        echo "Flock-You already in device makefile"
+        echo "Flock-Sucker already in device makefile"
     fi
 else
     echo "WARNING: Device makefile not found for ${DEVICE}"
@@ -222,7 +222,7 @@ else
         echo "  - ${mk_path}"
     done
     echo ""
-    echo "You may need to manually include vendor/flockyou/flockyou.mk"
+    echo "You may need to manually include vendor/flocksucker/flocksucker.mk"
     echo "Or add to build/make/target/product/base_system.mk"
 fi
 

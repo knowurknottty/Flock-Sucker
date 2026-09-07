@@ -1,6 +1,6 @@
 # GrapheneOS Build Environment for DGX Spark
 
-Build GrapheneOS with Flock-You OEM integration on NVIDIA DGX Spark.
+Build GrapheneOS with Flock-Sucker OEM integration on NVIDIA DGX Spark.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ docker compose exec grapheneos-builder bash
 # 6. Inside container - sync sources
 /scripts/sync.sh
 
-# 7. Build Flock-You APK (optional - if not using prebuilt)
+# 7. Build Flock-Sucker APK (optional - if not using prebuilt)
 /scripts/build-oem-apk.sh
 
 # 8. Build GrapheneOS with OEM integration
@@ -58,7 +58,7 @@ docker compose exec grapheneos-builder bash
 
 ## OEM Integration
 
-The build automatically integrates Flock-You as a privileged system app with:
+The build automatically integrates Flock-Sucker as a privileged system app with:
 
 - Pre-granted privacy permissions
 - Privileged app whitelist

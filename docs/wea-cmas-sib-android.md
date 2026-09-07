@@ -9,7 +9,7 @@
 5. [Security and Privacy Implications](#5-security-and-privacy-implications)
 6. [Detection/Monitoring Possibilities](#6-detectionmonitoring-possibilities)
 7. [Recent Changes and Developments](#7-recent-changes-and-developments)
-8. [Relevance to Surveillance Detection (Flock-You Context)](#8-relevance-to-surveillance-detection-flock-you-context)
+8. [Relevance to Surveillance Detection (Flock-Sucker Context)](#8-relevance-to-surveillance-detection-flock-sucker-context)
 9. [Sources](#9-sources)
 
 ---
@@ -485,7 +485,7 @@ The deduplication mechanism (serial number + PLMN + LAC + CID) provides some pro
 
 ### What System/OEM Apps CAN Do
 
-For the Flock-You app in **system** or **OEM** privilege modes:
+For the Flock-Sucker app in **system** or **OEM** privilege modes:
 
 1. **Register for `RECEIVE_EMERGENCY_BROADCAST`**: Receive real-time cell broadcast intents as they arrive
 2. **Query the CellBroadcasts ContentProvider**: Access full history including PLMN, LAC, CID data
@@ -510,9 +510,9 @@ Potential indicators that a WEA alert may be spoofed:
 | **Missing CMAS fields** | LOW | Malformed CMAS type 1 elements (severity/urgency/certainty) |
 | **Presidential alert frequency** | HIGH | As of 2024, only ONE Presidential Alert has ever been sent (Oct 2018 test) |
 
-### Correlation with Existing Flock-You Detection
+### Correlation with Existing Flock-Sucker Detection
 
-The CellularDetectionHandler in Flock-You already tracks several of these indicators:
+The CellularDetectionHandler in Flock-Sucker already tracks several of these indicators:
 - **Encryption downgrade detection** (5G/4G to 2G)
 - **Rapid cell switching** (threshold: 3/min stationary, 8/min moving)
 - **Signal spike detection** (>25 dBm change)
@@ -575,7 +575,7 @@ This is directly relevant to WEA spoofing detection: if an IMSI catcher is detec
 
 ---
 
-## 8. Relevance to Surveillance Detection (Flock-You Context)
+## 8. Relevance to Surveillance Detection (Flock-Sucker Context)
 
 ### Threat Model
 
@@ -589,7 +589,7 @@ A fake WEA/CMAS alert represents a significant surveillance and safety threat:
 
 ### Recommended Integration Points
 
-For the Flock-You app's detection pipeline, WEA spoofing detection could integrate with the existing `CellularDetectionHandler`:
+For the Flock-Sucker app's detection pipeline, WEA spoofing detection could integrate with the existing `CellularDetectionHandler`:
 
 1. **New DeviceType**: `WEA_SPOOFER` or `FAKE_EMERGENCY_ALERT` with impact factor 2.0 (communication interception / public safety threat)
 2. **Cross-domain correlation**: Emergency alert reception within temporal window of cellular anomalies (unknown cell, signal spike, encryption downgrade) should trigger CRITICAL severity

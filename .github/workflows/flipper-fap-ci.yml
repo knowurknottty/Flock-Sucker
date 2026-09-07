@@ -163,10 +163,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install ufbt
 
-      - name: Update ufbt SDK (latest)
+      - name: Update ufbt SDK (latest / dev channel)
         run: |
           cd flipper_app/flock_bridge
-          ufbt update --channel=latest
+          # ufbt channels are dev, rc, and release; dev tracks current upstream SDK.
+          ufbt update --channel=dev
 
       - name: Build FAP
         run: |
