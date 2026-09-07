@@ -40,7 +40,7 @@ jobs:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
 
       - name: 🔧 Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: 📦 Cache Gradle packages
         uses: actions/cache@v6
