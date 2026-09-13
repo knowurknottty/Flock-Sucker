@@ -395,8 +395,8 @@ dependencies {
     implementation("com.google.guava:guava:33.7.1-android")
 
     // OkHttp for HTTP downloads with TLS support
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
+    implementation("com.squareup.okhttp3:okhttp-tls:5.5.0")
 
     // USB Serial for Flipper Zero USB CDC communication
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
