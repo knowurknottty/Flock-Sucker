@@ -374,7 +374,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.6.2")
     
     // Maps - OpenStreetMap (no API key required)
-    implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
