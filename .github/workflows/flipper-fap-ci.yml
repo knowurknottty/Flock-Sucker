@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload FAP artifact
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.upload_artifact == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flock_bridge-${{ github.sha }}
           path: flipper_app/flock_bridge/dist/flock_bridge.fap
@@ -175,7 +175,7 @@ jobs:
           ufbt
 
       - name: Upload FAP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flock_bridge-latest-${{ github.sha }}
           path: flipper_app/flock_bridge/dist/flock_bridge.fap
@@ -214,7 +214,7 @@ jobs:
           ufbt
 
       - name: Upload FAP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flock_bridge-release-${{ github.sha }}
           path: flipper_app/flock_bridge/dist/flock_bridge.fap
