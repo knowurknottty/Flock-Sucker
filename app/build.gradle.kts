@@ -434,7 +434,7 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("app.cash.turbine:turbine:1.0.0")
+    testImplementation("app.cash.turbine:turbine:1.2.1")
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("io.mockk:mockk:1.14.11")
     
@@ -449,7 +449,7 @@ dependencies {
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("io.mockk:mockk-android:1.14.11")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    androidTestImplementation("app.cash.turbine:turbine:1.0.0")
+    androidTestImplementation("app.cash.turbine:turbine:1.2.1")
     androidTestImplementation("androidx.work:work-testing:2.9.0")
 
     // Hilt Testing
