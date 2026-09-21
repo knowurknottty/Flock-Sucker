@@ -421,7 +421,7 @@ dependencies {
 
     // MediaPipe LLM inference for MediaPipe-compatible .task/.bin models on-device
     // 0.10.24 has fixes for DetokenizerCalculator native crash (RET_CHECK id >= 0)
-    implementation("com.google.mediapipe:tasks-genai:0.10.24")
+    implementation("com.google.mediapipe:tasks-genai:0.10.35")
 
     // ML Kit GenAI Prompt API for Gemini Nano on-device inference (Beta)
     // This provides access to the on-device Gemini Nano model via AICore
