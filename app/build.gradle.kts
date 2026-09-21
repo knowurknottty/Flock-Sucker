@@ -359,7 +359,7 @@ dependencies {
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
     // Room 2.8.4 migration tooling uses serialization 1.8.1; align core/json ABI.
-    implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1"))
+    implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.11.0"))
     ksp("androidx.room:room-compiler:2.8.5")
     implementation("net.zetetic:sqlcipher-android:4.19.0@aar")
     implementation("androidx.sqlite:sqlite-ktx:2.7.0")
